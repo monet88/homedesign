@@ -1,0 +1,22 @@
+.scratch/wayfinder/tickets/003-grilling-auth-session.md
+  s_6a9f1c04854135::t_f92d6fa0a83f08 5-8
+  s_6a9f1c04854135::t_96e1be42282528 26-35
+.scratch/wayfinder/map-homedesign-clone.md
+  s_6a9f1c04854135::t_3a40065d27d930 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "49cac71d435a830902017faadc6ec2a17bf21b57",
+  "prompts": {},
+  "sessions": {
+    "s_6a9f1c04854135": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fd2cd430dffeWOgs3RQG91HVQu",
+        "model": "unknown"
+      },
+      "human_author": "monet88 <redacted-test-email@example.invalid>"
+    }
+  }
+}
