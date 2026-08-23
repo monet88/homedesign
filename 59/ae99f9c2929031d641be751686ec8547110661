@@ -1,0 +1,22 @@
+.scratch/wayfinder/tickets/001-research-stack-api-contract.md
+  s_6a9f1c04854135::t_9da246acf890d5 30-39
+  s_6a9f1c04854135::t_972c099e8c8f59 5-8
+.scratch/wayfinder/map-homedesign-clone.md
+  s_6a9f1c04854135::t_edfd0ea611da86 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "59ae99f9c2929031d641be751686ec8547110661",
+  "prompts": {},
+  "sessions": {
+    "s_6a9f1c04854135": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fd2cd430dffeWOgs3RQG91HVQu",
+        "model": "unknown"
+      },
+      "human_author": "monet88 <redacted-test-email@example.invalid>"
+    }
+  }
+}
