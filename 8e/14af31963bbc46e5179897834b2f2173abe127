@@ -1,0 +1,19 @@
+research/stack-api-contract.md
+  s_6a9f1c04854135::t_e443f239777ec5 1-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "8e14af31963bbc46e5179897834b2f2173abe127",
+  "prompts": {},
+  "sessions": {
+    "s_6a9f1c04854135": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fd2cd430dffeWOgs3RQG91HVQu",
+        "model": "unknown"
+      },
+      "human_author": "monet88 <redacted-test-email@example.invalid>"
+    }
+  }
+}
