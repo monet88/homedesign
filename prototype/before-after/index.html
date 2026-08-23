@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prototype — Before/After + Galleries (throwaway)</title>
+<link rel="preload" as="image" href="https://cdn.homedesigns.app/ai-interior-design/before-after/empty-living-room-before.webp">
+<style>
+/* ponytail: native CSS only, no lib. Tokens from docs/design/DESIGN.md */
+:root{--paper:#f6f0e4;--ink:#171411;--muted:oklab(0.956 0.0016 0.017 / .7);--radius-pill:9999px;--radius-card:12px;--gap:16px}
+*{box-sizing:border-box}body{margin:0;font-family:inter,"inter Fallback",Arial,sans-serif;background:var(--paper);color:var(--ink)}
+.wrap{max-width:1120px;margin:0 auto;padding:24px}
+h1{font-size:32px;font-weight:600;margin:0 0 8px}h2{font-size:22px;margin:32px 0 12px}
+.muted{color:#6b6b6b;font-size:14px}
+/* BeforeAfter */
+.ba{position:relative;aspect-ratio:16/9;overflow:hidden;border-radius:var(--radius-card);background:#000}
+.ba img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ba .after{clip-path:inset(0 calc(100% - var(--pos,50%)) 0 0)}
+.ba input[type=range]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:ew-resize;margin:0}
+.ba .handle{position:absolute;top:0;bottom:0;left:var(--pos,50%);width:2px;background:#fff;box-shadow:0 0 8px rgba(0,0,0,.4);pointer-events:none}
+.ba .handle::after{content:"↔";position:absolute;left:50%;top:50%;translate:-50% -50%;background:#fff;color:#000;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.thumbs{display:flex;gap:8px;margin-top:12px;overflow:auto;padding-bottom:4px}
+.thumbs button{border:2px solid transparent;border-radius:8px;overflow:hidden;padding:0;flex:0 0 96px;height:64px;cursor:pointer;background:#fff}
+.thumbs button.active{border-color:var(--ink)}
+.thumbs img{width:100%;height:100%;object-fit:cover;display:block}
+.tabs{display:flex;gap:8px;margin:12px 0}
+.tabs button{border:1px solid #ddd;background:var(--muted);padding:8px 14px;border-radius:var(--radius-pill);cursor:pointer;font-size:13px}
+.tabs button.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+/* Gallery */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:var(--gap)}
+.card{background:#fff;border-radius:var(--radius-card);overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
+.card .body{padding:10px}
+.card .title{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .actions{display:flex;gap:6px;margin-top:8px}
+.card .actions button{flex:1;padding:6px 8px;border-radius:9999px;border:1px solid #ddd;background:#fff;font-size:12px;cursor:pointer}
+.card .actions button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+/* Variant bar (prototype UI.md) */
+.variants{position:fixed;left:50%;bottom:16px;translate:-50% 0;background:#111;color:#fff;padding:8px 12px;border-radius:9999px;display:flex;gap:8px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.variants button{border:0;background:#333;color:#fff;padding:6px 10px;border-radius:9999px;cursor:pointer}
+.variants button.active{background:#fff;color:#111}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="muted">PROTOTYPE — throwaway, trả lời: “slider + gallery y hệt làm bằng native được không?” → Có. Xem <code>docs/design/DESIGN.md</code>. Ảnh dùng CDN origin.</p>
+  <h1>Before / After — 5 comparisons</h1>
+  <div class="tabs" id="tabs">
+    <button class="active" data-tab="interior">Interior</button>
+    <button data-tab="exterior">Exterior</button>
+    <button data-tab="floorplan">Floor Plan</button>
+  </div>
+  <div class="ba" id="ba" style="--pos:50%">
+    <img id="before" src="https://cdn.homedesigns.app/ai-interior-design/before-after/empty-living-room-before.webp" alt="before">
+    <img id="after" class="after" src="https://cdn.homedesigns.app/ai-interior-design/before-after/empty-living-room-after.webp" alt="after">
+    <div class="handle"></div>
+    <input type="range" min="0" max="100" value="50" id="range" aria-label="Before After slider">
+  </div>
+  <div class="thumbs" id="thumbs">
+    <button class="active" data-i="1"><img src="https://cdn.homedesigns.app/ai-interior-design/before-after/empty-living-room-before.webp" alt=""></button>
+    <button data-i="2"><img src="https://cdn.homedesigns.app/ai-interior-design/before-after/empty-living-room-after.webp" alt=""></button>
+    <button data-i="3"><img src="https://cdn.homedesigns.app/landing/hero-room-light.webp" alt=""></button>
+    <button data-i="4"><img src="https://cdn.homedesigns.app/landing/ai-interior-design-poster.webp" alt=""></button>
+    <button data-i="5"><img src="https://cdn.homedesigns.app/landing/ai-exterior-design-poster.webp" alt=""></button>
+  </div>
+  <p class="muted">Kéo slider hoặc bấm 5 thumbnails — 5 nút “Show comparison 1..5” trên origin map tới đây. Clip bằng <code>clip-path + --pos</code>, không lib.</p>
+
+  <h2>Popular Styles — 12 cards</h2>
+  <div class="grid" id="styles"></div>
+  <h2>Ideas for Every Room — 10 cards</h2>
+  <div class="grid" id="ideas"></div>
+  <p class="muted">Gallery dùng <code>CSS grid auto-fill minmax(160px,1fr)</code> native, card radius 12px, shadow-sm. Nút Preview/Use là pill 9999px — y hệt token --radius-pill.</p>
+</div>
+<div class="variants">
+  <span>Variant:</span>
+  <button class="active" onclick="setVariant(1)">A: Native slider</button>
+  <button onclick="setVariant(2)">B: Larger handle</button>
+  <button onclick="location.href='../../docs/design/DESIGN.md'">DESIGN.md</button>
+</div>
+<script>
+const ba=document.getElementById('ba'), range=document.getElementById('range'), before=document.getElementById('before'), after=document.getElementById('after');
+range.addEventListener('input', e=> ba.style.setProperty('--pos', e.target.value+'%'));
+document.getElementById('thumbs').addEventListener('click', e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  [...b.children].length; // keep
+  document.querySelectorAll('#thumbs button').forEach(x=>x.classList.remove('active')); b.classList.add('active');
+  // demo: swap pair bằng cách đổi src qua lại để thấy 5 comparisons
+  const idx=b.dataset.i;
+  if(idx==='1'){before.src='https://cdn.homedesigns.app/ai-interior-design/before-after/empty-living-room-before.webp'; after.src='https://cdn.homedesigns.app/ai-interior-design/before-after/empty-living-room-after.webp';}
+  if(idx==='2'){before.src='https://cdn.homedesigns.app/landing/hero-room-light.webp'; after.src='https://cdn.homedesigns.app/landing/ai-interior-design-poster.webp';}
+  if(idx==='3'){before.src='https://cdn.homedesigns.app/landing/ai-exterior-design-poster.webp'; after.src='https://cdn.homedesigns.app/landing/ai-floor-plan-poster.webp';}
+  if(idx==='4'){before.src='https://cdn.homedesigns.app/landing/cta-room.webp'; after.src='https://cdn.homedesigns.app/ai-interior-design/before-after/empty-living-room-after.webp';}
+  if(idx==='5'){before.src='https://cdn.homedesigns.app/ai-interior-design/before-after/empty-living-room-before.webp'; after.src='https://cdn.homedesigns.app/landing/hero-room-light.webp';}
+});
+document.getElementById('tabs').addEventListener('click', e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  document.querySelectorAll('#tabs button').forEach(x=>x.classList.remove('active')); b.classList.add('active');
+});
+const styles=['Modern Warm','Japandi','Scandinavian','Minimal','Classic Warm','Industrial Loft','Organic Modern','Wabi-Sabi','Mediterranean','Mid-Century','French Vintage','Luxury Wood'];
+const ideas=['Living Room','Bedroom','Kitchen','Home Office','Dining Room','Bathroom','Kids Room','Nursery','Entryway','Balcony'];
+const sGrid=document.getElementById('styles'), iGrid=document.getElementById('ideas');
+styles.forEach((t,i)=>{const d=document.createElement('div');d.className='card';d.innerHTML=`<img src="https://cdn.homedesigns.app/landing/hero-room-light.webp" alt=""><div class="body"><div class="title">${t}</div><div class="actions"><button>Preview style</button><button class="primary">Use style</button></div></div>`; sGrid.appendChild(d);});
+ideas.forEach(t=>{const d=document.createElement('div');d.className='card';d.innerHTML=`<img src="https://cdn.homedesigns.app/landing/ai-interior-design-poster.webp" alt=""><div class="body"><div class="title">${t}</div><div class="actions"><button>Preview</button><button class="primary">Try this look</button></div></div>`; iGrid.appendChild(d);});
+function setVariant(v){document.querySelectorAll('.variants button').forEach((b,i)=>b.classList.toggle('active', (i+1)===v)); if(v===2) document.querySelector('.handle').style.width='6px'; else document.querySelector('.handle').style.width='2px';}
+</script>
+</body>
+</html>
