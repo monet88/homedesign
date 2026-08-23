@@ -2,8 +2,10 @@
 title: "Research — Stack & API contract homedesigns.app"
 label: wayfinder:research
 type: research
-status: open
-assignee: null
+status: closed
+assignee: homedesign-agent
+closedAt: 2026-08-23
+branch: research/stack-api-contract
 ---
 
 ## Question
@@ -25,3 +27,13 @@ Cần trả lời trong ticket này (AFK, 1 session, branch `research/stack-api-
 Không quyết định chọn stack mới — chỉ khóa fact origin. Quyết định chọn clone stack để cho ticket khác.
 
 Blocked by: (none) — frontier
+
+## Resolution
+
+**Closed 2026-08-23** — AFK research xong trên branch `research/stack-api-contract` (commit `8e14af3`, merged `f323267`).
+
+**Context pointer:** `research/stack-api-contract.md:1` (94 lines) + `docs/design/DESIGN.md:1` + HAR `§92-§97` (config, model-pricing, auth session).
+
+**Gist:** Origin là **Next.js App Router + Turbopack + Cloudflare OpenNext** (`X-Powered-By: Next.js`, `x-opennext:1`), **BetterAuth** (cookie `__Secure-better-auth.session_token`, `POST /api/auth/sign-in/email` → `GET /api/auth/get-session` → `POST /api/user/get-user-info` → `credits.remainingCredits:5`), **Stripe-only** (`stripe_enabled:true`), **Google One Tap** `997586...`, **CDN `cdn.homedesigns.app`**, **model-pricing version 2** (`gemini-2.5-flash-image default 1 credit`, `roomDesign brief/layout/render/panorama 1/2/3/4 credits`). Đã khóa toàn bộ `/_next/*` và `/api/*` contract; generation POST & upload endpoint để lại ticket 004.
+
+**Unblocks:** 003,004,005 now frontier. Agent-browser daemon treo sau 6 screenshots — khuyến nghị session mới `research-*` cho ticket sau.
