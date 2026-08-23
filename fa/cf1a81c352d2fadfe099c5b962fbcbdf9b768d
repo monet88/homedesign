@@ -1,0 +1,45 @@
+docs/agents/issue-tracker.md
+  s_6a9f1c04854135::t_920e607dd9cce7 1-7
+.scratch/wayfinder/tickets/007-grilling-upload-cdn.md
+  s_6a9f1c04854135::t_2a456c15e7c7e4 1-24
+CONTEXT.md
+  s_6a9f1c04854135::t_6cd79ef1eae0e4 1-21
+.scratch/wayfinder/tickets/006-grilling-credits-pricing.md
+  s_6a9f1c04854135::t_69c2e035666384 1-24
+.scratch/wayfinder/tickets/003-grilling-auth-session.md
+  s_6a9f1c04854135::t_49d1321324ab1b 1-23
+.scratch/wayfinder/tickets/004-research-generation-pipeline.md
+  s_6a9f1c04854135::t_620dd0c2db74f4 1-24
+.scratch/wayfinder/tickets/001-research-stack-api-contract.md
+  s_6a9f1c04854135::t_cdc3b4d537f3ba 1-27
+.scratch/wayfinder/tickets/002-prototype-beforeafter-gallery.md
+  s_6a9f1c04854135::t_6facd9d85192f9 1-25
+.scratch/wayfinder/tickets/009-grilling-projects-library.md
+  s_6a9f1c04854135::t_ee7c25517c5025 1-28
+.scratch/wayfinder/map-homedesign-clone.md
+  s_6a9f1c04854135::t_0f07ae07c37225 23-24
+  s_6a9f1c04854135::t_651e98d425d3ca 1-16,18-22,25-42
+  s_6a9f1c04854135::t_14ce908e134fb4 17
+.scratch/wayfinder/tickets/005-task-stripe-sandbox.md
+  s_6a9f1c04854135::t_eefe98f4230cd4 1-22
+.scratch/wayfinder/tickets/008-grilling-floorplan-domain.md
+  s_6a9f1c04854135::t_0492553c4df6c2 1-28
+docs/design/DESIGN.md
+  s_6a9f1c04854135::t_5a10a52c3f310e 1-202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "facf1a81c352d2fadfe099c5b962fbcbdf9b768d",
+  "prompts": {},
+  "sessions": {
+    "s_6a9f1c04854135": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fd2cd430dffeWOgs3RQG91HVQu",
+        "model": "unknown"
+      },
+      "human_author": "monet88 <redacted-test-email@example.invalid>"
+    }
+  }
+}
