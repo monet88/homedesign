@@ -1,0 +1,22 @@
+.scratch/wayfinder/map-homedesign-clone.md
+  s_6a9f1c04854135::t_5df7a6ac144b7d 26
+.scratch/wayfinder/tickets/002-prototype-beforeafter-gallery.md
+  s_6a9f1c04854135::t_03e3017be5aa5c 28-37
+  s_6a9f1c04854135::t_0b5ea4e1f29f2e 5-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "95f0a139ffd080e5dec94470581b3634a799dccb",
+  "prompts": {},
+  "sessions": {
+    "s_6a9f1c04854135": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fd2cd430dffeWOgs3RQG91HVQu",
+        "model": "unknown"
+      },
+      "human_author": "monet88 <redacted-test-email@example.invalid>"
+    }
+  }
+}
