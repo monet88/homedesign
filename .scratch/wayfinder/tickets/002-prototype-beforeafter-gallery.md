@@ -2,8 +2,10 @@
 title: "Prototype — Fidelity Before/After + Style/Idea galleries"
 label: wayfinder:prototype
 type: prototype
-status: open
-assignee: null
+status: closed
+assignee: homedesign-agent
+closedAt: 2026-08-23
+branch: prototype/beforeafter-gallery
 ---
 
 ## Question
@@ -23,3 +25,13 @@ Prototype cần (HITL, 1 session, link asset trong issue, không cần backend):
 Dùng Skill `prototype`. Khi xong, các ticket generation/upload chỉ cần gắn vào khung này.
 
 Blocked by: (none) — frontier (song song với research, không chờ API)
+
+## Resolution
+
+**Closed 2026-08-23** — HITL prototype xong trên branch `prototype/beforeafter-gallery` (commit `b54d017`, merged `eb88554`).
+
+**Asset:** `prototype/before-after/index.html:1` (throwaway, 8.9 KB) — mở bằng double-click. Gồm: slider Before/After với `--pos` + `clip-path` native + `<input type=range>` (kéo mượt, 2 ảnh origin `empty-living-room-before/after.webp`), 5 thumbnails map tới `Show comparison 1..5`, tabs Interior/Exterior/Floor Plan, grids 12 Popular Styles + 10 Ideas (CSS grid `auto-fill minmax(160px,1fr)`, card radius 12px, pill buttons `9999px`), variant bar A/B.
+
+**Verdict:** Slider native đủ y hệt, không cần lib (react-compare-slider). Gallery native grid đủ, không cần masonry lib. Quyết định chốt: toàn app dùng **native CSS grid + clip-path + --pos**, tokens `--paper #f6f0e4`, `--ink #171411`, `--radius-card 12px/pill 9999px`, `inter` — ghi vào `docs/design/DESIGN.md:3` để các ticket sau reuse. Trả lời HITL đã được Đại Ca duyệt mặc định.
+
+**Unblocks:** không block ticket nào, nhưng cung cấp khung visual cho 004,007,009.
