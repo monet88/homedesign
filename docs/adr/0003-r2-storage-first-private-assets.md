@@ -4,6 +4,8 @@ Mọi ảnh nguồn và ảnh generated dùng chung một storage-first lifecycl
 
 **Status:** accepted
 
+**Revision 2026-08-26:** Phase đầu chỉ bắt buộc **Intake Validation** bằng kiểm tra byte/header có giới hạn trong Worker. Full decode/re-encode, metadata stripping và antivirus được xem là **Canonicalization**, hoãn tới khi có yêu cầu cụ thể; không cần Cloudflare Container cho upload contract hiện tại.
+
 ## Storage and delivery
 
 - Dùng hai R2 buckets tách quyền: private user Assets và public static/catalog media. Production public media đi qua `cdn.<domain>`; `r2.dev` chỉ dùng development.
@@ -15,10 +17,10 @@ Mọi ảnh nguồn và ảnh generated dùng chung một storage-first lifecycl
 
 - User đã xác thực tạo upload intent với tên, MIME và size khai báo. Server sinh Asset ID/object key ngẫu nhiên và presigned PUT hết hạn sau 10 phút; URL là bearer token, chỉ cho đúng operation/key.
 - Presigned upload dùng R2 S3 API domain, không dùng custom CDN domain; bucket CORS chỉ cho các app origins đã khai báo. Mỗi user tối đa 3 pending uploads đồng thời, 20 upload intents/giờ và 1GiB ready private Assets trong testing.
-- Client kiểm tra extension/MIME/size để phản hồi sớm. Server/validator mới là nguồn chuẩn: kiểm tra quyền, byte size tối đa 50MB, magic bytes, decode được PNG/JPEG, tối đa 50 megapixels và tối đa 12,000 px mỗi cạnh.
-- Object mới nằm ở quarantine. R2 object-create notification hoặc finalize request kích hoạt validator idempotent; validator decode/re-encode, bỏ metadata/EXIF, ghi canonical object rồi mới chuyển Asset sang ready. Mismatch hoặc decode failure chuyển rejected và xóa object.
+- Client kiểm tra extension/MIME/size để phản hồi sớm; các giá trị client khai báo không phải security evidence. Intake Validation trong Worker mới là nguồn chuẩn: kiểm tra quyền, byte size thực tối đa 50MB, magic bytes và parse bounded PNG/JPEG headers để lấy width/height; giới hạn 50 megapixels và 12,000 px mỗi cạnh mà không decode raster hoặc buffer toàn file.
+- Object mới nằm ở quarantine. R2 object-create notification hoặc finalize request kích hoạt validation job idempotent; Worker dùng ranged reads cho prefix có giới hạn, từ chối header truncated/malformed, type mismatch hoặc dimension violation, rồi stream/copy object đạt chuẩn sang private ready key trước khi chuyển Asset sang `ready`. Validation failure chuyển `rejected` và xóa object; retry không tạo bản sao logic mới.
 - Output từ AI provider cũng đi qua quarantine và cùng validator trước khi trở thành Generated Asset `ready`.
-- Phase đầu không gọi dịch vụ antivirus bên thứ ba: allowlist chỉ có raster PNG/JPEG và mọi file phải decode/re-encode trong quarantine. Nếu mở thêm SVG/PDF/archive thì malware scanning trở thành gate bắt buộc.
+- Phase đầu không full decode/re-encode, không strip EXIF và không gọi antivirus: allowlist chỉ có raster PNG/JPEG, user objects luôn private và raw Source Asset không được đưa vào Project Share. Nếu mở raw-source sharing/public delivery, thêm SVG/PDF/archive, hoặc provider yêu cầu normalized bytes thì phải mở decision mới cho Canonicalization và malware/CDR gate trước khi release.
 - Generate chỉ nhận Asset `ready`. Retry upload intent/finalize và duplicate object events không được tạo Asset hoặc validation job lần hai.
 
 ## Retention
@@ -48,14 +50,14 @@ sequenceDiagram
     U->>A: Finalize upload (Asset ID, ETag)
     A->>R: HEAD object
     A->>Q: Ensure validation job (idempotent)
-    Q->>R: Read, decode/re-encode, strip metadata
-    Q->>R: Write canonical private object; delete quarantine
+    Q->>R: HEAD + bounded ranged reads; validate bytes/header/dimensions
+    Q->>R: Stream/copy approved object to private ready key; delete quarantine
     Q->>D: Mark Asset ready or rejected
     U->>A: Generate with ready Asset ID
     A->>G: Authorized task + short-lived object access
     G->>R: Store Generated Asset in quarantine
     R-->>Q: object-create event
-    Q->>R: Validate and write canonical output
+    Q->>R: Validate and promote output to ready key
     Q->>D: Attach ready output to Project
     U->>A: Request Asset view/share
     A-->>U: Authorized short-lived delivery
@@ -65,4 +67,4 @@ sequenceDiagram
 
 - Local observed contract: `research/generation-pipeline.md` and `research/stack-api-contract.md`.
 - Cloudflare R2: [presigned URLs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/), [user-generated content architecture](https://developers.cloudflare.com/reference-architecture/diagrams/storage/storing-user-generated-content/), [event notifications](https://developers.cloudflare.com/r2/buckets/event-notifications/), [object lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/), [public buckets/custom domains](https://developers.cloudflare.com/r2/buckets/public-buckets/).
-- Security validation: [OWASP File Upload Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html).
+- Security validation: [OWASP File Upload Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html), [R2 Workers API ranged reads](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/#ranged-reads).
