@@ -22,6 +22,7 @@ Bản spec + kiến trúc + prototype fidelity đầy đủ để bàn giao cho 
 
 <!-- index: một dòng/ticket đã close, đủ để判断 relevance, link tới ticket cho chi tiết -->
 
+- [Grilling — Deploy runtime & environment topology](.scratch/wayfinder/tickets/010-grilling-deploy-runtime.md): Cloudflare OpenNext/Workers + D1/R2/Queues/Workflows/APAC Container, four-account isolation, ephemeral PR resources và explicit release/cost gates — ADR `docs/adr/0006-cloudflare-runtime-and-isolated-environments.md:1`.
 - [Grilling — Projects / Assets / Activity & sharing](.scratch/wayfinder/tickets/009-grilling-projects-library.md): Project là aggregate visibility/favorite/share; Asset private độc lập; unlisted read-only sharing; cursor-based Project/Asset grids và owner Activity timeline — ADR `docs/adr/0005-project-library-and-unlisted-sharing.md:1`.
 - [Grilling — Floor Plan domain](.scratch/wayfinder/tickets/008-grilling-floorplan-domain.md): Room-centric pipeline Room Brief → ảnh 2D → photorealistic Render → panorama tùy chọn, immutable stage lineage và Pannellum viewer; không CAD/BIM/editor/3D scene — ADR `docs/adr/0004-room-centric-floor-plan-visualization.md:1`.
 - [Grilling — Upload 50MB & CDN/Storage](.scratch/wayfinder/tickets/007-grilling-upload-cdn.md): R2 storage-first, 50MB direct presigned upload, private user Assets qua quarantine validation và retention theo Project — ADR `docs/adr/0003-r2-storage-first-private-assets.md:1`.
