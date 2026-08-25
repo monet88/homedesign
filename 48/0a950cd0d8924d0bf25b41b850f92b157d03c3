@@ -1,0 +1,21 @@
+.scratch/wayfinder/map-homedesign-clone.md
+  s_6a9f1c04854135::t_b538bb1856e36d 20,26,29
+.scratch/wayfinder/tickets/007-grilling-upload-cdn.md
+  s_6a9f1c04854135::t_6c7c088af7c575 31-32,36,39,42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "480a950cd0d8924d0bf25b41b850f92b157d03c3",
+  "prompts": {},
+  "sessions": {
+    "s_6a9f1c04854135": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fd2cd430dffeWOgs3RQG91HVQu",
+        "model": "unknown"
+      },
+      "human_author": "monet88 <redacted-test-email@example.invalid>"
+    }
+  }
+}
