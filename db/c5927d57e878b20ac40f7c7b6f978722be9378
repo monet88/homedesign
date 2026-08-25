@@ -1,0 +1,27 @@
+.scratch/wayfinder/map-homedesign-clone.md
+  s_6a9f1c04854135::t_67d7ee4fb9e056 9,17-18,26-27,48
+.scratch/wayfinder/tickets/005-task-stripe-sandbox.md
+  s_6a9f1c04854135::t_785af3c48e11b8 5-7,24-42
+.scratch/wayfinder/tickets/006-grilling-credits-pricing.md
+  s_6a9f1c04854135::t_52f6d11da558bc 2,5-7,12,14,17,19-20,23,26-40
+.scratch/wayfinder/tickets/007-grilling-upload-cdn.md
+  s_6a9f1c04854135::t_f28ab290c1d46b 5-7,26-44
+CONTEXT.md
+  s_6a9f1c04854135::t_7c73bf948b6cb2 5-10,14-19,33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "dbc5927d57e878b20ac40f7c7b6f978722be9378",
+  "prompts": {},
+  "sessions": {
+    "s_6a9f1c04854135": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fd2cd430dffeWOgs3RQG91HVQu",
+        "model": "unknown"
+      },
+      "human_author": "monet88 <redacted-test-email@example.invalid>"
+    }
+  }
+}
