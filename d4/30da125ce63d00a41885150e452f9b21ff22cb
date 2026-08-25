@@ -1,0 +1,23 @@
+.scratch/wayfinder/map-homedesign-clone.md
+  s_6a9f1c04854135::t_102675892f5ac8 25
+.scratch/wayfinder/tickets/009-grilling-projects-library.md
+  s_6a9f1c04854135::t_00cddaeae13fb5 5-7,30-46
+CONTEXT.md
+  s_6a9f1c04854135::t_652e3353663b2b 6-9,31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "d430da125ce63d00a41885150e452f9b21ff22cb",
+  "prompts": {},
+  "sessions": {
+    "s_6a9f1c04854135": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fd2cd430dffeWOgs3RQG91HVQu",
+        "model": "unknown"
+      },
+      "human_author": "monet88 <redacted-test-email@example.invalid>"
+    }
+  }
+}
