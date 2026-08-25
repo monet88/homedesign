@@ -3,8 +3,10 @@
 ## Glossary
 
 - **Generation** — một lần gọi AI tạo ảnh từ ảnh gốc + tham số (Model, Style, Room/Area, Palette, Aspect Ratio, Custom Requirements). Chi phí Credits phụ thuộc model/action; luồng mặc định hiện có giá 1 Credit. Không nhầm với **Render** (Floor Plan → 3D/360°).
-- **Project** — tập hợp các Generations + Source/Generated Assets của 1 user, hiển thị trong /projects, có trạng thái Private/Favorite/Share. Khác **Asset** (một ảnh đơn lẻ).
-- **Asset** — ảnh thuộc user với metadata và lifecycle `pending-upload | quarantined | ready | rejected | deleted`; private mặc định và chỉ dùng cho Generation khi `ready`. Khác **Project**.
+- **Project** — workspace thuộc một user, gom intent thiết kế, Generations và các Source/Generated Assets cho một phương án Interior, Exterior hoặc Floor Plan. Project là aggregate duy nhất mang visibility, favorite và sharing; khác **Asset** là một ảnh độc lập.
+- **Project Favorite** — dấu lưu cá nhân của owner trên một Project, không thay đổi visibility hoặc quyền truy cập và không áp dụng riêng cho Asset.
+- **Project Share** — quyền xem read-only qua một link unlisted có thể thu hồi, chỉ trình bày các Generated Assets được chọn từ lineage hiện hành. Không đồng nghĩa với public Asset hoặc raw object access.
+- **Asset** — ảnh thuộc user với metadata và lifecycle `pending-upload | quarantined | ready | rejected | deleted`; private mặc định, có thể được Project tham chiếu nhưng không tự mang favorite hoặc share. Khác **Project**.
 - **Source Asset** — Asset do user upload để làm đầu vào cho Interior, Exterior hoặc Floor Plan.
 - **Generated Asset** — Asset là đầu ra của một Generation hoặc một stage Floor Plan.
 - **Static Media** — ảnh marketing/catalog do hệ thống quản lý và phát public qua CDN; không phải Asset của user.
@@ -26,6 +28,7 @@
 - **Room Render** — ảnh photorealistic tạo cảm giác không gian 3D từ Room Layout đã xác nhận. Không phải mesh, scene graph hoặc mô hình 3D tương tác.
 - **Room Panorama** — ảnh equirectangular được xem bằng trình duyệt 360° cho một Room Design. Không phải video, virtual tour nhiều node hoặc trải nghiệm VR.
 - **Floor Plan Stage Run** — một lần chạy bất biến của Room Brief, Room Layout, Room Render hoặc Room Panorama. Retry/regenerate tạo run mới; run cũ vẫn giữ lịch sử và Credits đã settle.
+- **Activity Entry** — mục timeline append-only, owner-only ghi lại một thay đổi có ý nghĩa với Project, Asset, Generation hoặc Mock Payment. Không phải security audit log hoặc Credit Ledger.
 - **Before/After** — component so sánh ảnh gốc vs ảnh generate, có slider và 5 nút Show comparison.
 
 ## Bounded Contexts
