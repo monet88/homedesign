@@ -24,6 +24,7 @@ Bản spec + kiến trúc + prototype fidelity đầy đủ để bàn giao cho 
 - [DESIGN.md — Clone 1:1 spec](docs/design/DESIGN.md): Đã chụp 6 PNG full (01-landing 2.68MB, 02-interior 1.58MB, 03-exterior 2.19MB, 04-floorplan 0.87MB, 05-controls, 06-loggedin) + trích tokens paper #f6f0e4, ink #171411, inter 72px/600, pill radius — làm ground-truth cho prototype.
 - [Research — Stack & API contract homedesigns.app](.scratch/wayfinder/tickets/001-research-stack-api-contract.md): Khóa Next.js+Cloudflare OpenNext + BetterAuth + Stripe + CDN + model-pricing v2 (roomDesign 1/2/3/4 credits) — chi tiết `research/stack-api-contract.md:1`, unblock 003/004/005.
 - [Prototype — Fidelity Before/After + Style/Idea galleries](.scratch/wayfinder/tickets/002-prototype-beforeafter-gallery.md): Native slider `clip-path+--pos+range` + grid `auto-fill 160px` chốt y hệt, không lib — asset `prototype/before-after/index.html:1`, branch `prototype/beforeafter-gallery`.
+- [Research — Generation pipeline](.scratch/wayfinder/tickets/004-research-generation-pipeline.md): Khóa `/api/ai/generate` + `/api/ai/query` (poll 2.5s/120s) + prompt template verbatim + Floor Plan state machine 4 scenes (brief/layout/render/panorama) — chi tiết `research/generation-pipeline.md:1`, unblock 007/008.
 
 ## Not yet specified
 
