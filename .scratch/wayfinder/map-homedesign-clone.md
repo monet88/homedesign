@@ -15,11 +15,13 @@ Bản spec + kiến trúc + prototype fidelity đầy đủ để bàn giao cho 
 - Ponytail full: YAGNI, stdlib/native trước dependency, shortest diff. Mỗi ticket = 1 quyết định, 1 session.
 - Tracker: local markdown `.scratch/wayfinder/tickets/*.md` (xem `docs/agents/issue-tracker.md`). Blocking = body convention `Blocked by:`.
 - 2026-08-23 Đại Ca chốt all recommend: Destination = spec+kiến trúc+prototype là handoff (không code trong map); Stack giữ BetterAuth+Next.js Turbopack; Billing Stripe-only day-1; Floor Plan full 2D→3D→360° với 360° stub tĩnh. Design ground-truth = `docs/design/DESIGN.md` + 6 PNG.
+- 2026-08-25 Video feature đầy đủ và ADR 0004 supersede quyết định Floor Plan stub tĩnh bằng panorama web tương tác.
 
 ## Decisions so far
 
 <!-- index: một dòng/ticket đã close, đủ để判断 relevance, link tới ticket cho chi tiết -->
 
+- [Grilling — Floor Plan domain](.scratch/wayfinder/tickets/008-grilling-floorplan-domain.md): Room-centric pipeline Room Brief → ảnh 2D → photorealistic Render → panorama tùy chọn, immutable stage lineage và Pannellum viewer; không CAD/BIM/editor/3D scene — ADR `docs/adr/0004-room-centric-floor-plan-visualization.md:1`.
 - [Grilling — Auth & session](.scratch/wayfinder/tickets/003-grilling-auth-session.md): Giữ BetterAuth y hệt origin (cookie `__Secure-better-auth.session_token`, `GET /api/auth/get-session`, Google One Tap day-1, email verify block Generate) — ADR `docs/adr/0001-betterauth-session.md:1`, branch `grilling/auth-session`.
 - [DESIGN.md — Clone 1:1 spec](docs/design/DESIGN.md): Đã chụp 6 PNG full (01-landing 2.68MB, 02-interior 1.58MB, 03-exterior 2.19MB, 04-floorplan 0.87MB, 05-controls, 06-loggedin) + trích tokens paper #f6f0e4, ink #171411, inter 72px/600, pill radius — làm ground-truth cho prototype.
 - [Research — Stack & API contract homedesigns.app](.scratch/wayfinder/tickets/001-research-stack-api-contract.md): Khóa Next.js+Cloudflare OpenNext + BetterAuth + Stripe + CDN + model-pricing v2 (roomDesign 1/2/3/4 credits) — chi tiết `research/stack-api-contract.md:1`, unblock 003/004/005.
@@ -31,7 +33,6 @@ Bản spec + kiến trúc + prototype fidelity đầy đủ để bàn giao cho 
 <!-- fog trong scope nhưng chưa đủ sắc để ticket — sẽ graduate khi frontier tiến -->
 
 - Mapping chính xác Credits/tiers Lite/Plus/Pro/Max (số credits, giá, limit) — đang thấy 4 nút Buy Credits nhưng chưa scrape pricing detail, chờ ticket Credits.
-- Pipeline Floor Plan chi tiết (Recognition model nào, 2D→3D→360° dùng service nào) — cần research Generation xong mới sắc.
 - Chiến lược deploy & CDN thay thế `cdn.homedesigns.app` (Vercel + R2/S3 vs Cloudflare) — phụ thuộc quyết định stack & upload.
 - i18n & SEO: hiện chỉ English, Change language button tồn tại nhưng chưa rõ scope đa ngữ.
 - Admin/CMS cho Styles/Ideas: có cần backoffice hay seed tĩnh từ crawl?
