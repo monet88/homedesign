@@ -1,0 +1,23 @@
+.scratch/wayfinder/map-homedesign-clone.md
+  s_6a9f1c04854135::t_ba930a28d7b77a 18,24
+.scratch/wayfinder/tickets/008-grilling-floorplan-domain.md
+  s_6a9f1c04854135::t_4a236a46b3d49b 5-7,30-44
+CONTEXT.md
+  s_6a9f1c04854135::t_2d6aeb324702e7 12-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "e972f2acac9cd17f993e333fa58f34e57c86794e",
+  "prompts": {},
+  "sessions": {
+    "s_6a9f1c04854135": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fd2cd430dffeWOgs3RQG91HVQu",
+        "model": "unknown"
+      },
+      "human_author": "monet88 <redacted-test-email@example.invalid>"
+    }
+  }
+}
