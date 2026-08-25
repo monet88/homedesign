@@ -2,8 +2,9 @@
 title: "Grilling — Upload 50MB & CDN/Storage"
 label: wayfinder:grilling
 type: grilling
-status: open
-assignee: null
+status: closed
+assignee: codex
+closedAt: 2026-08-25
 ---
 
 ## Question
@@ -22,3 +23,22 @@ Grilling (HITL):
 Gọi `grilling` + `domain-modeling` (Asset vs Project). Kết quả ADR + sequence diagram upload→generate→store.
 
 Blocked by: 001-research-stack-api-contract, 004-research-generation-pipeline
+
+## Resolution
+
+**Closed 2026-08-25 — HITL.** Đại Ca chọn toàn bộ recommended answers, rồi chỉ định tiếp tục chọn recommendation đến hết frontier.
+
+- Chọn Cloudflare R2: bucket private cho toàn bộ user Assets và bucket public cho Static Media qua `cdn.<domain>`; không dùng `r2.dev` ở production.
+- Chuẩn hóa storage-first cho Interior, Exterior và Floor Plan. AI nhận ready Asset reference thay vì base64/data URL từ client.
+- Giữ intake PNG/JPG/JPEG tối đa 50MB, single PUT. User đã xác thực nhận presigned PUT 10 phút cho server-generated key và upload trực tiếp vào quarantine.
+- Validation hai lớp: client phản hồi sớm; server/worker kiểm tra auth, 50MB, magic bytes, decode PNG/JPEG, tối đa 50MP/12,000px mỗi cạnh, re-encode bỏ EXIF. Chỉ Asset `ready` được Generate.
+- Presigned upload dùng R2 S3 API domain với CORS allowlist; testing giới hạn 3 pending uploads/user, 20 intents/giờ và 1GiB ready private Assets/user.
+- Object-create event và finalize cùng kích hoạt một validation job idempotent. Quarantine/rejected/orphan hết hạn sau 24 giờ; retry không nhân đôi Asset/job.
+- Generated output cũng phải qua quarantine/validator trước khi thành Generated Asset `ready`.
+- User Assets private mặc định và chỉ phát qua authorized short-lived delivery. Project Share không public raw bucket/object.
+- Assets attach vào Project giữ tới khi user xóa. Delete ẩn và thu hồi access ngay, recovery 30 ngày rồi purge; failed generation giữ Source Asset nhưng output orphan chỉ giữ 24 giờ.
+- Phase đầu không dùng antivirus service ngoài vì chỉ allowlist raster PNG/JPEG và bắt buộc decode/re-encode; thêm SVG/PDF/archive sau này phải có malware-scan gate.
+
+Architecture decision + sequence diagram: `docs/adr/0003-r2-storage-first-private-assets.md`.
+
+Official facts consulted: Cloudflare R2 presigned URLs, UGC architecture, public buckets/custom domains, event notifications, object lifecycles; OWASP File Upload Cheat Sheet. URLs nằm trong ADR.

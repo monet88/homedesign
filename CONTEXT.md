@@ -2,13 +2,21 @@
 
 ## Glossary
 
-- **Generation** — một lần gọi AI tạo ảnh từ ảnh gốc + tham số (Model, Style, Room/Area, Palette, Aspect Ratio, Custom Requirements). Tiêu 1 Credits. Không nhầm với **Render** (Floor Plan → 3D/360°).
-- **Project** — tập hợp các Generations + assets gốc của 1 user, hiển thị trong /projects, có trạng thái Private/Favorite/Share. Khác **Asset** (1 file ảnh/video đơn lẻ).
-- **Asset** — file ảnh đã upload hoặc đã generate, lưu trên CDN (`cdn.homedesigns.app`), có metadata (size, mime, w/h). Khác **Project**.
+- **Generation** — một lần gọi AI tạo ảnh từ ảnh gốc + tham số (Model, Style, Room/Area, Palette, Aspect Ratio, Custom Requirements). Chi phí Credits phụ thuộc model/action; luồng mặc định hiện có giá 1 Credit. Không nhầm với **Render** (Floor Plan → 3D/360°).
+- **Project** — tập hợp các Generations + Source/Generated Assets của 1 user, hiển thị trong /projects, có trạng thái Private/Favorite/Share. Khác **Asset** (một ảnh đơn lẻ).
+- **Asset** — ảnh thuộc user với metadata và lifecycle `pending-upload | quarantined | ready | rejected | deleted`; private mặc định và chỉ dùng cho Generation khi `ready`. Khác **Project**.
+- **Source Asset** — Asset do user upload để làm đầu vào cho Interior, Exterior hoặc Floor Plan.
+- **Generated Asset** — Asset là đầu ra của một Generation hoặc một stage Floor Plan.
+- **Static Media** — ảnh marketing/catalog do hệ thống quản lý và phát public qua CDN; không phải Asset của user.
 - **Style** — bộ preset thị giác (VD: Modern Warm, Japandi, Scandinavian). Dùng cho Interior/Exterior. Khác **Area/Room Type** (Living Room, House Facade).
 - **Room Type / Area** — phạm vi áp dụng Style (Interior: Living Room, Bedroom... / Exterior: House Facade, Front Porch...).
 - **Palette** — lựa chọn màu chủ đạo (Neutral/Warm/Cool/Earth/Custom). Khi chọn Custom thì textbox `e.g. navy blue and brass...` enable.
-- **Credits** — đơn vị thanh toán nội bộ. Tiers: Lite/Plus/Pro/Max. 1 Generation = 1 Credit (đã quan sát trên 3 tool). Claim Free Credits cho user mới.
+- **Credits** — đơn vị quota đo quyền sử dụng AI, không đồng nghĩa với Payment. Chi phí thay đổi theo action/model (Generation, Floor Plan Render, panorama...).
+- **Free Credit Grant** — 10 Credits không hết hạn được cấp một lần cho mỗi user đã xác thực trong giai đoạn testing.
+- **Credit Ledger** — lịch sử bất biến của mọi Free Credit Grant, Mock Payment, Credit Hold, usage và release; là nguồn chuẩn của số dư Credits.
+- **Credit Hold** — phần Credits được giữ chỗ khi một AI task được chấp nhận: được chốt thành usage khi task thành công, hoặc trả lại ở terminal failed/canceled/server expiry. Client polling timeout không kết thúc hold.
+- **Available Credits** — số Credits user còn có thể dùng sau khi trừ các Credit Hold đang hoạt động; đây là số hiển thị trên badge.
+- **Mock Payment** — mô phỏng luồng mua và cộng Credits cho user đã xác thực trong development/staging, không chuyển tiền và không gọi Stripe hay payment provider thật.
 - **Floor Plan** — domain visualization theo từng phòng: Upload sơ đồ mặt bằng → chọn Room + Style → Room Brief → 2D Furniture Layout → Photorealistic Render → 360° Panorama tùy chọn. Không phải CAD/BIM, không tạo geometry có thẩm quyền và không dùng chung pipeline Interior/Exterior image-to-image.
 - **Floor Plan Project** — Project chuyên biệt gắn với đúng một sơ đồ mặt bằng nguồn và chứa nhiều Room Designs độc lập. Thay sơ đồ nguồn tạo project mới thay vì ghi đè project cũ.
 - **Room Marker** — điểm người dùng chọn trên Source Floor Plan, lưu bằng tọa độ phần trăm và dùng để nhận diện phạm vi phòng. Khác polygon hoặc mô hình topology của phòng.
@@ -22,7 +30,7 @@
 
 ## Bounded Contexts
 
-1. **Identity & Billing** — BetterAuth (`__Secure-better-auth.session_token`), email+Google One Tap, Stripe, Credits.
+1. **Identity & Credits** — BetterAuth (`__Secure-better-auth.session_token`), email+Google One Tap, free Credits entitlement và Mock Payment. Payment thật không thuộc phase hiện tại.
 2. **Catalog** — Styles, Ideas, Popular Galleries (dùng chung UI card Preview/Use style).
 3. **Generation Pipeline** — Upload 50MB (PNG/JPG/JPEG), Model=Nano Banana, Full Redesign/Local Edit, Aspect Ratios (1:1,4:3,16:9,3:4,9:16), Custom Requirements 0/300.
 4. **Asset & Project Library** — Projects, Assets, Activity, Private/Favorite/Share.
