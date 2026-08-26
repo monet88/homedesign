@@ -1,0 +1,27 @@
+src/lib/payments/payments.wtest.ts
+  s_8f8b0694425e58::t_c17c0e634affce 1-349
+  s_8f8b0694425e58::t_361312ba0a99e6 350-553
+src/lib/payments/core.ts
+  s_8f8b0694425e58::t_c9787bedb2a64e 1-401
+  s_8f8b0694425e58::t_4efb2bcac6f9ea 402-449
+migrations/0004_payments.sql
+  s_8f8b0694425e58::t_553e93ade08708 1-92
+src/app/api/payments/mock/route.ts
+  s_8f8b0694425e58::t_fa0779201eb143 1-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "170fc7e06bcb996f1987a6c2697522757ce00d54",
+  "prompts": {},
+  "sessions": {
+    "s_8f8b0694425e58": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03def-62f6-7c8a-b9b6-4b00b629b741",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
