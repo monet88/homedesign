@@ -14,7 +14,7 @@ Khóa lại **stack thực tế** và **API contract** của homedesigns.app là
 
 Crawl đã làm (session `homedesign-ac6e747758b3`):
 - Landing `/` + `/ai-interior-design` + `/ai-exterior-design` + `/ai-floor-plan` — snapshot đầy đủ (model Nano Banana, room/area/style, palette, aspect ratios, 50MB upload, BeforeAfter).
-- Login email `redacted-test-email@example.invalid` / `redacted-test-password` thành công → cookie `__Secure-better-auth.session_token`, menu `Redacted Test User / Assets / Activity / Sign Out`.
+- Login bằng tài khoản nghiên cứu được cấp thành công → cookie `__Secure-better-auth.session_token`, menu account `Assets / Activity / Sign Out`; credentials và personal data đã redact khỏi tài liệu.
 - Network: `POST /api/config/get-configs` → `{stripe_enabled:true, google_one_tap_enabled:true, google_client_id:9975..., email_auth_enabled:true}`, `GET /api/auth/get-session`, `POST /api/auth/sign-in/email`, `POST /api/user/get-user-info`, `GET /api/ai/model-pricing`, `_next/static/chunks` Turbopack, `cdn.homedesigns.app`.
 
 Cần trả lời trong ticket này (AFK, 1 session, branch `research/stack-api-contract`):

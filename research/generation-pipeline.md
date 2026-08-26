@@ -1,7 +1,7 @@
 # Research — Generation pipeline (Interior / Exterior / Floor Plan)
 
 **Branch:** `research/generation-pipeline` · **Date:** 2026-08-23
-**Method:** pull 35 JS chunks của `/ai-interior-design` (4.2MB) → grep contract. Browser UI-drive bỏ (daemon CLI treo do shell), nhưng contract trích từ chính code client origin → chính xác 100%.
+**Method:** pull 35 JS chunks của `/ai-interior-design` (4.2MB) → grep contract. Browser UI-drive bỏ (daemon CLI treo do shell); các shape dưới đây là behavior quan sát từ client origin, không tự động trở thành security/storage contract của clone.
 **Prereq:** `research/stack-api-contract.md:1`
 
 ---
@@ -66,6 +66,10 @@ POST /api/storage/upload-image     // FormData: files=<File>
 - Component mặc định: `maxSizeMB=10`, single file (có variant allowMultiple/maxImages), `uploadUrl` overridable.
 - **Interior/Exterior KHÔNG đi qua endpoint này** — ảnh nguồn nhét thẳng data URL vào `options.image_input`. Endpoint này phục vụ avatar/settings (Max 10MB thấy ở `/settings`) và khả năng cao floor-plan intake.
 
+### Clone boundary (supersedes origin transport)
+
+ADR 0003 deliberately không clone data URL/arbitrary URL transport. Browser clone gửi `sourceAssetId` của Asset `ready`; App Worker authorize ownership/Project rồi provider adapter nội bộ mới tạo `options.image_input` bằng short-lived object access. Browser query giữ envelope `{code,data}` nhưng `taskResult` chỉ chứa ready Asset IDs/descriptors, không provider URL. Owner download nhận `{assetId}`, không nhận arbitrary `imageUrl` như origin endpoint đã quan sát.
+
 ## 3. Floor Plan pipeline (chunk `8413707613ade3aa`) — tách hẳn state machine
 
 - Scenes tuần tự (khớp pricing `roomDesign` 1/2/3/4 credits):
@@ -85,7 +89,7 @@ Bấm Generate khi chưa login: **không có request nào** bị đẩy ra — c
 ---
 
 ## Context pointers
-- Ticket 007 (upload): giữ `POST /api/storage/upload-image` FormData `files` cho avatar/floor-plan; interior gửi data URL trực tiếp trong `options.image_input` (≤50MB client-check).
+- Ticket 007 (upload): origin dùng `POST /api/storage/upload-image` cho component phụ và data URL cho Interior; clone phải theo ADR 0003 storage-first cho Interior/Exterior/Floor Plan, không copy transport này.
 - Ticket 006 (credits): deduct xảy ra server-side khi tạo task (`data.id`); cost theo `/api/ai/model-pricing` v2.
 - Ticket 008 (floor plan): implement đủ 4 scenes + status machine như §3.
 - Clone: cần queue worker cho AITask (status machine + polling 2.5s/120s) — gợi ý bảng `ai_tasks(id,user_id,status,provider,model,prompt,task_info,task_result)`.

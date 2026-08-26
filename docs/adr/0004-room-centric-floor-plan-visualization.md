@@ -29,7 +29,7 @@ Floor Plan là một pipeline visualization tạo sinh theo từng phòng, tách
 
 ## Runs, confirmation, and lineage
 
-- Mỗi stage run là bất biến và có trạng thái `draft | processing | success | failed | confirmed`. `success` nghĩa là output đã tồn tại và Credit Hold đã settle; `confirmed` nghĩa là user chọn output đó làm input cho stage kế tiếp. `stale` là quan hệ lineage được suy ra cho output downstream, không phải trạng thái của run.
+- Mỗi stage run là bất biến và có trạng thái `draft | processing | success | failed | confirmed`. `success` nghĩa là Generated Asset đã qua validation thành `ready`, attach vào Project và Credit Hold đã settle; provider completion/quarantine chưa phải success. `confirmed` nghĩa là user chọn output đó làm input cho stage kế tiếp. `stale` là quan hệ lineage được suy ra cho output downstream, không phải trạng thái của run.
 - Mỗi Room Design chỉ có một run `processing` cho mỗi stage. Task creation dùng idempotency key để double-click, reconnect hoặc retry request không tạo hai run/holds.
 - Regenerate luôn tạo run billable mới; không ghi đè output cũ. User có thể xem history và chọn lại một run thành công làm lineage hiện tại.
 - Chỉnh hoặc regenerate upstream không xóa downstream đã sinh. Khi upstream mới được xác nhận, các output downstream thuộc lineage cũ chuyển thành `stale`, không còn là output active để tiếp tục hoặc share, nhưng vẫn giữ trong history.
@@ -39,7 +39,7 @@ Floor Plan là một pipeline visualization tạo sinh theo từng phòng, tách
 
 ## Credits and failure behavior
 
-- Stage acceptance tạo Credit Hold atomically; success settle usage; terminal failed/canceled/server expiry release riêng hold của run đó.
+- Stage acceptance tạo Credit Hold atomically; Generated Asset ready + attach mới success/settle; terminal failed/canceled/output-validation exhausted/DLQ/server expiry release riêng hold của run đó.
 - Confirm, xem lại artifact, đổi current room và mở viewer không tốn Credits. Regenerate hoặc retry bằng một run mới tạo hold mới.
 - Việc một upstream change làm downstream cũ stale không hoàn Credits, vì các stage đó đã hoàn tất và artifact vẫn được giữ trong history.
 - Client polling timeout không phải terminal state. UI tiếp tục cho user rời trang và khôi phục trạng thái run từ server khi quay lại.

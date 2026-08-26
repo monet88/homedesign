@@ -34,7 +34,7 @@ Blocked by: 001-research-stack-api-contract, 004-research-generation-pipeline
 - Chuẩn hóa storage-first cho Interior, Exterior và Floor Plan. AI nhận ready Asset reference thay vì base64/data URL từ client.
 - Giữ intake PNG/JPG/JPEG tối đa 50MB, single PUT. User đã xác thực nhận presigned PUT 10 phút cho server-generated key và upload trực tiếp vào quarantine.
 - Validation hai lớp: client phản hồi sớm; server/worker kiểm tra auth, actual byte size 50MB, magic bytes và bounded PNG/JPEG headers, tối đa 50MP/12,000px mỗi cạnh mà không full decode hoặc buffer toàn file. Chỉ Asset `ready` được Generate.
-- Presigned upload dùng R2 S3 API domain với CORS allowlist; testing giới hạn 3 pending uploads/user, 20 intents/giờ và 1GiB ready private Assets/user.
+- Presigned upload dùng R2 S3 API domain với CORS allowlist; testing giới hạn 3 active intake (`pending-upload` + `quarantined`)/user, 20 intents/giờ và 1GiB ready private Assets/user.
 - Object-create event và finalize cùng kích hoạt một validation job idempotent. Quarantine/rejected/orphan hết hạn sau 24 giờ; retry không nhân đôi Asset/job.
 - Generated output cũng phải qua quarantine và cùng bounded-header validator trước khi thành Generated Asset `ready`.
 - User Assets private mặc định và chỉ phát qua authorized short-lived delivery. Project Share không public raw bucket/object.

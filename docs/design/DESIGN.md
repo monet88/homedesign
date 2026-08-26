@@ -1,6 +1,6 @@
 # DESIGN — Clone 1:1 homedesigns.app
 
-> Nguồn: crawl trực tiếp 2026-08-23 qua `agent-browser` session `homedesign-ac6e747758b3` (login `redacted-test-email@example.invalid` ok). Toàn bộ ảnh màn hình lưu tại `docs/design/screenshots/`. Stack quan sát: **Next.js App Router + Turbopack** (`_next/static/chunks`), **Tailwind CSS** (3 chunks), **BetterAuth** (`__Secure-better-auth.session_token`), **Stripe + Google One Tap**, **CDN `cdn.homedesigns.app`**.
+> Nguồn: crawl trực tiếp 2026-08-23 qua `agent-browser` session `homedesign-ac6e747758b3` bằng authenticated research account; credentials và personal data đã redact. Toàn bộ ảnh màn hình lưu tại `docs/design/screenshots/`. Stack quan sát: **Next.js App Router + Turbopack** (`_next/static/chunks`), **Tailwind CSS** (3 chunks), **BetterAuth** (`__Secure-better-auth.session_token`), **Stripe + Google One Tap**, **CDN `cdn.homedesigns.app`**.
 
 ---
 
@@ -30,14 +30,14 @@
 /ai-interior-design   — upload room → chọn Model/Room/Style/Palette/Ratio/Requirements → Generate → galleries → before/after
 /ai-exterior-design   — upload house → Area/Exterior Style/Palette/Ratio → Generate → tương tự
 /ai-floor-plan        — upload floor plan / Use Sample → Recognition → chọn Room+Style → 2D → 3D → 360°
-/projects, /assets, /activity  — sau login (menu Redacted Test User)
+/projects, /assets, /activity  — sau login (account menu)
 /pricing  (anchor trong landing)
 /privacy-policy, /terms-of-service, /home-design-software
 /settings/*, /admin/*  — chỉ quan sát qua __NEXT_DATA__ (chưa crawl UI)
 ```
 
 Nav chính (`Header` trong `__NEXT_DATA__`):
-`HomeDesign logo → Design Tools | Before & After | Pricing | FAQ | [Claim Free Credits] | English | Pricing | Account` → sau login thay `Sign In` bằng avatar `T` + dropdown `Redacted Test User / Assets / Activity / Sign Out` + badge credits `5`.
+`HomeDesign logo → Design Tools | Before & After | Pricing | FAQ | [Claim Free Credits] | English | Pricing | Account` → sau login thay `Sign In` bằng avatar initial + dropdown `Assets / Activity / Sign Out` + badge credits `5`.
 
 Footer: brand + 3 cột `Design Tools | Resources | About` + social `Email` + `Privacy/Terms`.
 

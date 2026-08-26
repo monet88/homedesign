@@ -16,12 +16,17 @@ Mọi ảnh nguồn và ảnh generated dùng chung một storage-first lifecycl
 ## Upload contract and validation
 
 - User đã xác thực tạo upload intent với tên, MIME và size khai báo. Server sinh Asset ID/object key ngẫu nhiên và presigned PUT hết hạn sau 10 phút; URL là bearer token, chỉ cho đúng operation/key.
-- Presigned upload dùng R2 S3 API domain, không dùng custom CDN domain; bucket CORS chỉ cho các app origins đã khai báo. Mỗi user tối đa 3 pending uploads đồng thời, 20 upload intents/giờ và 1GiB ready private Assets trong testing.
+- Presigned upload dùng R2 S3 API domain, không dùng custom CDN domain; bucket CORS chỉ cho các app origins đã khai báo. Mỗi user tối đa 3 intake đang hoạt động (`pending-upload` + `quarantined`) đồng thời, 20 upload intents/giờ và 1GiB ready private Assets trong testing.
 - Client kiểm tra extension/MIME/size để phản hồi sớm; các giá trị client khai báo không phải security evidence. Intake Validation trong Worker mới là nguồn chuẩn: kiểm tra quyền, byte size thực tối đa 50MB, magic bytes và parse bounded PNG/JPEG headers để lấy width/height; giới hạn 50 megapixels và 12,000 px mỗi cạnh mà không decode raster hoặc buffer toàn file.
-- Object mới nằm ở quarantine. R2 object-create notification hoặc finalize request kích hoạt validation job idempotent; Worker dùng ranged reads cho prefix có giới hạn, từ chối header truncated/malformed, type mismatch hoặc dimension violation, rồi stream/copy object đạt chuẩn sang private ready key trước khi chuyển Asset sang `ready`. Validation failure chuyển `rejected` và xóa object; retry không tạo bản sao logic mới.
-- Output từ AI provider cũng đi qua quarantine và cùng validator trước khi trở thành Generated Asset `ready`.
+- Finalize xác nhận object tồn tại rồi atomically chuyển Asset `pending-upload → quarantined`; R2 object-create notification hoặc finalize request converge vào cùng validation job idempotent. Notification chỉ subscribe prefix `quarantine/` để ready-key copy không tự tạo vòng lặp. Worker dùng ranged reads cho prefix có giới hạn, từ chối header truncated/malformed, type mismatch hoặc dimension violation, rồi stream/copy object đạt chuẩn sang private ready key trước khi chuyển Asset `quarantined → ready`. Validation failure chuyển `rejected` và xóa object; retry không tạo bản sao logic mới.
+- Output từ AI provider tạo Generated Asset `quarantined` và đi qua cùng validator. Provider completion giữ AI Task non-terminal (`validating` nội bộ, `processing` trên origin-compatible query). Chỉ khi mọi output mong đợi `ready` và attach thành công thì task success/settle; permanent rejection, retry exhaustion hoặc DLQ làm task failed và release hold theo ADR 0002.
 - Phase đầu không full decode/re-encode, không strip EXIF và không gọi antivirus: allowlist chỉ có raster PNG/JPEG, user objects luôn private và raw Source Asset không được đưa vào Project Share. Nếu mở raw-source sharing/public delivery, thêm SVG/PDF/archive, hoặc provider yêu cầu normalized bytes thì phải mở decision mới cho Canonicalization và malware/CDR gate trước khi release.
-- Generate chỉ nhận Asset `ready`. Retry upload intent/finalize và duplicate object events không được tạo Asset hoặc validation job lần hai.
+- Public Generate chỉ nhận `sourceAssetId` của Asset `ready` thuộc user/Project đã authorize; browser không được gửi base64, object key, arbitrary URL hoặc `options.image_input`. Provider adapter mới resolve signed object access nội bộ. Retry upload intent/finalize và duplicate object events không được tạo Asset hoặc validation job lần hai.
+
+## Browser delivery contract
+
+- Browser task query trả ready Asset IDs/descriptors, không trả provider URL, raw R2 key hoặc signed URL đã cache trong task result. UI xin short-lived view URL theo `assetId` khi cần render.
+- Owner download dùng authorized endpoint nhận `{assetId}` và trả bytes với `Content-Disposition`; endpoint không nhận arbitrary `imageUrl`. Project Share chỉ mint view delivery cho đúng asset đã chọn và còn active.
 
 ## Retention
 
@@ -58,7 +63,7 @@ sequenceDiagram
     G->>R: Store Generated Asset in quarantine
     R-->>Q: object-create event
     Q->>R: Validate and promote output to ready key
-    Q->>D: Attach ready output to Project
+    Q->>D: Attach ready output; settle task
     U->>A: Request Asset view/share
     A-->>U: Authorized short-lived delivery
 ```

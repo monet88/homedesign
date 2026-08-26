@@ -67,21 +67,21 @@ flowchart TB
 
 | Environment | Exposure | Data/resources | Payment/generation rule |
 | --- | --- | --- | --- |
-| Local development | localhost | Wrangler-local simulations + local Validation Worker | Synthetic data; Mock Payment allowed |
-| Development | Cloudflare Access-protected `workers.dev` | Dedicated dev account/resources | Synthetic data; Mock Payment allowed |
-| PR preview | Access-protected PR-specific `workers.dev` | Ephemeral D1/R2/Queue/Worker, migrations + seed, destroy on close and 72-hour janitor | Synthetic data; Mock Payment; real bounded-header validation |
-| Staging | Access-protected `workers.dev` | Dedicated production-shaped resources and real Validation Worker/Workflow | Disposable test data; Mock Payment allowed; full failure tests |
-| Production | apex/www, `cdn.<domain>`, share routes | Dedicated prod account; real user data only | Mock Payment forbidden; generation off until production Credits/payment policy is accepted |
+| Local development | localhost | Wrangler-local simulations + local Validation Worker | Free Grant + Mock Payment; fake AI provider; local test-outbox |
+| Development | Cloudflare Access-protected `workers.dev` | Dedicated dev account/resources | Free Grant + Mock Payment; fake provider mặc định, real provider opt-in có cap; Access-protected test-outbox |
+| PR preview | Access-protected PR-specific `workers.dev` | Ephemeral D1/R2/Queue/Worker, migrations + seed, destroy on close and 72-hour janitor | Free Grant + Mock Payment; fake provider only; real bounded-header validation; Access-protected test-outbox |
+| Staging | Access-protected `workers.dev` | Dedicated production-shaped resources and real Validation Worker/Workflow | Free Grant + Mock Payment; full fake-provider failure suite + controlled real-provider smoke; Access-protected test-outbox |
+| Production | apex/www, `cdn.<domain>`, share routes | Dedicated prod account; real user data only | Mock Payment/Free Grant/email sign-up forbidden; generation off until production Credits, email delivery and abuse policy are accepted |
 
 Static fixtures may be copied from a versioned manifest, but no environment reads another environment's private bucket, D1, Queue, secret or user export. Cloudflare version Preview URLs are not used as PR environments because they retain Worker bindings and lack the isolated data lifecycle and logs required by this topology.
 
 ## Queue, Workflow and failure policy
 
 - Queue payloads contain IDs, object key, ETag and attempt metadata, never image bytes. Queue delivery là at-least-once, nên `AssetValidationJob.id` và state transition phải idempotent.
-- Asset validation starts with a small batch, finite retries, exponential delay, explicit `max_concurrency` and mandatory DLQ. Duplicate R2 event/finalize requests converge on the same job.
-- Validation Worker marks `ready` only after the ready-key copy is durable. Parser/read/copy failure keeps Asset non-ready and retries safely; poison input reaches DLQ and raises an alert, never bypasses validation.
-- Workflow instance ID equals accepted task ID. Provider submit and settlement steps use task/idempotency IDs; sleeping does not release Credit Hold. Server expiry/failure releases only through the state machine in ADR 0002.
-- A scheduled reconciler finds accepted tasks without a running/completed Workflow and restarts the same instance ID; client disconnect or 120-second polling timeout has no terminal effect.
+- Asset validation dùng một initial attempt + tối đa 3 retries với delay tối thiểu 5s/30s/120s, explicit `max_concurrency` và mandatory DLQ. Duplicate R2 event/finalize requests converge on the same job; notification chỉ match `quarantine/` prefix.
+- Validation Worker marks `ready` only after the ready-key copy is durable. Parser/read/copy failure keeps Asset non-ready and retries safely. Source upload exhausted/DLQ chuyển Asset `rejected` với stable system reason; AI output exhausted/DLQ đồng thời fail AI Task và release hold. Cả hai raise alert và không bypass validation.
+- Workflow instance ID equals accepted task ID. Provider submit, output attach và settlement dùng task/idempotency IDs; sleeping hoặc provider completion không release/settle Credit Hold. Task giữ non-terminal trong output validation, success chỉ sau ready attach; server expiry 30 phút/failure releases only through the state machine in ADR 0002.
+- A scheduled reconciler finds accepted tasks without a running/completed Workflow and restarts the same instance ID; task non-terminal quá 30 phút được atomically expire thay vì restart. Client disconnect hoặc 120-second polling timeout không có terminal effect; late provider/queue callback không resurrect task.
 
 ## Configuration, secrets and preview lifecycle
 

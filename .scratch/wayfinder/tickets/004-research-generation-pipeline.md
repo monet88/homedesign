@@ -33,4 +33,6 @@ Blocked by: 001-research-stack-api-contract
 
 **Gist:** `POST /api/ai/generate` JSON `{mediaType:image, scene:image-to-image, provider, model(code|resolution), prompt(template verbatim đã trích), options:{aspect_ratio, image_input:[dataURL], num_outputs:1, resolution?, quality?}}` → `{code:0,data:{id}}`. Poll `POST /api/ai/query {taskId}` mỗi 2.5s tối đa 120s; `taskInfo/taskResult` là JSON string. Download `POST /api/assets/download`. Upload chung `POST /api/storage/upload-image` FormData `files` (default 10MB) — nhưng interior/exterior đi thẳng data URL trong `options.image_input`, không qua endpoint này. Floor Plan là state machine riêng: scenes `room-design-brief/layout/render/panorama` (1/2/3/4 credits), project status `draft→analyzed→layout-ready→render-ready→panorama-ready`, payload zod `{marker{x,y 0-100}, roomId, style, stylePreference, feedback}`. Auth gate: chưa login → Generate không sinh request nào (chặn client-side).
 
+**Clone boundary (superseding decision):** data URL, arbitrary `image_input`, provider URL và download-by-URL ở trên chỉ là fact origin. Clone dùng ADR 0003: browser gửi ready `sourceAssetId`, provider adapter resolve object access nội bộ, query trả ready Asset IDs và owner download nhận `{assetId}`.
+
 **Unblocks:** 007 (upload), 008 (floor plan domain).

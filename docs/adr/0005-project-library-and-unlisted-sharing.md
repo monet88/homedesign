@@ -16,15 +16,16 @@ Project là aggregate duy nhất nối Generation, FloorPlanProject/RoomDesign, 
 
 - Project mặc định `private`. Owner có thể tạo một Project Share unlisted, read-only với opaque token entropy cao; server lưu token digest thay vì secret thuần.
 - Viewer không cần đăng nhập. Share response chỉ gồm metadata trình bày tối thiểu và ready Generated Assets owner đã chọn từ lineage active; Floor Plan output phải thuộc run active/confirmed và không `stale`.
-- Source Assets, draft/failed/stale/history outputs, Room Brief nội bộ, object key và raw R2 URL không thuộc share surface. Mỗi ảnh được phát bằng authorized short-lived delivery theo ADR 0003; download tắt mặc định.
-- Share mặc định không hết hạn nhưng có optional expiry và revoke. Đổi Project về Private, xóa Project/Asset hoặc revoke Share dừng access ngay. Restore Project không tự tái kích hoạt link cũ.
+- Source Assets, draft/failed/stale/history outputs, Room Brief nội bộ, object key và raw R2 URL không thuộc share surface. Mỗi ảnh được phát bằng authorized short-lived delivery theo ADR 0003; share UI không hiển thị download action.
+- Ẩn download chỉ là product affordance, không phải DRM: viewer đã nhận image bytes vẫn có thể lưu, chụp màn hình hoặc dùng developer tools. Privacy guarantee đến từ asset selection, authorization, short-lived delivery, revoke và metadata tối thiểu; UI/copy không được hứa ngăn sao chép tuyệt đối.
+- Share mặc định không hết hạn nhưng có optional expiry và revoke. Đổi Project về Private, xóa Project/Asset hoặc revoke Share dừng access ngay. Restore Project/Asset không tự tái kích hoạt link hoặc asset selection cũ; owner phải tạo Share/chọn asset lại.
 - Favorite không ảnh hưởng privacy. View count hoặc analytics, nếu thêm sau, không được trở thành điều kiện authorization.
 
 ## Activity timeline
 
 - Activity Entry là append-only, owner-only và idempotent theo domain event ID. Nó là timeline sản phẩm, không phải security audit log hoặc nguồn chuẩn của Credits.
-- Ghi Project create/rename/favorite/visibility/share/revoke/delete/recover; Asset ready/rejected; Generation hoặc Floor Plan stage started/succeeded/failed; Mock Purchase succeeded/failed.
-- Không ghi polling, page view, download hoặc từng Credit Hold/settlement. Credit Ledger vẫn là nguồn chuẩn; Activity chỉ có thể trỏ tới kết quả Mock Purchase cấp cao.
+- Ghi Project create/rename/favorite/visibility/share/revoke/delete/recover; Asset ready/rejected; Generation hoặc Floor Plan stage started/succeeded/failed; Mock Payment succeeded/failed.
+- Không ghi polling, page view, download hoặc từng Credit Hold/settlement. Credit Ledger vẫn là nguồn chuẩn; Activity chỉ có thể trỏ tới kết quả Mock Payment cấp cao.
 - Activity Entry giữ 90 ngày rồi expire. Domain lineage, Credit Ledger và deletion metadata tuân retention riêng, không phụ thuộc timeline.
 
 ## ERD

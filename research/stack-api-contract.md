@@ -2,7 +2,7 @@
 
 **Branch:** `research/stack-api-contract`  
 **Date:** 2026-08-23  
-**Session:** `homedesign-ac6e747758b3` (login `redacted-test-email@example.invalid` / `redacted-test-password` verified, `__Secure-better-auth.session_token=redacted-session-token...`, 5 credits remaining)  
+**Session:** `homedesign-ac6e747758b3` (authenticated test account; credentials, personal data, and session identifiers intentionally redacted; 5 credits remaining)
 **Artifacts:** `docs/design/screenshots/01..06.png`, `docs/design/DESIGN.md:1`, HAR capture 60+ requests (cf. §36, §92-§97)
 
 ---
@@ -14,7 +14,7 @@
 | **Framework** | **Next.js** (App Router, Turbopack) | `X-Powered-By: Next.js`, `x-opennext: 1`, `__NEXT_DATA__` chunks `8cf031...js` + `turbopack-901569...js`, 3 CSS chunks `f509e38a/867919/09e247`, `/_next/static/*` |
 | **Hosting** | **Cloudflare** (OpenNext) | `Server: cloudflare`, `CF-RAY: a2f8ab...-SIN`, `Server-Timing: cfEdge;dur=1990`, `cdn-cache-control: public, s-maxage=3600` |
 | **Auth** | **BetterAuth** (not NextAuth) | Cookie `__Secure-better-auth.session_token`, endpoints `/api/auth/sign-in/email` (POST), `/api/auth/get-session` (GET) |
-| **DB** | implied Postgres/Drizzle via OpenNext (not exposed) | `user.id redacted-user-id...`, `session.id redacted-session-id...`, `isAdmin:false` |
+| **DB** | implied Postgres/Drizzle via OpenNext (not exposed) | `user.id <redacted>...`, `session.id <redacted>...`, `isAdmin:false` |
 | **Payments** | **Stripe** only | `POST /api/config/get-configs` → `stripe_enabled:true`, `default_payment_provider:stripe`, `select_payment_enabled:false` |
 | **OAuth** | **Google One Tap** + email | `google_one_tap_enabled:true`, `google_client_id 997586070123-...`, `accounts.google.com/gsi` requests |
 | **CDN** | `cdn.homedesigns.app` | hero `hero-room-light.webp`, before/after `empty-living-room-*webp`, posters `landing/ai-*-poster.webp`, `/_next/image?url=...` optimizer |
@@ -37,13 +37,15 @@ GET  /                        → 200 HTML + RSC `?_rsc=...` fetches
 
 ### Auth (BetterAuth)
 ```
-POST /api/auth/sign-in/email  {email:"redacted-test-email@example.invalid", password:"redacted-test-password"} → 200 + Set-Cookie __Secure-better-auth.session_token=redacted-session-token... (httpOnly, Secure)
-GET  /api/auth/get-session    Cookie: __Secure-better-auth.session_token=... 
+POST /api/auth/sign-in/email  {email:"<redacted>", password:"<redacted>"} → 200 + Set-Cookie __Secure-better-auth.session_token=<redacted> (httpOnly, Secure)
+GET  /api/auth/get-session    Cookie: __Secure-better-auth.session_token=<redacted>
   → unauth: 200 null
-  → auth: 200 {session:{id:"redacted-session-id...", token:"redacted-session-token...", userId:"redacted-user-id...", expiresAt:"2026-08-30...", ipAddress:"", userAgent:"Chrome/146"}, user:{id:"redacted-user-id...", name:"Redacted Test User", email:"redacted-test-email@example.invalid", emailVerified:true, createdAt:"2026-08-20...", locale:"en", isAdmin:false}}
+  → auth: 200 {session:{id:"<redacted>", token:"<redacted>", userId:"<redacted>", expiresAt:"2026-08-30...", ipAddress:"", userAgent:"Chrome/146"}, user:{id:"<redacted>", name:"<redacted>", email:"<redacted>", emailVerified:true, createdAt:"2026-08-20...", locale:"en", isAdmin:false}}
 
 POST /api/user/get-user-info  {} + Cookie → {code:0, data:{..., isAdmin:false, credits:{remainingCredits:5}}}
 ```
+
+Security note: the observed origin response exposed a session token field in JSON. The clone must omit that field from browser-readable session responses; the httpOnly cookie remains the only browser session credential.
 
 HAR đã bắt thêm (nhưng chưa bắt body):
 - `POST /api/auth/sign-in/email` → sau đó `GET /api/auth/get-session` + `POST /api/user/get-user-info` ×2 (polling)

@@ -26,15 +26,15 @@ Blocked by: 001-research-stack-api-contract, 005-task-stripe-sandbox, 003-grilli
 
 ## Resolution
 
-**Closed 2026-08-25 — HITL, Đại Ca chọn toàn bộ recommended answers.** Bản development/staging giữ Credits và enforcement thật để test đủ luồng, nhưng dùng Mock Payment; Stripe và payment thật vẫn deferred.
+**Closed 2026-08-25 — HITL, Đại Ca chọn toàn bộ recommended answers.** Build #1 giữ Credits và enforcement thật ở local/development/PR preview/staging để test đủ luồng, nhưng dùng Mock Payment; Stripe và payment thật vẫn deferred.
 
 - Mỗi user đã xác thực nhận một lần **10 Free Credits**, không refill và không expire trong testing. Không áp dụng giới hạn IP/device.
 - Giữ cost theo origin: image model/action 1–5 Credits; Floor Plan tính riêng brief 1, layout 2, render 3, panorama 4.
 - Credit Ledger bất biến là nguồn chuẩn. Available Credits trừ các Credit Hold đang active và là số badge hiển thị.
-- Task acceptance tạo hold atomically và idempotently. Success settle thành usage; failed/canceled/server expiry release. Client polling timeout không release; late success chỉ settle một lần.
+- Task acceptance tạo hold atomically và idempotently. Generated Asset ready + attach mới success/settle; failed/canceled/output validation exhausted/DLQ/server expiry 30 phút release. Client polling timeout không release; late callback không resurrect task.
 - Floor Plan giữ usage của stage đã thành công, chỉ release stage lỗi; retry stage tạo hold mới.
 - Mock Payment mô phỏng Lite 80 / Plus 160 / Pro 320 / Max 640, mặc định success và có test outcomes canceled/failed. Chỉ success cộng Credits; retry cùng purchase id không cộng hai lần.
-- Không đủ Credits thì không tạo task, báo chính xác số thiếu và mở modal Mock Payment. Mock chỉ chạy cho user đã xác thực ở development/staging và không giới hạn số lần.
+- Không đủ Credits thì không tạo task, báo chính xác số thiếu và mở modal Mock Payment. Mock chỉ chạy cho user đã xác thực ở local/development/PR preview/staging và không giới hạn số lần.
 - Mock Credits/transactions không sang production. Chính sách free grant, paid tiers, expiry và Stripe thật được quyết ở phase payment.
 
 Architecture decision và state diagram: `docs/adr/0002-free-first-credits-and-mock-payment.md`.
