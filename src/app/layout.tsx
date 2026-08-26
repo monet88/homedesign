@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { Header, Footer } from "@/components/shell";
 import "./globals.css";
 
 // DESIGN.md: inter (400-700) + jetbrains_mono, loaded via next/font.
@@ -26,8 +27,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
-      <body className="min-h-screen bg-[var(--paper)] text-[var(--ink)] antialiased">
-        {children}
+      <body className="flex min-h-screen flex-col bg-paper text-ink antialiased">
+        <Header />
+        <div className="flex-1">{children}</div>
+        <Footer />
       </body>
     </html>
   );
