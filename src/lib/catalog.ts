@@ -64,6 +64,15 @@ export interface CatalogItem {
   href: string;
   previewLabel: string;
   useLabel: string;
+  /** Optional preset values applied when "Use" is clicked (ticket #14). */
+  preset?: {
+    scene?: "interior" | "exterior";
+    style?: string;
+    roomType?: string;
+    area?: string;
+    colorScheme?: string;
+    aspectRatio?: string;
+  };
 }
 
 const DESIGN_TOOLS = {
@@ -104,6 +113,7 @@ export const POPULAR_STYLES: CatalogItem[] = [
   href: DESIGN_TOOLS.interior,
   previewLabel: previewLabels.style,
   useLabel: useLabels.style,
+  preset: { scene: "interior", style: title },
 }));
 
 // ---------------------------------------------------------------------------
@@ -127,6 +137,7 @@ export const IDEAS: CatalogItem[] = [
   href: DESIGN_TOOLS.interior,
   previewLabel: previewLabels.idea,
   useLabel: useLabels.idea,
+  preset: { scene: "interior", roomType: title },
 }));
 
 // ---------------------------------------------------------------------------

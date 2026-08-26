@@ -7,6 +7,7 @@ import { CatalogItem } from "@/lib/catalog";
 // The "Preview" button is a placeholder — ticket 17 adds the modal overlay.
 
 export function CatalogCard({ item }: { item: CatalogItem }) {
+  const href = buildPresetHref(item);
   return (
     <article className="card overflow-hidden rounded-card bg-paper shadow-sm">
       <img
@@ -27,7 +28,7 @@ export function CatalogCard({ item }: { item: CatalogItem }) {
             {item.previewLabel}
           </button>
           <Link
-            href={item.href}
+            href={href}
             className="flex-1 rounded-pill bg-ink px-2 py-1.5 text-center text-xs font-medium text-paper transition-opacity hover:opacity-80"
           >
             {item.useLabel}
@@ -36,4 +37,16 @@ export function CatalogCard({ item }: { item: CatalogItem }) {
       </div>
     </article>
   );
+}
+
+function buildPresetHref(item: CatalogItem): string {
+  if (!item.preset) return item.href;
+  const params = new URLSearchParams();
+  if (item.preset.style) params.set("style", item.preset.style);
+  if (item.preset.roomType) params.set("roomType", item.preset.roomType);
+  if (item.preset.area) params.set("area", item.preset.area);
+  if (item.preset.colorScheme) params.set("colorScheme", item.preset.colorScheme);
+  if (item.preset.aspectRatio) params.set("aspectRatio", item.preset.aspectRatio);
+  const query = params.toString();
+  return query ? `${item.href}?${query}` : item.href;
 }
