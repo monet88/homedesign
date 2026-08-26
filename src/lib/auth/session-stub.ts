@@ -76,6 +76,18 @@ interface GetSessionResponse {
   };
 }
 
+// `GET /api/credits` response (ADR 0002 envelope convention).
+interface GetCreditsResponse {
+  code: 0;
+  data: {
+    available: number;
+    activeHolds: number;
+    totalGrants: number;
+    totalPayments: number;
+    totalUsage: number;
+  };
+}
+
 /**
  * Fetch the current session from BetterAuth `GET /api/auth/get-session`.
  * The response never contains the session token (redacted server-side).
@@ -95,9 +107,26 @@ export async function fetchSession(): Promise<GetSessionResponse | null> {
 }
 
 /**
+ * Fetch Available Credits from `GET /api/credits`. Returns `null` when
+ * anonymous or unverified (401/403).
+ */
+export async function fetchCredits(): Promise<number | null> {
+  const res = await fetch("/api/credits", {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as GetCreditsResponse;
+  if (data?.code !== 0 || typeof data.data?.available !== "number") return null;
+  return data.data.available;
+}
+
+/**
  * Map a BetterAuth get-session response onto the shell's `Session` shape.
  */
-export function toShellSession(data: GetSessionResponse | null): Session {
+export async function toShellSession(data: GetSessionResponse | null): Promise<Session> {
   if (!data) return getAnonymousSession();
   const { email, name, emailVerified } = data.user;
   const user: SessionUser = {
@@ -105,7 +134,8 @@ export function toShellSession(data: GetSessionResponse | null): Session {
     email: email ?? undefined,
     emailVerified: emailVerified ?? false,
   };
-  return { user, credits: null };
+  const credits = await fetchCredits();
+  return { user, credits };
 }
 
 /**
@@ -122,7 +152,7 @@ export function useSession(): Session {
 
     async function refresh() {
       const data = await fetchSession();
-      if (!cancelled) setSession(toShellSession(data));
+      if (!cancelled) setSession(await toShellSession(data));
     }
 
     void refresh();

@@ -31,27 +31,46 @@ const AUTH_SESSION = {
 } as const;
 
 describe("toShellSession (session shape contract)", () => {
-  it("maps a BetterAuth get-session response onto the shell Session", () => {
-    const shell = toShellSession(AUTH_SESSION);
+  it("maps a BetterAuth get-session response onto the shell Session", async () => {
+    // toShellSession now also fetches /api/credits; stub it to return 10.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ code: 0, data: { available: 10 } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+    );
+    const shell = await toShellSession(AUTH_SESSION);
     expect(shell.user?.name).toBe("Claude Monet");
     expect(shell.user?.initial).toBe("C");
     expect(shell.user?.email).toBe("monet@example.com");
     expect(shell.user?.emailVerified).toBe(true);
-    expect(shell.credits).toBeNull();
+    expect(shell.credits).toBe(10);
   });
 
-  it("never leaks the session token into the shell Session", () => {
+  it("never leaks the session token into the shell Session", async () => {
     // The session payload type has no token field; guard against regressions
     // that would reintroduce it (ADR 0001 redaction).
-    const shell = toShellSession(AUTH_SESSION) as Session & {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ code: 0, data: { available: 10 } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+    );
+    const shell = (await toShellSession(AUTH_SESSION)) as Session & {
       user?: { token?: unknown };
     };
     expect((shell as unknown as { token?: unknown }).token).toBeUndefined();
     expect(shell.user?.token).toBeUndefined();
   });
 
-  it("anonymous response maps to the stable anonymous session", () => {
-    expect(toShellSession(null)).toBe(getAnonymousSession());
+  it("anonymous response maps to the stable anonymous session", async () => {
+    expect(await toShellSession(null)).toBe(getAnonymousSession());
   });
 });
 

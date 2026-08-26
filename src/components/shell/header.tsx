@@ -11,7 +11,7 @@ import { useSession } from "@/lib/auth/session-stub";
 // BetterAuth; the component only consumes the `Session` shape.
 
 export function Header() {
-  const { user } = useSession();
+  const { user, credits } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -38,6 +38,14 @@ export function Header() {
         </ul>
 
         <div className="ml-auto flex items-center gap-3">
+          {user && credits !== null && (
+            <span
+              className="rounded-pill border border-ink/15 bg-ink/5 px-3 py-1 text-xs font-medium text-ink/90"
+              title="Available Credits (active holds deducted)"
+            >
+              {credits} Credits
+            </span>
+          )}
           {user ? (
             <div className="relative">
               <button
