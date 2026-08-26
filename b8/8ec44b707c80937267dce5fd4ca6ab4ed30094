@@ -1,0 +1,51 @@
+src/app/api/auth/get-session/route.ts
+  s_3643759cebec89::t_273382e939f32a 1-27
+src/lib/auth/server.ts
+  s_3643759cebec89::t_93e2f7e797f6ff 1-155
+  s_3643759cebec89::t_a36639540173db 156-158
+  s_3643759cebec89::t_180227854687e6 159-182
+src/app/api/auth/require-verified/route.ts
+  s_3643759cebec89::t_20961f29d2fda9 1-34
+migrations/0002_auth.sql
+  s_3643759cebec89::t_d1a4bca34c5479 1-68
+src/lib/auth/auth.wtest.ts
+  s_3643759cebec89::t_b1dd790f689a34 1-279
+  s_3643759cebec89::t_c631da4c240d37 280-282
+  s_3643759cebec89::t_cfdcf565e09e51 283-419
+src/lib/auth/session.test.ts
+  s_3643759cebec89::t_6ba46efb8d443c 1-120
+src/app/api/auth/[...all]/route.ts
+  s_3643759cebec89::t_6834353a581421 1-15
+.dev.vars.example
+  s_3643759cebec89::t_27162456ec6444 7-10
+src/lib/auth/session-stub.ts
+  s_3643759cebec89::t_d50ea2034f174f 1,3-7,13-16,24-25,38,58-110,114-115,118-137
+src/app/api/auth/test-outbox/route.ts
+  s_3643759cebec89::t_2820982ac1da31 1-22
+package-lock.json
+  s_3643759cebec89::t_b24c0ff499c845 11,13,1159-1303,3535-3543,3548,3858,4671,4682,4689,4735,4753,4780,4793,4807,4823,4833,4933,4972-5141,5271,5465,5549-5554,5710,5813,5864,6381,6387-6395,6405-6413,6700,6867-6881,7664,7816,7923,7953-7958,8054-8059,8207,8248,8264,8415,8422,8432,8449,8579,8671,8933,9063
+package.json
+  s_3643759cebec89::t_59938da9930e8c 22,24
+worker-configuration.d.ts
+  s_3643759cebec89::t_8c02e9ad8acd4f 2,12-15,26
+src/lib/bindings.ts
+  s_3643759cebec89::t_be2d1f3b0a14be 22-28
+wrangler.jsonc
+  s_3643759cebec89::t_7f2c0703260357 58-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "b88ec44b707c80937267dce5fd4ca6ab4ed30094",
+  "prompts": {},
+  "sessions": {
+    "s_3643759cebec89": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03d68-cc34-71e4-8eca-fb53d9b1cf5e",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
