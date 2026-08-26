@@ -1,0 +1,45 @@
+src/lib/intake/intake-service.ts
+  s_84502aefc5a4ef::t_6383eb75ce7508 1-230
+tests/worker-entry.ts
+  s_84502aefc5a4ef::t_af0019bc22a672 4-6,10-17,33-40,44-46,48-62
+  s_84502aefc5a4ef::t_4e56f2081de9b7 63,73-85
+src/lib/intake/validator.ts
+  s_84502aefc5a4ef::t_777e3a7610d582 1-201
+src/lib/intake/intake.wtest.ts
+  s_84502aefc5a4ef::t_798320476d9e40 1-380
+  s_84502aefc5a4ef::t_3b1e8cd5f3bdf3 381-383
+src/lib/intake/header-parser.test.ts
+  s_84502aefc5a4ef::t_4850a23b9c29bf 1-191
+  s_84502aefc5a4ef::t_50c8659b5728b6 192-194
+  s_84502aefc5a4ef::t_302ac5f06df6f4 195-201
+src/lib/intake/header-parser.ts
+  s_84502aefc5a4ef::t_64e3a1cc62a755 1-38,43,48,55-89,91-174
+  s_84502aefc5a4ef::t_053d8a6bb3ca89 39-41,90
+  s_84502aefc5a4ef::t_eb4efa052c5029 42
+  s_84502aefc5a4ef::t_8238bc00a2ed45 44-47
+  s_84502aefc5a4ef::t_afc0f73d825156 49-54
+migrations/0003_intake.sql
+  s_84502aefc5a4ef::t_833b3df3e150b4 1-26
+cloudflare-env.d.ts
+  s_84502aefc5a4ef::t_af5663ea602dcf 1-15109
+tests/harness.wtest.ts
+  s_84502aefc5a4ef::t_3b231402e2a7e7 174-177
+wrangler.jsonc
+  s_84502aefc5a4ef::t_31d107f0e11780 55-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "66ebfd1040a8d8acc99c5087e0cff6b233162e8f",
+  "prompts": {},
+  "sessions": {
+    "s_84502aefc5a4ef": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03dd4-3375-795a-89ec-e94cd573a976",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": null
+    }
+  }
+}
