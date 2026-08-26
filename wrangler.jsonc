@@ -52,6 +52,27 @@
         "binding": "PROVIDER_NOTIFY",
         "queue": "homedesign-provider-notify"
       }
+    ],
+    // Ticket 06: the App Worker consumes ASSET_VALIDATE. The queue has a DLQ
+    // (`homedesign-asset-validate-dlq`); failed messages land there after
+    // retries are exhausted. The DLQ consumer rejects ONLY the Asset (never
+    // touches credits/holds). R2 event notifications subscribe to the
+    // `quarantine/` prefix only so the ready-key copy never re-loops.
+    "consumers": [
+      {
+        "queue": "homedesign-asset-validate",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "homedesign-asset-validate-dlq"
+      },
+      // DLQ consumer: rejects ONLY the Asset (never touches credits/holds).
+      {
+        "queue": "homedesign-asset-validate-dlq",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 0
+      }
     ]
   },
   "vars": {
