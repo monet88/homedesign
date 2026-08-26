@@ -1,0 +1,19 @@
+.dev.vars.example
+  s_48f3af30afe4f2::t_248b421c5c5eca 1-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "4ebdb3bda4401d05618a4b8d40a12bd92a444d01",
+  "prompts": {},
+  "sessions": {
+    "s_48f3af30afe4f2": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03d3a-eb9a-73b1-aff4-4a58ae968eb4",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
