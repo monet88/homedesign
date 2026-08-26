@@ -55,7 +55,12 @@
     ]
   },
   "vars": {
-    "ENVIRONMENT": "local"
+    "ENVIRONMENT": "local",
+    // Local-only defaults so `next dev` / e2e run anonymous without .dev.vars.
+    // BETTER_AUTH_SECRET must be overridden per environment (secrets.required).
+    "BETTER_AUTH_URL": "http://localhost:3000",
+    "BETTER_AUTH_SECRET": "dev-only-insecure-secret-for-local-e2e",
+    "EMAIL_DELIVERY_MODE": "test-outbox"
   },
   "observability": {
     "enabled": true

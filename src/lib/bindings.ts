@@ -19,6 +19,13 @@ export interface Env {
   // Vars
   ENVIRONMENT: string;
 
+  // Auth (ADR 0001): required names, values per environment, never committed.
+  // Local defaults live in wrangler.jsonc vars / .dev.vars; production values
+  // come from secrets.required + env-specific vars.
+  BETTER_AUTH_URL: string;
+  BETTER_AUTH_SECRET: string;
+  EMAIL_DELIVERY_MODE?: string;
+  GOOGLE_CLIENT_ID?: string;
   // OpenNext requires this self-reference service binding.
   WORKER_SELF_REFERENCE: Fetcher;
   ASSETS: Fetcher;
