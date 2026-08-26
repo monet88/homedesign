@@ -1,14 +1,18 @@
-// Session stub for the application shell (ticket 02).
+// Session hook for the application shell (tickets 02 + 03).
 //
-// Auth is ticket #03 (BetterAuth email + Google One Tap per ADR 0001). Until
-// it lands, this stub drives the header's anonymous/logged-in states so the
-// shell can be built and visually baselined now. Ticket #03 replaces the body
-// of `useSession` with a real BetterAuth `GET /api/auth/get-session` fetch; the
-// shape it returns is the contract the shell (Header) consumes.
+// Ticket #02 defined the shape contract (`Session` / `SessionUser`) that the
+// Header consumes. Ticket #03 (ADR 0001) replaces the anonymous stub body with
+// a real fetch against BetterAuth `GET /api/auth/get-session`, polling on
+// mount and on window focus. The JSON never contains the session token (the
+// route redacts it), so the browser only ever holds the httpOnly cookie.
 //
 // MUST NOT change: the shape of `Session` below — Header and the shell tests
 // depend on it. Auth tickets extend `user` with the real fields, they do not
 // reshape the anonymous/logged-in switch.
+
+"use client";
+
+import { useEffect, useState } from "react";
 
 export interface SessionUser {
   /** Display name (falls back to email local-part). */
@@ -17,6 +21,8 @@ export interface SessionUser {
   initial: string;
   /** Email, if the provider exposes it. */
   email?: string;
+  /** Server-verified email flag (ADR 0001 gate). */
+  emailVerified?: boolean;
 }
 
 export interface Session {
@@ -29,7 +35,7 @@ export interface Session {
 const ANONYMOUS: Session = { user: null, credits: null };
 
 /**
- * Anonymous is the only state until BetterAuth lands (ticket #03). Return a
+ * Anonymous is the default state until a real session arrives. Return a
  * stable reference so `useSession` consumers can rely on referential identity.
  */
 export function getAnonymousSession(): Session {
@@ -49,14 +55,84 @@ export function deriveSessionUser(input: {
   return { name, initial, email: input.email ?? undefined };
 }
 
+interface GetSessionResponse {
+  session: {
+    id: string;
+    userId: string;
+    expiresAt: string;
+    createdAt: string;
+    updatedAt: string;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+  };
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    emailVerified: boolean;
+    image?: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+}
+
+/**
+ * Fetch the current session from BetterAuth `GET /api/auth/get-session`.
+ * The response never contains the session token (redacted server-side).
+ * Returns `null` when anonymous.
+ */
+export async function fetchSession(): Promise<GetSessionResponse | null> {
+  const res = await fetch("/api/auth/get-session", {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as GetSessionResponse | null;
+  if (!data?.user) return null;
+  return data;
+}
+
+/**
+ * Map a BetterAuth get-session response onto the shell's `Session` shape.
+ */
+export function toShellSession(data: GetSessionResponse | null): Session {
+  if (!data) return getAnonymousSession();
+  const { email, name, emailVerified } = data.user;
+  const user: SessionUser = {
+    ...deriveSessionUser({ name, email }),
+    email: email ?? undefined,
+    emailVerified: emailVerified ?? false,
+  };
+  return { user, credits: null };
+}
+
 /**
  * React hook the shell uses to read the current session.
  *
- * Ticket #03 swaps this for a real fetch against BetterAuth
- * `GET /api/auth/get-session` (ADR 0001: JSON must never contain the session
- * token), polling on mount and on window focus. The returned `Session` shape
- * is the contract; keep it stable.
+ * Real BetterAuth-backed implementation (ticket #03): polls on mount and
+ * re-checks on window focus, per ADR 0001 `GET /api/auth/get-session`.
  */
 export function useSession(): Session {
-  return getAnonymousSession();
+  const [session, setSession] = useState<Session>(getAnonymousSession);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refresh() {
+      const data = await fetchSession();
+      if (!cancelled) setSession(toShellSession(data));
+    }
+
+    void refresh();
+    const onFocus = () => void refresh();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+
+  return session;
 }
