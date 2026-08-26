@@ -1,0 +1,35 @@
+src/lib/ai/config.test.ts
+  s_4cdea2eb58355f::t_00abec42b8fbaf 1-268
+src/lib/ai/provider-adapter.test.ts
+  s_4cdea2eb58355f::t_90fa1743d229b3 1-111
+src/lib/ai/prompt.test.ts
+  s_4cdea2eb58355f::t_f69e74b04dc19a 1-175
+  s_4cdea2eb58355f::t_8f3f7fed4d4553 176-178
+  s_4cdea2eb58355f::t_9170b7cbbfbe26 179
+src/lib/payments/core.ts
+  s_7db6a103129910::t_6c4683f2252681 426-427,430,445
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "8d3593c7730f7ef5b6bce576339fd1b0241e2bcc",
+  "prompts": {},
+  "sessions": {
+    "s_4cdea2eb58355f": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03e72-0e0d-7698-8631-83d5ddc28064",
+        "model": "claude-opus-5-thinking"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_7db6a103129910": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03e3f-b702-7f16-9542-29265e1cceca",
+        "model": "claude-opus-5-thinking"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
