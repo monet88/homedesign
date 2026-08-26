@@ -33,13 +33,13 @@ export interface PresignedPut {
 
 const SHA256 = "SHA-256";
 
-function hex(bytes: ArrayBuffer): string {
-  return Array.from(new Uint8Array(bytes))
+function hex(bytes: BufferSource): string {
+  return Array.from(new Uint8Array(bytes as ArrayBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
-function hmac(key: ArrayBuffer, data: string): Promise<ArrayBuffer> {
+function hmac(key: BufferSource, data: string): Promise<ArrayBuffer> {
   return crypto.subtle.importKey("raw", key, { name: "HMAC", hash: SHA256 }, false, ["sign"]).then((k) =>
     crypto.subtle.sign("HMAC", k, new TextEncoder().encode(data))
   );
@@ -64,7 +64,30 @@ function uriEncode(s: string): string {
  * Deterministic for a fixed timestamp (testable); in production the caller
  * passes `Date.now()`.
  */
-export async function presignPutUrl(
+export function presignPutUrl(
+  creds: PresignCredentials,
+  params: PresignPutParams,
+  now = Date.now()
+): Promise<PresignedPut> {
+  return presignUrl("PUT", creds, params, now);
+}
+
+/**
+ * Build an AWS SigV4 presigned GET URL for an R2 object (ticket #7:
+ * short-lived private access to the source Asset, resolved server-side and
+ * handed to the provider adapter as `options.image_input`). Never returned to
+ * a browser.
+ */
+export function presignGetUrl(
+  creds: PresignCredentials,
+  params: Omit<PresignPutParams, "contentType">,
+  now = Date.now()
+): Promise<PresignedPut> {
+  return presignUrl("GET", creds, params, now);
+}
+
+async function presignUrl(
+  method: "PUT" | "GET",
   creds: PresignCredentials,
   params: PresignPutParams,
   now = Date.now()
@@ -95,7 +118,7 @@ export async function presignPutUrl(
   ].join("&");
 
   const canonicalRequest = [
-    "PUT",
+    method,
     path,
     canonicalQuery,
     canonicalHeaders,
