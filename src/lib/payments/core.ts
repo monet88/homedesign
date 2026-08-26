@@ -423,9 +423,11 @@ export async function expireStaleTasks(env: Env): Promise<number> {
   const now = Date.now();
 
   // Find all non-terminal, non-expired tasks past their expiry.
+  // Terminal statuses: 'ready' (#7 settled success), 'notified' (settle point
+  // recorded by settleHoldOnReady), 'failed', 'expired'.
   const stale = await env.DB.prepare(
     `SELECT id, hold_id FROM ai_tasks
-     WHERE status NOT IN ('notified', 'failed', 'expired')
+     WHERE status NOT IN ('ready', 'notified', 'failed', 'expired')
        AND expires_at IS NOT NULL AND expires_at < ?1`
   ).bind(now).all<{ id: string; hold_id: string | null }>();
 
@@ -440,7 +442,7 @@ export async function expireStaleTasks(env: Env): Promise<number> {
       }
     }
     await env.DB.prepare(
-      `UPDATE ai_tasks SET status = 'expired', expired_at = ?1, updated_at = ?1 WHERE id = ?2 AND status NOT IN ('notified', 'failed', 'expired')`
+      `UPDATE ai_tasks SET status = 'expired', expired_at = ?1, updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'notified', 'failed', 'expired')`
     ).bind(now, task.id).run();
     expiredCount++;
   }
