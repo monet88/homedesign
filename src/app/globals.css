@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+/* Design tokens (DESIGN.md): paper / ink / pill radius / card 12px */
+:root {
+  --paper: #f6f0e4;
+  --ink: #171411;
+  --radius-card: 12px;
+  --radius-pill: 9999px;
+}
+
+html {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--font-inter), Arial, sans-serif;
+}

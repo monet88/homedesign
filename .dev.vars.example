@@ -1,0 +1,6 @@
+# Copy to .dev.vars for local development (gitignored).
+# Secrets: commit only NAMES (see ADR 0006), never values.
+NEXTJS_ENV=development
+ENVIRONMENT=local
+BETTER_AUTH_SECRET=change-me-min-32-chars
+BETTER_AUTH_URL=http://localhost:3000
