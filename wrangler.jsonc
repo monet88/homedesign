@@ -1,0 +1,63 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "homedesign",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-08-24",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "homedesign"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "homedesign-next-cache",
+      "preview_bucket_name": "homedesign-next-cache"
+    },
+    {
+      "binding": "HD_PRIVATE",
+      "bucket_name": "homedesign-private",
+      "preview_bucket_name": "homedesign-private"
+    },
+    {
+      "binding": "HD_PUBLIC",
+      "bucket_name": "homedesign-public",
+      "preview_bucket_name": "homedesign-public"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "homedesign",
+      "database_id": "local",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "ASSET_VALIDATE",
+        "queue": "homedesign-asset-validate"
+      },
+      {
+        "binding": "PROVIDER_NOTIFY",
+        "queue": "homedesign-provider-notify"
+      }
+    ]
+  },
+  "vars": {
+    "ENVIRONMENT": "local"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
