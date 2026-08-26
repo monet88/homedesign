@@ -1,0 +1,36 @@
+src/lib/credits/ledger.ts
+  s_537a8dcae87c0c::t_c67a70c9b665c4 1-356,359,362
+  s_537a8dcae87c0c::t_78b9c89146b5cd 357-358
+  s_537a8dcae87c0c::t_ff75d311af8478 360-361
+  s_537a8dcae87c0c::t_e8fee40d7f19c5 363-365
+  s_537a8dcae87c0c::t_0b100a85dd3286 366-424
+migrations/0003_credits.sql
+  s_537a8dcae87c0c::t_e801a18cd14574 1-53
+src/app/api/credits/route.ts
+  s_537a8dcae87c0c::t_777405a4cc85bc 1-56
+src/lib/credits/ledger.wtest.ts
+  s_537a8dcae87c0c::t_93a2ec0b06ee3a 1-232
+  s_537a8dcae87c0c::t_1939daa2606f51 233-234
+src/components/shell/header.tsx
+  s_537a8dcae87c0c::t_b77ca1a3ca51f3 14,41-48
+src/lib/auth/session-stub.ts
+  s_537a8dcae87c0c::t_5cdfa5d391ee00 79-90,109-125,129,137-138,155
+src/lib/auth/session.test.ts
+  s_537a8dcae87c0c::t_e95b0b07113a90 34-45,50,53,56-65,72-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "9b0a929fabc78de618fe7ddc6ed4fcdeccc6fb3d",
+  "prompts": {},
+  "sessions": {
+    "s_537a8dcae87c0c": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03dd4-32fa-763d-9d72-af2fc6434822",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
