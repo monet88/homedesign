@@ -1,0 +1,61 @@
+src/components/design/index.ts
+  s_b9e3f0cc16e67f::t_d5840bb23591bd 1-5
+src/components/design/design-form.tsx
+  s_b9e3f0cc16e67f::t_f2c659508fd4bf 1-287
+  s_b9e3f0cc16e67f::t_3b05e6e9813be1 288-290
+  s_b5775dcd90b105::t_09615209d81eda 291-303
+src/app/api/assets/[id]/download/route.ts
+  s_b9e3f0cc16e67f::t_e6ca4763d840be 1-82
+src/components/design/design-flow.tsx
+  s_b9e3f0cc16e67f::t_4d211dd3ac8c64 1-348
+  s_b9e3f0cc16e67f::t_8cb0babd8ede3b 349-350
+src/app/ai-interior-design/page.tsx
+  s_b9e3f0cc16e67f::t_4b2c691975778b 1-43
+e2e/design-flow.spec.ts
+  s_b9e3f0cc16e67f::t_d1b5ea39227bc9 1-34
+src/app/ai-exterior-design/page.tsx
+  s_b9e3f0cc16e67f::t_eeca7c33f51533 1-43
+src/lib/design/state.test.ts
+  s_b9e3f0cc16e67f::t_72fcab24995492 1-186
+src/components/design/result-slider.tsx
+  s_b9e3f0cc16e67f::t_95b63363c7f9ef 1-82
+src/lib/design/options.ts
+  s_b9e3f0cc16e67f::t_8009d9d1a70905 1-82
+src/components/design/toast.tsx
+  s_b9e3f0cc16e67f::t_3792d9f0ed651b 1-39
+src/lib/intake/client.ts
+  s_b9e3f0cc16e67f::t_f8303f9fce4255 1-126
+src/lib/design/state.ts
+  s_b9e3f0cc16e67f::t_88d978791b7cd3 1-205
+  s_b9e3f0cc16e67f::t_7d7ac04e24e941 206-208
+src/components/design/uploader.tsx
+  s_b9e3f0cc16e67f::t_01d577b8158a42 1-105
+src/components/landing/catalog-card.tsx
+  s_b9e3f0cc16e67f::t_534ccedd633545 10,31,40-51
+src/lib/catalog.ts
+  s_b9e3f0cc16e67f::t_8bf5056adf5bf4 67-75,116,140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "9bc5370e3fe638e53f6b5216fa106f4ed73ff13e",
+  "prompts": {},
+  "sessions": {
+    "s_b5775dcd90b105": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03ec4-854c-75c7-9c3f-33e1136241a9",
+        "model": "unknown"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_b9e3f0cc16e67f": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03ec4-85d4-74b9-b91e-e3838b2e93aa",
+        "model": "kimi-for-coding"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
