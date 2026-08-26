@@ -1,0 +1,31 @@
+src/lib/catalog.ts
+  s_c23e3116e0c942::t_f4833a10456517 1-188
+e2e/landing.spec.ts
+  s_c23e3116e0c942::t_37e5df66fa55d9 1-100
+src/components/landing/before-after.tsx
+  s_c23e3116e0c942::t_4691bdd6f2eae3 1-89
+src/components/landing/catalog-card.tsx
+  s_c23e3116e0c942::t_7841c230c3bccd 1-39
+src/components/landing/faq.tsx
+  s_c23e3116e0c942::t_93af7b7767f9ca 1-48
+src/app/page.tsx
+  s_c23e3116e0c942::t_33c725d3cacf32 2-17,22,24,39,66-68,72-74,76-78,82-84,86,88-92,96-98,100-114,116-118,120-152,180
+src/lib/catalog.test.ts
+  s_c23e3116e0c942::t_946bd4de30f428 1-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "7b51a84cd04fe54c708156c642e3b51280a4d87b",
+  "prompts": {},
+  "sessions": {
+    "s_c23e3116e0c942": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03d68-ccc4-77fb-9d78-1d0f7895cd7f",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
