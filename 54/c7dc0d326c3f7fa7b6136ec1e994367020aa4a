@@ -1,0 +1,54 @@
+.scratch/wayfinder/map-homedesign-clone.md
+  s_451ee800ab4726::t_5e5ce2ed026f5a 4
+  s_451ee800ab4726::t_0203c7125f4b61 41-46
+  s_6a9f1c04854135::t_06db2f0327b47a 9,30
+.scratch/homedesign-clone/spec.md
+  s_451ee800ab4726::t_b0057428a7b2e0 1-173
+  s_451ee800ab4726::t_0db8b6a39ab73c 174-176
+.scratch/wayfinder/tickets/001-research-stack-api-contract.md
+  s_6a9f1c04854135::t_c27cf69688b539 17
+.scratch/wayfinder/tickets/004-research-generation-pipeline.md
+  s_6a9f1c04854135::t_7bd63e79b8297c 36-37
+.scratch/wayfinder/tickets/005-task-stripe-sandbox.md
+  s_6a9f1c04854135::t_96048d5227b546 18
+.scratch/wayfinder/tickets/006-grilling-credits-pricing.md
+  s_6a9f1c04854135::t_959bc2ae5d2d3d 29,34,37
+.scratch/wayfinder/tickets/007-grilling-upload-cdn.md
+  s_6a9f1c04854135::t_98bfffd50fd834 37
+.scratch/wayfinder/tickets/009-grilling-projects-library.md
+  s_6a9f1c04854135::t_d03d0a4ccf7157 15,39
+CONTEXT.md
+  s_6a9f1c04854135::t_56bb342226783b 6,10,20,22
+docs/adr/0001-betterauth-session.md
+  s_6a9f1c04854135::t_38770a2b89bc29 1,3,5,7-26
+docs/design/DESIGN.md
+  s_6a9f1c04854135::t_f9958f5d90fd5c 3,33,40
+research/generation-pipeline.md
+  s_6a9f1c04854135::t_d7e9fcf29b0129 4,69-72,92
+research/stack-api-contract.md
+  s_6a9f1c04854135::t_47964291f58a88 5,17,40-41,43,48-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "54c7dc0d326c3f7fa7b6136ec1e994367020aa4a",
+  "prompts": {},
+  "sessions": {
+    "s_451ee800ab4726": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fc431a266ffeYbo6tAx0QGeNP3",
+        "model": "unknown"
+      },
+      "human_author": "monet88 <redacted-test-email@example.invalid>"
+    },
+    "s_6a9f1c04854135": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fd2cd430dffeWOgs3RQG91HVQu",
+        "model": "unknown"
+      },
+      "human_author": "monet88 <redacted-test-email@example.invalid>"
+    }
+  }
+}
