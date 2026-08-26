@@ -66,6 +66,13 @@ export function Header() {
                 >
                   <Link
                     role="menuitem"
+                    href="/projects"
+                    className="block rounded-md px-3 py-2 text-sm text-ink/90 hover:bg-ink/5"
+                  >
+                    Projects
+                  </Link>
+                  <Link
+                    role="menuitem"
                     href="/assets"
                     className="block rounded-md px-3 py-2 text-sm text-ink/90 hover:bg-ink/5"
                   >

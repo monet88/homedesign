@@ -622,6 +622,7 @@ async function applyMigrations(db: D1Database) {
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
         kind TEXT NOT NULL CHECK (kind IN ('interior','exterior','floor-plan')),
         name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', source_asset_id TEXT,
+        favorite INTEGER NOT NULL DEFAULT 0, visibility TEXT NOT NULL DEFAULT 'private',
         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       )`
     ),
