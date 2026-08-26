@@ -1,0 +1,19 @@
+src/lib/ai/lifecycle.wtest.ts
+  s_a7a921958d3a60::t_ee456ad13de089 1-724
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "481d8d3b0288e3ac0a5558b82a7b20e23b2d8e4e",
+  "prompts": {},
+  "sessions": {
+    "s_a7a921958d3a60": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03eac-d5cc-7c4a-8533-628242eb6386",
+        "model": "kimi-for-coding"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
