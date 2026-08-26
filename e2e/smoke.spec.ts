@@ -109,3 +109,8 @@ test("landing page visual baseline matches (mobile)", async ({ page }, testInfo)
   await settleFonts(page);
   await expect(page).toHaveScreenshot("landing-mobile.png");
 });
+
+test("projects page prompts anonymous users to sign in", async ({ page }) => {
+  await page.goto("/projects");
+  await expect(page.getByRole("heading", { name: "Sign in to view your projects" })).toBeVisible();
+});
