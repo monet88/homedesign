@@ -1,0 +1,79 @@
+src/components/shell/header.tsx
+  s_b5775dcd90b105::t_fa1a57bd399916 67-73
+src/app/projects/page.tsx
+  s_b5775dcd90b105::t_8e39752840fcc5 1-337
+src/app/api/assets/route.ts
+  s_b5775dcd90b105::t_c9e7face829659 1-43
+src/lib/library/activity.ts
+  s_b5775dcd90b105::t_f0648441cfb4d0 1-160
+  s_eb30af10dfaae0::t_3f19ffcfec1010 161
+  s_eb30af10dfaae0::t_6e8505eadf6204 162
+src/lib/library/assets.ts
+  s_b5775dcd90b105::t_801d6d600a5407 1-170
+src/lib/library/library.wtest.ts
+  s_b5775dcd90b105::t_d260a5ec21f6ac 1-491
+src/app/api/activity/route.ts
+  s_b5775dcd90b105::t_bb4ea3edf577f5 1-33
+  s_b9e3f0cc16e67f::t_7426309ae0501b 34-35
+src/lib/library/cursor.ts
+  s_b5775dcd90b105::t_d1aac85dba7624 25
+  s_b5775dcd90b105::t_5205c31ae1f3db 1-17,22-24,30-33
+  s_b5775dcd90b105::t_b4b8f1a61621d3 18-21,26-29
+src/app/activity/page.tsx
+  s_b5775dcd90b105::t_e220ee8cc1aca9 1-242
+src/lib/library/types.ts
+  s_b5775dcd90b105::t_d2ef2220454308 1-66
+src/app/api/projects/[id]/favorite/route.ts
+  s_b5775dcd90b105::t_2770e9fa8e49f7 1-42
+src/app/api/projects/route.ts
+  s_b5775dcd90b105::t_401aa9524a72dd 1-48
+src/app/api/assets/[id]/route.ts
+  s_b5775dcd90b105::t_9b29a890b207d2 2-4,6-9,12-13,17,19-30,35,39-40,51,54-80
+src/lib/library/projects.ts
+  s_b5775dcd90b105::t_3cb60849818bce 1-8,13-59,61,64-66,68-80,82-87,89-94,96-101,103-110,127-135,137-140,142-144
+  s_eb30af10dfaae0::t_20b48086590279 145
+  s_b5775dcd90b105::t_bb2d1985e403ec 9-12,60,62-63,67,81,88,95,102,111-126,136,141
+src/lib/library/cursor.test.ts
+  s_b5775dcd90b105::t_f5cf2eb3e8378a 1-26
+src/lib/ai/lifecycle.wtest.ts
+  s_b5775dcd90b105::t_2fa86418ae3de9 625
+src/app/assets/page.tsx
+  s_b5775dcd90b105::t_82874989bda651 1-326
+  s_b5775dcd90b105::t_73663bf8f96509 327
+migrations/0006_library.sql
+  s_b5775dcd90b105::t_4c062d5f5f59af 1-10
+e2e/smoke.spec.ts
+  s_b5775dcd90b105::t_6b96d23fc12824 112-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "7c36c992e410e34d13abd1d5b40b9a2b321d6ff1",
+  "prompts": {},
+  "sessions": {
+    "s_b5775dcd90b105": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03ec4-854c-75c7-9c3f-33e1136241a9",
+        "model": "kimi-for-coding"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_b9e3f0cc16e67f": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03ec4-85d4-74b9-b91e-e3838b2e93aa",
+        "model": "kimi-for-coding"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_eb30af10dfaae0": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03e57-0f18-7064-adf4-85bc6b761560",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
