@@ -19,6 +19,12 @@ export interface Env {
   // Vars
   ENVIRONMENT: string;
 
+  // R2 S3 API credentials for presigned upload URLs (ADR 0003). Set per
+  // environment as secrets; local defaults live in wrangler.jsonc vars.
+  R2_ACCOUNT_ID?: string;
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
+
   // Auth (ADR 0001): required names, values per environment, never committed.
   // Local defaults live in wrangler.jsonc vars / .dev.vars; production values
   // come from secrets.required + env-specific vars.

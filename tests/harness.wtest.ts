@@ -171,7 +171,10 @@ async function applyMigrations(db: D1Database) {
           size INTEGER NOT NULL,
           lifecycle TEXT NOT NULL DEFAULT 'pending-upload'
             CHECK (lifecycle IN ('pending-upload','quarantined','ready','rejected','deleted')),
-          storage_key TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+          storage_key TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+          user_id TEXT, declared_size INTEGER, actual_size INTEGER,
+          width INTEGER, height INTEGER, created_by TEXT,
+          deleted_at INTEGER, purge_at INTEGER, recovery_until INTEGER
         )`
       ),
       db.prepare(
