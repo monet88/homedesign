@@ -1,0 +1,47 @@
+src/lib/auth/session-stub.ts
+  s_7e6b4d6befdcb4::t_5fc2ca4057db49 1-62
+src/lib/nav.ts
+  s_7e6b4d6befdcb4::t_c777f95bf5bbe3 1-49
+src/lib/shell.test.ts
+  s_7e6b4d6befdcb4::t_fd322a5a2e313b 1-93
+  s_7e6b4d6befdcb4::t_666101cb5fd5bf 94-95
+e2e/smoke.spec.ts
+  s_7e6b4d6befdcb4::t_1a08ff274bfffa 3-9,23,32,37-99
+  s_3cf9f95b99f20b::t_74d1b6aad39022 100
+src/components/shell/index.ts
+  s_7e6b4d6befdcb4::t_532dc52bbff814 1-7
+src/components/shell/footer.tsx
+  s_7e6b4d6befdcb4::t_5b022442e71470 1-57
+src/components/shell/header.tsx
+  s_7e6b4d6befdcb4::t_bbd51e4155602e 1-95
+src/app/page.tsx
+  s_7e6b4d6befdcb4::t_628f09b489e6de 1-7,10-89,93-115
+src/app/globals.css
+  s_3cf9f95b99f20b::t_7de1a3b7d464ce 3-14,28
+src/app/layout.tsx
+  s_3cf9f95b99f20b::t_8738b88c8064dc 3,30-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "491b34100cc209b6789d9be5502176c6cd91ebcf",
+  "prompts": {},
+  "sessions": {
+    "s_3cf9f95b99f20b": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03d35-50b9-7aa5-9aa3-d39826031a9f",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_7e6b4d6befdcb4": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03d5c-b8fe-7532-a350-8d8a58ffc0b3",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
