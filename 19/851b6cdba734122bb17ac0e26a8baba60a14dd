@@ -1,0 +1,39 @@
+src/lib/intake/presign.test.ts
+  s_84502aefc5a4ef::t_682aa29a0cbdb5 1-54
+src/app/api/assets/upload-intent/route.ts
+  s_84502aefc5a4ef::t_3e2b6dffc17009 1-85
+src/app/api/assets/finalize/route.ts
+  s_84502aefc5a4ef::t_b96389f1dccb50 1-60
+src/app/api/assets/[id]/route.ts
+  s_84502aefc5a4ef::t_ad2fa9ba186a9d 1-61
+src/lib/intake/presign.ts
+  s_84502aefc5a4ef::t_2a6a785d377f5a 1-129
+src/lib/bindings.ts
+  s_3cf9f95b99f20b::t_aa3aef816a4977 22-27
+wrangler.jsonc
+  s_84502aefc5a4ef::t_aa6e6e797ec356 56-64,72-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "19851b6cdba734122bb17ac0e26a8baba60a14dd",
+  "prompts": {},
+  "sessions": {
+    "s_3cf9f95b99f20b": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03d35-50b9-7aa5-9aa3-d39826031a9f",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_84502aefc5a4ef": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03dd4-3375-795a-89ec-e94cd573a976",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
