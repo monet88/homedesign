@@ -1,6 +1,17 @@
 @import "tailwindcss";
 
-/* Design tokens (DESIGN.md): paper / ink / pill radius / card 12px */
+/* Design tokens (DESIGN.md §3): paper / ink / pill radius / card 12px.
+   Exposed both as CSS custom properties (AC) and as Tailwind 4 theme keys
+   so components can use `bg-paper`, `text-ink`, `rounded-pill`,
+   `rounded-card`. */
+@theme {
+  --color-paper: #f6f0e4;
+  --color-ink: #171411;
+  --radius-card: 12px;
+  --radius-pill: 9999px;
+  --font-sans: var(--font-inter), Arial, sans-serif;
+}
+
 :root {
   --paper: #f6f0e4;
   --ink: #171411;
@@ -14,5 +25,5 @@ html {
 }
 
 body {
-  font-family: var(--font-inter), Arial, sans-serif;
+  font-family: var(--font-sans);
 }
