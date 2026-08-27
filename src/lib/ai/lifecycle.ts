@@ -25,7 +25,7 @@
 //     it never resurrects the task and never settles a released hold.
 
 import { getProvider } from "@/lib/ai/provider-adapter";
-import { buildExteriorPrompt, buildFloorPlanBriefPrompt, buildInteriorPrompt } from "@/lib/ai/prompt";
+import { buildExteriorPrompt, buildFloorPlanBriefPrompt, buildFloorPlanLayoutPrompt, buildFloorPlanRenderPrompt, buildInteriorPrompt } from "@/lib/ai/prompt";
 import {
   DesignError,
   isTerminal,
@@ -39,6 +39,15 @@ import {
   type PublicTaskStatus,
 } from "@/lib/ai/types";
 import { createBriefStageRun, completeBriefStageRun, assertRoomDesignForBrief } from "@/lib/floor-plan/brief";
+import {
+  assertNoProcessingRun,
+  assertRoomDesignForLayout,
+  assertRoomDesignForRender,
+  completeStageRun,
+  createStageRun,
+  failStageRun,
+  parseRoomProposal,
+} from "@/lib/floor-plan/stages";
 import { FloorPlanError } from "@/lib/floor-plan/errors";
 import type { Env } from "@/lib/bindings";
 import { ensureFreeCreditGrant, getAvailableCredits } from "@/lib/credits/ledger";
@@ -104,14 +113,15 @@ export interface DesignRow {
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
 /** Server-side prompt build. The public API never accepts a prompt. */
-export function buildPrompt(config: DesignConfig): string {
+export function buildPrompt(config: DesignConfig, proposal?: import("@/lib/floor-plan/types").RoomBriefProposal | null): string {
   if (config.scene === "interior") return buildInteriorPrompt(config.intent as InteriorIntent);
   if (config.scene === "exterior") return buildExteriorPrompt(config.intent as ExteriorIntent);
   if (config.scene === "floor-plan") {
-    if (config.stage === "brief") {
-      return buildFloorPlanBriefPrompt(config.intent as FloorPlanIntent);
-    }
-    throw new DesignError("SCENE_NOT_IMPLEMENTED", 501, "floor-plan layout/render/panorama ship in #15");
+    const fp = config.intent as FloorPlanIntent;
+    if (config.stage === "brief") return buildFloorPlanBriefPrompt(fp);
+    if (config.stage === "layout") return buildFloorPlanLayoutPrompt(fp, proposal);
+    if (config.stage === "render") return buildFloorPlanRenderPrompt(fp, proposal);
+    throw new DesignError("SCENE_NOT_IMPLEMENTED", 501, "floor-plan panorama ships in #11");
   }
   throw new DesignError("SCENE_NOT_IMPLEMENTED", 501, "unknown scene");
 }
@@ -140,11 +150,13 @@ export async function createDesign(
 ): Promise<CreateDesignResult> {
   const config = validateDesignConfig(rawBody);
 
-  if (config.scene === "floor-plan" && config.stage !== "brief") {
-    throw new DesignError("SCENE_NOT_IMPLEMENTED", 501, "floor-plan layout/render/panorama ship in #15");
+  if (config.scene === "floor-plan" && config.stage === "panorama") {
+    throw new DesignError("SCENE_NOT_IMPLEMENTED", 501, "floor-plan panorama ships in #11");
   }
 
-  if (config.scene === "floor-plan") {
+  let floorPlanProposal: import("@/lib/floor-plan/types").RoomBriefProposal | null = null;
+
+  if (config.scene === "floor-plan" && config.stage === "brief") {
     const fp = config.intent as FloorPlanIntent;
     if (!fp.roomId?.trim()) {
       throw new DesignError("INVALID_INTENT", 400, "roomId is required for floor-plan brief");
@@ -155,6 +167,43 @@ export async function createDesign(
       if (err instanceof FloorPlanError) {
         throw mapFloorPlanError(err);
       }
+      throw err;
+    }
+  }
+
+  if (config.scene === "floor-plan" && config.stage === "layout") {
+    const fp = config.intent as FloorPlanIntent;
+    if (!fp.roomId?.trim()) {
+      throw new DesignError("INVALID_INTENT", 400, "roomId is required for floor-plan layout");
+    }
+    try {
+      const row = await assertRoomDesignForLayout(env, userId, fp.roomId, config.sourceAssetId, fp.marker);
+      await assertNoProcessingRun(env, fp.roomId, "layout");
+      floorPlanProposal = parseRoomProposal(row);
+    } catch (err) {
+      if (err instanceof FloorPlanError) throw mapFloorPlanError(err);
+      throw err;
+    }
+  }
+
+  if (config.scene === "floor-plan" && config.stage === "render") {
+    const fp = config.intent as FloorPlanIntent;
+    if (!fp.roomId?.trim()) {
+      throw new DesignError("INVALID_INTENT", 400, "roomId is required for floor-plan render");
+    }
+    try {
+      const { row, layoutRun } = await assertRoomDesignForRender(
+        env,
+        userId,
+        fp.roomId,
+        config.sourceAssetId,
+        fp.marker
+      );
+      await assertNoProcessingRun(env, fp.roomId, "render");
+      floorPlanProposal = parseRoomProposal(row);
+      (config.intent as FloorPlanIntent).layoutRunId = layoutRun.id;
+    } catch (err) {
+      if (err instanceof FloorPlanError) throw mapFloorPlanError(err);
       throw err;
     }
   }
@@ -176,7 +225,7 @@ export async function createDesign(
     throw new DesignError("SOURCE_ASSET_NOT_READY", 409, `asset lifecycle is ${asset.lifecycle}`);
   }
 
-  const prompt = buildPrompt(config);
+  const prompt = buildPrompt(config, floorPlanProposal);
   if (!prompt) throw new DesignError("INVALID_INTENT", 400, "empty prompt");
 
   // Free grant is ensured on every verified task path (ADR 0002); idempotent.
@@ -269,6 +318,12 @@ export async function createDesign(
 
   if (config.scene === "floor-plan" && config.stage === "brief") {
     await createBriefStageRun(env, (config.intent as FloorPlanIntent).roomId!, taskId);
+  }
+  if (config.scene === "floor-plan" && config.stage === "layout") {
+    await createStageRun(env, (config.intent as FloorPlanIntent).roomId!, "layout", taskId);
+  }
+  if (config.scene === "floor-plan" && config.stage === "render") {
+    await createStageRun(env, (config.intent as FloorPlanIntent).roomId!, "render", taskId);
   }
 
   // Dispatch. The Workflow/queue instance identity IS the task id, so a
@@ -595,6 +650,9 @@ export async function completeGeneration(
   if (design.scene === "floor-plan" && design.stage === "brief") {
     await completeBriefStageRun(env, taskId);
   }
+  if (design.scene === "floor-plan" && (design.stage === "layout" || design.stage === "render")) {
+    await completeStageRun(env, taskId);
+  }
 
   return { status: "ready" };
 }
@@ -612,6 +670,10 @@ export async function failGeneration(
   errorCode: string,
   terminalReason: "failed" | "canceled" | "validation-exhausted" | "dlq" = "failed"
 ): Promise<void> {
+  const design = await getDesign(env, taskId);
+  if (design?.scene === "floor-plan" && design.stage) {
+    await failStageRun(env, taskId);
+  }
   await env.DB.prepare(`UPDATE ai_tasks SET error_code = ?2, updated_at = ?3 WHERE id = ?1`)
     .bind(taskId, errorCode, Date.now())
     .run();
@@ -810,6 +872,9 @@ function mapFloorPlanError(err: FloorPlanError): DesignError {
     MARKER_LOCKED: "INVALID_INTENT",
     PROJECT_SOURCE_MISMATCH: "INVALID_INTENT",
     BRIEF_NOT_CONFIRMED: "INVALID_INTENT",
+    LAYOUT_NOT_CONFIRMED: "INVALID_INTENT",
+    STAGE_NOT_READY: "INVALID_INTENT",
+    STAGE_PROCESSING: "INVALID_INTENT",
     NOT_FOUND: "ASSET_NOT_FOUND",
   };
   return new DesignError(codeMap[err.code] ?? "INVALID_INTENT", err.status, err.reason);

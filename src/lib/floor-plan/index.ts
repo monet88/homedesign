@@ -15,6 +15,21 @@ export {
   assertRoomDesignForBrief,
 } from "@/lib/floor-plan/brief";
 export {
+  assertNoProcessingRun,
+  assertRenderStageAllowed,
+  assertRoomDesignForLayout,
+  assertRoomDesignForRender,
+  confirmRoomLayout,
+  confirmRoomRender,
+  createStageRun,
+  completeStageRun,
+  failStageRun,
+  getActiveConfirmedStageRun,
+  getStageRunByDesignId,
+  isStageRunStale,
+  parseRoomProposal,
+} from "@/lib/floor-plan/stages";
+export {
   recognizeRoomRegion,
   questionnaireForRoomType,
   buildDesignProposal,

@@ -101,6 +101,8 @@ export interface FloorPlanIntent {
   feedback?: string;
   recognition?: Record<string, unknown>;
   intake?: Record<string, unknown>;
+  /** Confirmed layout stage run id — set server-side for render lineage (ADR 0004). */
+  layoutRunId?: string;
 }
 
 export type DesignIntent = InteriorIntent | ExteriorIntent | FloorPlanIntent;

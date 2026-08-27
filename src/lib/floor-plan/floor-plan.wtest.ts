@@ -8,8 +8,13 @@ import { buildPrompt } from "@/lib/ai/lifecycle";
 import { DesignError } from "@/lib/ai/types";
 import {
   assertLayoutStageAllowed,
+  assertNoProcessingRun,
   confirmRoomBrief,
+  confirmRoomLayout,
+  confirmRoomRender,
   createFloorPlanProject,
+  getStageRunByDesignId,
+  isStageRunStale,
   placeRoomMarker,
   proposeRoomBrief,
   updateRoomMarker,
@@ -57,7 +62,8 @@ async function seedReadyAsset(userId: string, width?: number, height?: number): 
   return assetId;
 }
 
-function briefPayload(
+function stagePayload(
+  stage: "brief" | "layout" | "render" | "panorama",
   sourceAssetId: string,
   roomId: string,
   marker: { x: number; y: number },
@@ -66,9 +72,36 @@ function briefPayload(
   return {
     sourceAssetId,
     scene: "floor-plan",
-    intent: { stage: "brief", marker, roomId },
+    intent: { stage, marker, roomId },
     idempotencyKey,
   };
+}
+
+async function runDesignToReady(taskId: string): Promise<void> {
+  const dispatch = await handleProviderNotify(env, { type: "task-dispatch", taskId });
+  expect(dispatch.status).toBe("quarantined");
+  const complete = await handleProviderNotify(env, { type: "provider-complete", taskId });
+  expect(complete.status).toBe("ready");
+}
+
+async function setupConfirmedBrief(userId: string): Promise<{
+  sourceId: string;
+  projectId: string;
+  roomId: string;
+  marker: { x: number; y: number };
+}> {
+  const sourceId = await seedReadyAsset(userId);
+  const { id: projectId } = await createFloorPlanProject(env, userId, sourceId);
+  const room = await placeRoomMarker(env, userId, projectId, { x: 50, y: 50 });
+  await proposeRoomBrief(env, userId, room.id);
+  const brief = await createDesign(
+    env,
+    userId,
+    stagePayload("brief", sourceId, room.id, { x: 50, y: 50 }, `brief-${room.id}`)
+  );
+  await runDesignToReady(brief.id);
+  await confirmRoomBrief(env, userId, room.id);
+  return { sourceId, projectId, roomId: room.id, marker: { x: 50, y: 50 } };
 }
 
 describe("FloorPlanProject", () => {
@@ -146,7 +179,7 @@ describe("Recognition", () => {
 });
 
 describe("Brief confirm gates Layout", () => {
-  it("records confirm and rejects layout stage with 501", async () => {
+  it("records confirm and allows layout after brief confirm", async () => {
     const userId = await seedUser();
     const sourceId = await seedReadyAsset(userId);
     const { id: projectId } = await createFloorPlanProject(env, userId, sourceId);
@@ -157,14 +190,22 @@ describe("Brief confirm gates Layout", () => {
     expect(confirmed.briefConfirmedAt).toBeTruthy();
     await expect(assertLayoutStageAllowed(env, userId, room.id)).resolves.toBeUndefined();
 
+    const layout = await createDesign(
+      env,
+      userId,
+      stagePayload("layout", sourceId, room.id, { x: 50, y: 50 }, "idem-layout-gate")
+    );
+    expect(layout.cost).toBe(2);
+  });
+
+  it("rejects layout before brief confirm", async () => {
+    const userId = await seedUser();
+    const sourceId = await seedReadyAsset(userId);
+    const { id: projectId } = await createFloorPlanProject(env, userId, sourceId);
+    const room = await placeRoomMarker(env, userId, projectId, { x: 50, y: 50 });
     await expect(
-      createDesign(env, userId, {
-        sourceAssetId: sourceId,
-        scene: "floor-plan",
-        intent: { stage: "layout", marker: { x: 50, y: 50 }, roomId: room.id },
-        idempotencyKey: "idem-layout",
-      })
-    ).rejects.toMatchObject({ code: "SCENE_NOT_IMPLEMENTED", status: 501 });
+      createDesign(env, userId, stagePayload("layout", sourceId, room.id, { x: 50, y: 50 }, "idem-no-brief"))
+    ).rejects.toMatchObject({ code: "INVALID_INTENT", status: 409 });
   });
 });
 
@@ -178,7 +219,7 @@ describe("Brief stage lifecycle", () => {
     const result = await createDesign(
       env,
       userId,
-      briefPayload(sourceId, room.id, { x: 25, y: 75 }, "idem-brief-run")
+      stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-brief-run")
     );
     expect(result.cost).toBe(1);
     expect(await getAvailableCredits(env, userId)).toBe(9);
@@ -199,7 +240,7 @@ describe("Brief stage lifecycle", () => {
 });
 
 describe("buildPrompt floor-plan", () => {
-  it("builds brief prompt and rejects layout", () => {
+  it("builds brief prompt and layout/render prompts; panorama stays 501", () => {
     const prompt = buildPrompt({
       sourceAssetId: "a1",
       mediaType: "image",
@@ -216,21 +257,173 @@ describe("buildPrompt floor-plan", () => {
     expect(prompt).toContain("marker (5%, 95%)");
     expect(prompt).toContain("Do not fabricate measurements");
 
+    const layoutPrompt = buildPrompt({
+      sourceAssetId: "a1",
+      mediaType: "image",
+      scene: "floor-plan",
+      stage: "layout",
+      provider: "fake",
+      model: "gemini-2.5-flash-image",
+      providerScene: "room-design-layout",
+      intent: { stage: "layout", marker: { x: 1, y: 1 }, roomId: "room-1" },
+      options: {},
+      cost: 2,
+      idempotencyKey: "k2",
+    });
+    expect(layoutPrompt).toContain("2D furniture layout");
+
     expect(() =>
       buildPrompt({
         sourceAssetId: "a1",
         mediaType: "image",
         scene: "floor-plan",
-        stage: "layout",
+        stage: "panorama",
         provider: "fake",
         model: "gemini-2.5-flash-image",
-        providerScene: "room-design-layout",
-        intent: { stage: "layout", marker: { x: 1, y: 1 } },
+        providerScene: "room-design-panorama",
+        intent: { stage: "panorama", marker: { x: 1, y: 1 } },
         options: {},
-        cost: 2,
-        idempotencyKey: "k2",
+        cost: 4,
+        idempotencyKey: "k3",
       })
     ).toThrow(DesignError);
+  });
+});
+
+describe("Layout stage lifecycle", () => {
+  it("runs layout through fake provider and settles 2 credits", async () => {
+    const userId = await seedUser();
+    const { sourceId, roomId, marker } = await setupConfirmedBrief(userId);
+
+    const layout = await createDesign(
+      env,
+      userId,
+      stagePayload("layout", sourceId, roomId, marker, "idem-layout-run")
+    );
+    expect(layout.cost).toBe(2);
+    expect(await getAvailableCredits(env, userId)).toBe(7);
+
+    await runDesignToReady(layout.id);
+
+    const run = await getStageRunByDesignId(env, layout.id);
+    expect(run?.status).toBe("success");
+    expect(await getAvailableCredits(env, userId)).toBe(7);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("max one processing layout run per room design", async () => {
+    const userId = await seedUser();
+    const { sourceId, roomId, marker } = await setupConfirmedBrief(userId);
+
+    await createDesign(env, userId, stagePayload("layout", sourceId, roomId, marker, "layout-a"));
+    await expect(assertNoProcessingRun(env, roomId, "layout")).rejects.toMatchObject({
+      code: "STAGE_PROCESSING",
+    });
+    await expect(
+      createDesign(env, userId, stagePayload("layout", sourceId, roomId, marker, "layout-b"))
+    ).rejects.toMatchObject({ code: "INVALID_INTENT", status: 409 });
+  });
+});
+
+describe("Render stage lifecycle", () => {
+  it("gates render on layout confirm and settles 3 credits", async () => {
+    const userId = await seedUser();
+    const { sourceId, roomId, marker } = await setupConfirmedBrief(userId);
+
+    await expect(
+      createDesign(env, userId, stagePayload("render", sourceId, roomId, marker, "render-no-layout"))
+    ).rejects.toMatchObject({ code: "INVALID_INTENT", status: 409 });
+
+    const layout = await createDesign(
+      env,
+      userId,
+      stagePayload("layout", sourceId, roomId, marker, "layout-for-render")
+    );
+    await runDesignToReady(layout.id);
+    await confirmRoomLayout(env, userId, roomId, layout.id);
+
+    const render = await createDesign(
+      env,
+      userId,
+      stagePayload("render", sourceId, roomId, marker, "render-run")
+    );
+    expect(render.cost).toBe(3);
+    expect(await getAvailableCredits(env, userId)).toBe(4);
+
+    await runDesignToReady(render.id);
+    const run = await getStageRunByDesignId(env, render.id);
+    expect(run?.status).toBe("success");
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+});
+
+describe("Retry and regenerate lineage", () => {
+  it("retry failed layout only reruns that stage; successful layout keeps usage", async () => {
+    const userId = await seedUser();
+    const { sourceId, roomId, marker } = await setupConfirmedBrief(userId);
+
+    const failed = await createDesign(env, userId, {
+      ...stagePayload("layout", sourceId, roomId, marker, "layout-fail"),
+      intent: { stage: "layout", marker, roomId, feedback: "FAIL:PROVIDER_FAIL" },
+    });
+    await handleProviderNotify(env, { type: "task-dispatch", taskId: failed.id });
+    expect(await getAvailableCredits(env, userId)).toBe(9);
+
+    const failedRun = await getStageRunByDesignId(env, failed.id);
+    expect(failedRun?.status).toBe("failed");
+
+    const retry = await createDesign(
+      env,
+      userId,
+      stagePayload("layout", sourceId, roomId, marker, "layout-retry")
+    );
+    expect(retry.cost).toBe(2);
+    expect(await getAvailableCredits(env, userId)).toBe(7);
+    await runDesignToReady(retry.id);
+    expect((await getStageRunByDesignId(env, retry.id))?.status).toBe("success");
+  });
+
+  it("regenerate layout stale downstream render only after new layout confirm", async () => {
+    const userId = await seedUser();
+    const { sourceId, roomId, marker } = await setupConfirmedBrief(userId);
+
+    const layoutA = await createDesign(
+      env,
+      userId,
+      stagePayload("layout", sourceId, roomId, marker, "layout-a")
+    );
+    await runDesignToReady(layoutA.id);
+    await confirmRoomLayout(env, userId, roomId, layoutA.id);
+
+    const renderA = await createDesign(
+      env,
+      userId,
+      stagePayload("render", sourceId, roomId, marker, "render-a")
+    );
+    await runDesignToReady(renderA.id);
+    const renderRunA = await getStageRunByDesignId(env, renderA.id);
+    expect(await isStageRunStale(env, renderRunA!.id)).toBe(false);
+
+    const layoutB = await createDesign(
+      env,
+      userId,
+      stagePayload("layout", sourceId, roomId, marker, "layout-b-regen")
+    );
+    await runDesignToReady(layoutB.id);
+    expect(await isStageRunStale(env, renderRunA!.id)).toBe(false);
+
+    await confirmRoomLayout(env, userId, roomId, layoutB.id);
+    expect(await isStageRunStale(env, renderRunA!.id)).toBe(true);
+  });
+});
+
+describe("Panorama still 501", () => {
+  it("rejects panorama generation", async () => {
+    const userId = await seedUser();
+    const { sourceId, roomId, marker } = await setupConfirmedBrief(userId);
+    await expect(
+      createDesign(env, userId, stagePayload("panorama", sourceId, roomId, marker, "panorama-501"))
+    ).rejects.toMatchObject({ code: "SCENE_NOT_IMPLEMENTED", status: 501 });
   });
 });
 

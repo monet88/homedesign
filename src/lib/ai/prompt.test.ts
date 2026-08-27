@@ -180,13 +180,21 @@ describe("buildPrompt dispatch by scene", () => {
     expect(prompt).toContain("Do not fabricate measurements");
   });
 
-  it("floor-plan layout/render/panorama remain 501", () => {
+  it("floor-plan layout/render build prompts; panorama remains 501", () => {
+    const layoutPrompt = buildPrompt({
+      ...config("floor-plan", { stage: "layout", marker: { x: 10, y: 10 }, roomId: "room-1" }),
+      stage: "layout",
+      providerScene: "room-design-layout",
+      cost: 2,
+    });
+    expect(layoutPrompt).toContain("2D furniture layout");
+
     try {
       buildPrompt({
-        ...config("floor-plan", { stage: "layout", marker: { x: 10, y: 10 } }),
-        stage: "layout",
-        providerScene: "room-design-layout",
-        cost: 2,
+        ...config("floor-plan", { stage: "panorama", marker: { x: 10, y: 10 } }),
+        stage: "panorama",
+        providerScene: "room-design-panorama",
+        cost: 4,
       });
       throw new Error("expected SCENE_NOT_IMPLEMENTED");
     } catch (err) {

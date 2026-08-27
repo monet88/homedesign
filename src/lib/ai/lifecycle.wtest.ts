@@ -228,16 +228,16 @@ describe("AC2: createDesign rejections", () => {
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 
-  it("rejects floor-plan layout/render/panorama with SCENE_NOT_IMPLEMENTED", async () => {
+  it("rejects floor-plan panorama with SCENE_NOT_IMPLEMENTED; layout is allowed", async () => {
     const userId = await seedUser();
     const assetId = await seedReadyAsset(userId);
     await expect(
       createDesign(
         env,
         userId,
-        interiorPayload(assetId, "idem-floor-layout", {
+        interiorPayload(assetId, "idem-floor-panorama", {
           scene: "floor-plan",
-          intent: { stage: "layout", marker: { x: 50, y: 50 } },
+          intent: { stage: "panorama", marker: { x: 50, y: 50 }, roomId: "room-1" },
         })
       )
     ).rejects.toMatchObject({ code: "SCENE_NOT_IMPLEMENTED", status: 501 });

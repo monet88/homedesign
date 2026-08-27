@@ -7,6 +7,9 @@ export type FloorPlanErrorCode =
   | "MARKER_LOCKED"
   | "BRIEF_NOT_CONFIRMED"
   | "BRIEF_NOT_READY"
+  | "LAYOUT_NOT_CONFIRMED"
+  | "STAGE_NOT_READY"
+  | "STAGE_PROCESSING"
   | "PROJECT_SOURCE_MISMATCH";
 
 export class FloorPlanError extends Error {

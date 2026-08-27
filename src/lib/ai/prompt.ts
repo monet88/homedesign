@@ -9,6 +9,7 @@
 // instruction — same as origin.
 
 import type { ExteriorIntent, FloorPlanIntent, InteriorIntent } from "@/lib/ai/types";
+import type { RoomBriefProposal } from "@/lib/floor-plan/types";
 
 // Fallbacks (origin behavior: empty custom value falls back to these).
 const FALLBACK_ROOM_TYPE = "the room";
@@ -100,6 +101,52 @@ export function buildFloorPlanBriefPrompt(intent: FloorPlanIntent): string {
   lines.push(
     "Do not fabricate measurements; include dimensions only when they are readable from the source floor plan."
   );
+
+  return lines.join("\n");
+}
+
+/** Room Layout stage prompt (ADR 0004) — 2D furniture layout board. */
+export function buildFloorPlanLayoutPrompt(
+  intent: FloorPlanIntent,
+  proposal?: RoomBriefProposal | null
+): string {
+  const roomType = proposal?.recognition?.roomType ?? "the selected room";
+  const lines = [
+    `Generate a 2D furniture layout board for ${roomType} at marker (${intent.marker.x}%, ${intent.marker.y}%) on the source floor plan.`,
+    "Show furniture placement with clear annotations and readable labels.",
+    "This is a generated design board — not an editable CAD drawing.",
+  ];
+
+  if (proposal?.designProposal) lines.push(`Room Brief: ${proposal.designProposal}.`);
+  if (proposal?.style) lines.push(`Target style: ${proposal.style}.`);
+  if (intent.feedback) lines.push(`User feedback: ${intent.feedback}.`);
+  if (proposal?.recognition?.dimensions) {
+    const d = proposal.recognition.dimensions;
+    lines.push(`Source dimensions (metadata only): ${d.widthPx}x${d.heightPx}px.`);
+  }
+  lines.push(
+    "Do not fabricate measurements; include dimensions on the layout only when readable from the source floor plan."
+  );
+
+  return lines.join("\n");
+}
+
+/** Room Render stage prompt (ADR 0004) — photorealistic interior image. */
+export function buildFloorPlanRenderPrompt(
+  intent: FloorPlanIntent,
+  proposal?: RoomBriefProposal | null
+): string {
+  const roomType = proposal?.recognition?.roomType ?? "the selected room";
+  const lines = [
+    `Create a photorealistic interior render for ${roomType} based on the confirmed 2D layout at marker (${intent.marker.x}%, ${intent.marker.y}%).`,
+    "Use natural scale, realistic daylight, and coherent materials.",
+    "This is a photorealistic image — not a 3D mesh, camera graph, or editable scene.",
+  ];
+
+  if (proposal?.designProposal) lines.push(`Room Brief: ${proposal.designProposal}.`);
+  if (proposal?.style) lines.push(`Target style: ${proposal.style}.`);
+  if (intent.feedback) lines.push(`User feedback: ${intent.feedback}.`);
+  lines.push("Respect the confirmed furniture layout and room context from prior stages.");
 
   return lines.join("\n");
 }
