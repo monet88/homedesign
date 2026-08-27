@@ -13,10 +13,14 @@ import {
   confirmRoomLayout,
   confirmRoomRender,
   createFloorPlanProject,
+  getActiveConfirmedStageRun,
+  getFloorPlanProjectDetail,
   getStageRunByDesignId,
+  isRoomDesignComplete,
   isStageRunStale,
   placeRoomMarker,
   proposeRoomBrief,
+  restoreStageRun,
   updateRoomMarker,
   addNextRoomMarker,
 } from "@/lib/floor-plan";
@@ -424,6 +428,179 @@ describe("Panorama still 501", () => {
     await expect(
       createDesign(env, userId, stagePayload("panorama", sourceId, roomId, marker, "panorama-501"))
     ).rejects.toMatchObject({ code: "SCENE_NOT_IMPLEMENTED", status: 501 });
+  });
+});
+
+describe("Project Overview", () => {
+  it("derives markedAreas, completeRooms, and currentRoom from Room Designs", async () => {
+    const userId = await seedUser();
+    const sourceId = await seedReadyAsset(userId);
+    const { id: projectId } = await createFloorPlanProject(env, userId, sourceId);
+
+    const roomA = await placeRoomMarker(env, userId, projectId, { x: 10, y: 10 });
+    await proposeRoomBrief(env, userId, roomA.id);
+    await confirmRoomBrief(env, userId, roomA.id);
+
+    const layoutA = await createDesign(
+      env,
+      userId,
+      stagePayload("layout", sourceId, roomA.id, { x: 10, y: 10 }, "ov-layout-a")
+    );
+    await runDesignToReady(layoutA.id);
+    await confirmRoomLayout(env, userId, roomA.id, layoutA.id);
+
+    const renderA = await createDesign(
+      env,
+      userId,
+      stagePayload("render", sourceId, roomA.id, { x: 10, y: 10 }, "ov-render-a")
+    );
+    await runDesignToReady(renderA.id);
+    await confirmRoomRender(env, userId, roomA.id, renderA.id);
+
+    const roomB = await addNextRoomMarker(env, userId, projectId, { x: 80, y: 80 });
+
+    const overview = (await getFloorPlanProjectDetail(env, userId, projectId)).overview;
+
+    expect(overview.markedAreas).toBe(2);
+    expect(overview.completeRooms).toBe(1);
+    expect(overview.currentRoomId).toBe(roomB.id);
+    expect(await isRoomDesignComplete(env, roomA.id)).toBe(true);
+    expect(await isRoomDesignComplete(env, roomB.id)).toBe(false);
+  });
+});
+
+describe("Stage run restore", () => {
+  it("restores a previous successful layout as current lineage without deleting runs", async () => {
+    const userId = await seedUser();
+    const { sourceId, roomId, marker } = await setupConfirmedBrief(userId);
+
+    const layoutA = await createDesign(
+      env,
+      userId,
+      stagePayload("layout", sourceId, roomId, marker, "restore-layout-a")
+    );
+    await runDesignToReady(layoutA.id);
+    await confirmRoomLayout(env, userId, roomId, layoutA.id);
+    const runA = await getStageRunByDesignId(env, layoutA.id);
+
+    const layoutB = await createDesign(
+      env,
+      userId,
+      stagePayload("layout", sourceId, roomId, marker, "restore-layout-b")
+    );
+    await runDesignToReady(layoutB.id);
+    await confirmRoomLayout(env, userId, roomId, layoutB.id);
+    expect((await getActiveConfirmedStageRun(env, roomId, "layout"))?.id).toBe(
+      (await getStageRunByDesignId(env, layoutB.id))?.id
+    );
+
+    await restoreStageRun(env, userId, runA!.id);
+    expect((await getActiveConfirmedStageRun(env, roomId, "layout"))?.id).toBe(runA!.id);
+
+    const { results: allRuns } = await env.DB.prepare(
+      `SELECT id FROM floor_plan_stage_runs WHERE room_design_id = ?1 AND stage = 'layout'`
+    )
+      .bind(roomId)
+      .all<{ id: string }>();
+    expect(allRuns?.length).toBe(2);
+  });
+
+  it("restoring layout makes downstream render stale when layout lineage changes", async () => {
+    const userId = await seedUser();
+    const { sourceId, roomId, marker } = await setupConfirmedBrief(userId);
+
+    const layoutA = await createDesign(
+      env,
+      userId,
+      stagePayload("layout", sourceId, roomId, marker, "restore-stale-a")
+    );
+    await runDesignToReady(layoutA.id);
+    await confirmRoomLayout(env, userId, roomId, layoutA.id);
+    const runA = (await getStageRunByDesignId(env, layoutA.id))!;
+
+    const renderA = await createDesign(
+      env,
+      userId,
+      stagePayload("render", sourceId, roomId, marker, "restore-stale-render")
+    );
+    await runDesignToReady(renderA.id);
+    const renderRun = (await getStageRunByDesignId(env, renderA.id))!;
+    expect(await isStageRunStale(env, renderRun.id)).toBe(false);
+
+    const layoutB = await createDesign(
+      env,
+      userId,
+      stagePayload("layout", sourceId, roomId, marker, "restore-stale-b")
+    );
+    await runDesignToReady(layoutB.id);
+    await confirmRoomLayout(env, userId, roomId, layoutB.id);
+    expect(await isStageRunStale(env, renderRun.id)).toBe(true);
+
+    await restoreStageRun(env, userId, runA.id);
+    expect(await isStageRunStale(env, renderRun.id)).toBe(false);
+  });
+});
+
+describe("Resume from server", () => {
+  it("GET project detail returns processing tasks for mid-run resume", async () => {
+    const userId = await seedUser();
+    const { sourceId, projectId, roomId, marker } = await setupConfirmedBrief(userId);
+
+    const layout = await createDesign(
+      env,
+      userId,
+      stagePayload("layout", sourceId, roomId, marker, "resume-layout")
+    );
+    expect((await getStageRunByDesignId(env, layout.id))?.status).toBe("processing");
+
+    const detail = await getFloorPlanProjectDetail(env, userId, projectId);
+    expect(detail.sourceAssetId).toBe(sourceId);
+    expect(detail.overview.markedAreas).toBe(1);
+    expect(detail.overview.currentRoomId).toBe(roomId);
+    expect(detail.processingTasks).toEqual([
+      { designId: layout.id, stage: "layout", roomDesignId: roomId },
+    ]);
+    expect(detail.rooms[0]?.stageRuns.some((r) => r.status === "processing")).toBe(true);
+  });
+});
+
+describe("Add Next Room isolation", () => {
+  it("new marker does not change completed room marker or progress", async () => {
+    const userId = await seedUser();
+    const { sourceId, projectId, roomId, marker } = await setupConfirmedBrief(userId);
+
+    const layout = await createDesign(
+      env,
+      userId,
+      stagePayload("layout", sourceId, roomId, marker, "next-room-layout")
+    );
+    await runDesignToReady(layout.id);
+    await confirmRoomLayout(env, userId, roomId, layout.id);
+
+    const render = await createDesign(
+      env,
+      userId,
+      stagePayload("render", sourceId, roomId, marker, "next-room-render")
+    );
+    await runDesignToReady(render.id);
+    await confirmRoomRender(env, userId, roomId, render.id);
+
+    const before = await env.DB.prepare(`SELECT * FROM room_designs WHERE id = ?1`)
+      .bind(roomId)
+      .first<{ marker_x: number; marker_y: number; progress: string; marker_locked: number }>();
+
+    const next = await addNextRoomMarker(env, userId, projectId, { x: 70, y: 30 });
+
+    const after = await env.DB.prepare(`SELECT * FROM room_designs WHERE id = ?1`)
+      .bind(roomId)
+      .first<{ marker_x: number; marker_y: number; progress: string; marker_locked: number }>();
+
+    expect(after?.marker_x).toBe(before?.marker_x);
+    expect(after?.marker_y).toBe(before?.marker_y);
+    expect(after?.progress).toBe("render-ready");
+    expect(after?.marker_locked).toBe(1);
+    expect(next.markerLocked).toBe(false);
+    expect(next.id).not.toBe(roomId);
   });
 });
 

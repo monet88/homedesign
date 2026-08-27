@@ -273,3 +273,38 @@ export async function confirmRoomRender(
 ): Promise<RoomDesignView> {
   return confirmStageRun(env, userId, roomDesignId, "render", designId);
 }
+
+/** Restore a previous successful run as current lineage (ADR 0004 US 43). Old runs stay in history. */
+export async function restoreStageRun(
+  env: Env,
+  userId: string,
+  stageRunId: string
+): Promise<RoomDesignView> {
+  const run = await env.DB.prepare(`SELECT * FROM floor_plan_stage_runs WHERE id = ?1`)
+    .bind(stageRunId)
+    .first<StageRunRow>();
+  if (!run) throw new FloorPlanError("NOT_FOUND", 404, "stage run not found");
+  if (run.stage !== "layout" && run.stage !== "render") {
+    throw new FloorPlanError("STAGE_NOT_READY", 409, "only layout and render runs can be restored");
+  }
+  if (run.status !== "success" && run.status !== "confirmed") {
+    throw new FloorPlanError("STAGE_NOT_READY", 409, "only successful runs can be restored");
+  }
+
+  await loadOwnedRoomDesign(env, userId, run.room_design_id);
+
+  const now = Date.now();
+  const progress = run.stage === "layout" ? "layout-ready" : "render-ready";
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE floor_plan_stage_runs SET status = 'confirmed', confirmed_at = ?2, updated_at = ?2 WHERE id = ?1`
+    ).bind(run.id, now),
+    env.DB.prepare(`UPDATE room_designs SET progress = ?2, updated_at = ?3 WHERE id = ?1`).bind(
+      run.room_design_id,
+      progress,
+      now
+    ),
+  ]);
+
+  return rowToView(await loadOwnedRoomDesign(env, userId, run.room_design_id));
+}

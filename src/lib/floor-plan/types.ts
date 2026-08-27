@@ -53,3 +53,41 @@ export interface RoomDesignView {
   progress: RoomDesignProgress;
   proposal: RoomBriefProposal | null;
 }
+
+export type StageRunStatus = "draft" | "processing" | "success" | "failed" | "confirmed";
+
+export interface StageRunView {
+  id: string;
+  stage: "brief" | "layout" | "render" | "panorama";
+  status: StageRunStatus;
+  designId: string | null;
+  confirmedAt: number | null;
+  stale: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ProcessingTaskView {
+  designId: string;
+  stage: StageRunView["stage"];
+  roomDesignId: string;
+}
+
+export interface ProjectOverview {
+  markedAreas: number;
+  completeRooms: number;
+  currentRoomId: string | null;
+}
+
+export interface RoomDesignDetailView extends RoomDesignView {
+  stageRuns: StageRunView[];
+  complete: boolean;
+}
+
+export interface FloorPlanProjectDetailView {
+  id: string;
+  sourceAssetId: string;
+  overview: ProjectOverview;
+  rooms: RoomDesignDetailView[];
+  processingTasks: ProcessingTaskView[];
+}

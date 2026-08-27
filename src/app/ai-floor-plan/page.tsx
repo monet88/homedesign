@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { FloorPlanFlow } from "@/components/floor-plan/floor-plan-flow";
 
 export const metadata: Metadata = {
@@ -8,5 +9,9 @@ export const metadata: Metadata = {
 };
 
 export default function FloorPlanPage() {
-  return <FloorPlanFlow />;
+  return (
+    <Suspense fallback={<p className="p-10 text-center text-neutral-600">Loading…</p>}>
+      <FloorPlanFlow />
+    </Suspense>
+  );
 }

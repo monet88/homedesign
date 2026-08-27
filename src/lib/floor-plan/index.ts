@@ -28,7 +28,13 @@ export {
   getStageRunByDesignId,
   isStageRunStale,
   parseRoomProposal,
+  restoreStageRun,
 } from "@/lib/floor-plan/stages";
+export {
+  deriveProjectOverview,
+  getFloorPlanProjectDetail,
+  isRoomDesignComplete,
+} from "@/lib/floor-plan/overview";
 export {
   recognizeRoomRegion,
   questionnaireForRoomType,
@@ -36,10 +42,16 @@ export {
 } from "@/lib/floor-plan/recognition";
 export type {
   FloorPlanProjectView,
+  FloorPlanProjectDetailView,
   MarkerPosition,
+  ProcessingTaskView,
+  ProjectOverview,
   RoomBriefProposal,
+  RoomDesignDetailView,
   RoomDesignProgress,
   RoomDesignView,
   RoomRecognitionResult,
   QuestionnaireItem,
+  StageRunStatus,
+  StageRunView,
 } from "@/lib/floor-plan/types";
