@@ -1,0 +1,39 @@
+src/app/api/designs/route.ts
+  s_3cf9f95b99f20b::t_0aa5b48ac77439 40-44
+src/lib/credits/ledger.ts
+  s_5e84a4c736087e::t_b7a015318e66f5 134-183
+src/lib/intake/intake-service.ts
+  s_624565fd86fb4d::t_af0aed7e84c80f 69-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "7d8a352aedf4b40708ff2600be93603170da14c6",
+  "prompts": {},
+  "sessions": {
+    "s_3cf9f95b99f20b": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03d35-50b9-7aa5-9aa3-d39826031a9f",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_5e84a4c736087e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2c2760a1-19e3-4f89-a12b-5af7b06c7360",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_624565fd86fb4d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "995c2abf-92d2-4889-80b4-ad4b943a86c0",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
