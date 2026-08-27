@@ -12,6 +12,7 @@
 
 import { fixturePngBytes } from "@/lib/ai/fake-provider";
 import { getNegativeConstraints, getSystemPrompt } from "@/lib/ai/prompts";
+import { isLiveApiKeyConfigured } from "@/lib/env/policy";
 import type {
   ProviderAdapter,
   ProviderOutput,
@@ -118,7 +119,7 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
     const providerTaskId = `gemini-${req.taskId}`;
 
     // 2. API key check and offline fallback support
-    if (!this.apiKey) {
+    if (!this.apiKey || !isLiveApiKeyConfigured(this.apiKey)) {
       if (this.offlineFallback) {
         this.pendingOutputs.set(providerTaskId, {
           bytes: fixturePngBytes(),
@@ -126,9 +127,7 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
         });
         return { ok: true, providerTaskId };
       }
-      if (this.environment === "production") {
-        return { ok: false, error: "AI_API_KEY_MISSING", retryable: false };
-      }
+      return { ok: false, error: "PROVIDER_NOT_CONFIGURED", retryable: false };
     }
 
     // 3. Multimodal content construction

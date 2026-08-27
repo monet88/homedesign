@@ -445,7 +445,7 @@ export async function runGeneration(
 
   await setTaskStatus(env, taskId, "processing");
 
-  const provider = getProvider(task.provider, env.ENVIRONMENT);
+  const provider = getProvider(task.provider, env);
   const req = await buildProviderRequest(env, task);
 
   let providerTaskId: string;

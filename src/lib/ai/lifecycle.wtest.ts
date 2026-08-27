@@ -15,6 +15,7 @@
 
 import { env } from "cloudflare:test";
 import { describe, expect, it, beforeEach } from "vitest";
+import type { Env } from "@/lib/bindings";
 import {
   createDesign,
   getDesignStatus,
@@ -39,6 +40,12 @@ import {
   resetProviders,
   FakeBadOutputProviderAdapter,
 } from "@/lib/ai/provider-adapter";
+import {
+  createFloorPlanProject,
+  placeRoomMarker,
+  proposeRoomBrief,
+  confirmRoomBrief,
+} from "@/lib/floor-plan";
 
 
 
@@ -89,6 +96,42 @@ function interiorPayload(
     sourceAssetId,
     scene: "interior",
     intent: { mode: "redesign", roomType: "living room", style: "modern" },
+    options: { aspect_ratio: "1:1", num_outputs: 1 },
+    idempotencyKey,
+    ...overrides,
+  };
+}
+
+function exteriorPayload(
+  sourceAssetId: string,
+  idempotencyKey: string,
+  overrides: Record<string, unknown> = {}
+): Record<string, unknown> {
+  return {
+    sourceAssetId,
+    scene: "exterior",
+    intent: { mode: "redesign", architectureStyle: "modern", timeOfDay: "day" },
+    options: { aspect_ratio: "1:1", num_outputs: 1 },
+    idempotencyKey,
+    ...overrides,
+  };
+}
+
+function floorPlanPayload(
+  sourceAssetId: string,
+  idempotencyKey: string,
+  overrides: Record<string, unknown> = {}
+): Record<string, unknown> {
+  return {
+    sourceAssetId,
+    scene: "floor-plan",
+    intent: {
+      stage: "layout",
+      roomId: "room-layout-test",
+      marker: { x: 50, y: 50 },
+      style: "modern",
+      ...((overrides.intent as Record<string, unknown>) ?? {}),
+    },
     options: { aspect_ratio: "1:1", num_outputs: 1 },
     idempotencyKey,
     ...overrides,
@@ -540,6 +583,225 @@ describe("AC9: Credit invariant", () => {
     expect(summary.totalGrants + summary.totalPayments).toBe(
       summary.totalUsage + summary.available + summary.activeHolds
     );
+  });
+});
+
+// ── Ticket #33: AI Provider selection policy & Offline mode coverage ─────────
+
+describe("Ticket #33: Provider selection policy & offline matrix in Workers runtime", () => {
+  it("missing AI_API_KEY in offline env selects FakeProvider and completes generation without network calls", async () => {
+    const userId = await seedUser();
+    const assetId = await seedReadyAsset(userId);
+    const payload = interiorPayload(assetId, "idem-tk33-offline-missing");
+
+    const created = await createDesign(env, userId, payload);
+    const taskId = created.id;
+
+    const dispatchResult = await handleProviderNotify(env, {
+      type: "task-dispatch",
+      taskId,
+    });
+    expect(dispatchResult.status).toBe("quarantined");
+
+    const completeResult = await handleProviderNotify(env, {
+      type: "provider-complete",
+      taskId,
+      providerTaskId: `fake-${taskId}`,
+    });
+    expect(completeResult.status).toBe("ready");
+
+    const task = await getTask(env, taskId);
+    expect(task?.status).toBe("ready");
+    await assertHoldState(taskId, "settled");
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("empty AI_API_KEY in offline env selects FakeProvider and completes generation", async () => {
+    const userId = await seedUser();
+    const assetId = await seedReadyAsset(userId);
+    const emptyEnv = { ...(env as unknown as Env), AI_API_KEY: "" };
+    const payload = interiorPayload(assetId, "idem-tk33-offline-empty");
+
+    const created = await createDesign(emptyEnv, userId, payload);
+    const taskId = created.id;
+
+    const dispatchResult = await handleProviderNotify(emptyEnv, {
+      type: "task-dispatch",
+      taskId,
+    });
+    expect(dispatchResult.status).toBe("quarantined");
+
+    const completeResult = await handleProviderNotify(emptyEnv, {
+      type: "provider-complete",
+      taskId,
+      providerTaskId: `fake-${taskId}`,
+    });
+    expect(completeResult.status).toBe("ready");
+
+    const task = await getTask(emptyEnv, taskId);
+    expect(task?.status).toBe("ready");
+    await assertHoldState(taskId, "settled");
+  });
+
+  it("explicit live provider 'gemini' WITHOUT configured key fails closed with PROVIDER_NOT_CONFIGURED", async () => {
+    const userId = await seedUser();
+    const assetId = await seedReadyAsset(userId);
+    const noKeyEnv = { ...(env as unknown as Env), AI_API_KEY: "" };
+    const payload = interiorPayload(assetId, "idem-tk33-explicit-gemini-no-key", {
+      provider: "gemini",
+    });
+
+    const created = await createDesign(noKeyEnv, userId, payload);
+    const taskId = created.id;
+
+    const dispatchResult = await handleProviderNotify(noKeyEnv, {
+      type: "task-dispatch",
+      taskId,
+    });
+    expect(dispatchResult.status).toBe("failed");
+
+    const task = await getTask(noKeyEnv, taskId);
+    expect(task?.status).toBe("failed");
+    expect(task?.error_code).toBe("PROVIDER_NOT_CONFIGURED");
+
+    // Credit hold must be released
+    await assertHoldState(taskId, "released");
+    expect(await getAvailableCredits(noKeyEnv, userId)).toBe(10);
+    await expect(assertCreditInvariant(noKeyEnv, userId)).resolves.toBe(true);
+  });
+
+  it("production environment with missing key fails closed and never selects FakeProvider", async () => {
+    const userId = await seedUser();
+    const assetId = await seedReadyAsset(userId);
+    const prodEnv = {
+      ...(env as unknown as Env),
+      ENVIRONMENT: "production",
+      AI_API_KEY: "",
+    };
+
+    // Create design in local, then run generation in production environment
+    const created = await createDesign(env, userId, interiorPayload(assetId, "idem-tk33-prod-fail-closed"));
+    const taskId = created.id;
+
+    const dispatchResult = await handleProviderNotify(prodEnv, {
+      type: "task-dispatch",
+      taskId,
+    });
+    expect(dispatchResult.status).toBe("failed");
+
+    const task = await getTask(prodEnv, taskId);
+    expect(task?.status).toBe("failed");
+    expect(task?.error_code).toBe("PROVIDER_NOT_CONFIGURED");
+    await assertHoldState(taskId, "released");
+  });
+});
+
+describe("Ticket #33: Offline Generation Full Lifecycle per mode (Interior, Exterior, Floor Plan)", () => {
+  it("offline Interior mode reaches validated ready output and settles Credit Hold (1 credit)", async () => {
+    const userId = await seedUser();
+    const assetId = await seedReadyAsset(userId);
+    const payload = interiorPayload(assetId, "idem-interior-full-settle");
+
+    const created = await createDesign(env, userId, payload);
+    expect(created.cost).toBe(1);
+    const taskId = created.id;
+
+    expect(await getAvailableCredits(env, userId)).toBe(9);
+    await assertHoldState(taskId, "active");
+
+    await handleProviderNotify(env, { type: "task-dispatch", taskId });
+    await handleProviderNotify(env, { type: "provider-complete", taskId, providerTaskId: `fake-${taskId}` });
+
+    const task = await getTask(env, taskId);
+    expect(task?.status).toBe("ready");
+    await assertHoldState(taskId, "settled");
+
+    const design = await getDesign(env, taskId);
+    expect(design?.output_asset_id).toBeTruthy();
+
+    const summary = await getLedgerSummary(env, userId);
+    expect(summary.totalUsage).toBe(1);
+    expect(summary.available).toBe(9);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("offline Exterior mode reaches validated ready output and settles Credit Hold (1 credit)", async () => {
+    const userId = await seedUser();
+    const assetId = await seedReadyAsset(userId);
+    const payload = exteriorPayload(assetId, "idem-exterior-full-settle");
+
+    const created = await createDesign(env, userId, payload);
+    expect(created.cost).toBe(1);
+    const taskId = created.id;
+
+    expect(await getAvailableCredits(env, userId)).toBe(9);
+    await assertHoldState(taskId, "active");
+
+    await handleProviderNotify(env, { type: "task-dispatch", taskId });
+    await handleProviderNotify(env, { type: "provider-complete", taskId, providerTaskId: `fake-${taskId}` });
+
+    const task = await getTask(env, taskId);
+    expect(task?.status).toBe("ready");
+    await assertHoldState(taskId, "settled");
+
+    const design = await getDesign(env, taskId);
+    expect(design?.output_asset_id).toBeTruthy();
+    expect(design?.scene).toBe("exterior");
+
+    const summary = await getLedgerSummary(env, userId);
+    expect(summary.totalUsage).toBe(1);
+    expect(summary.available).toBe(9);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("offline Floor Plan mode (layout stage) reaches validated ready output and settles Credit Hold (2 credits)", async () => {
+    const userId = await seedUser();
+    const assetId = await seedReadyAsset(userId);
+
+    // Setup Floor Plan project, marker, and confirmed brief
+    const { id: projectId } = await createFloorPlanProject(env, userId, assetId);
+    const room = await placeRoomMarker(env, userId, projectId, { x: 50, y: 50 });
+    await proposeRoomBrief(env, userId, room.id);
+    const brief = await createDesign(env, userId, {
+      sourceAssetId: assetId,
+      scene: "floor-plan",
+      intent: { stage: "brief", roomId: room.id, marker: { x: 50, y: 50 } },
+      options: { aspect_ratio: "1:1", num_outputs: 1 },
+      idempotencyKey: `brief-${room.id}`,
+    });
+    await handleProviderNotify(env, { type: "task-dispatch", taskId: brief.id });
+    await handleProviderNotify(env, { type: "provider-complete", taskId: brief.id, providerTaskId: `fake-${brief.id}` });
+    await confirmRoomBrief(env, userId, room.id);
+
+    // Now run Layout stage (cost: 2)
+    const initialAvailable = await getAvailableCredits(env, userId); // 9 (1 used for brief)
+    const payload = floorPlanPayload(assetId, "idem-floorplan-layout-settle", {
+      intent: { stage: "layout", roomId: room.id, marker: { x: 50, y: 50 } },
+    });
+
+    const created = await createDesign(env, userId, payload);
+    expect(created.cost).toBe(2);
+    const taskId = created.id;
+
+    expect(await getAvailableCredits(env, userId)).toBe(initialAvailable - 2);
+    await assertHoldState(taskId, "active");
+
+    await handleProviderNotify(env, { type: "task-dispatch", taskId });
+    await handleProviderNotify(env, { type: "provider-complete", taskId, providerTaskId: `fake-${taskId}` });
+
+    const task = await getTask(env, taskId);
+    expect(task?.status).toBe("ready");
+    await assertHoldState(taskId, "settled");
+
+    const design = await getDesign(env, taskId);
+    expect(design?.output_asset_id).toBeTruthy();
+    expect(design?.scene).toBe("floor-plan");
+    expect(design?.stage).toBe("layout");
+
+    const summary = await getLedgerSummary(env, userId);
+    expect(summary.totalUsage).toBe(3); // 1 brief + 2 layout
+    expect(summary.available).toBe(7);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 });
 

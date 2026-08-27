@@ -17,6 +17,8 @@
 
 import { GeminiFlashImageAdapter } from "@/lib/ai/gemini-adapter";
 import { fixturePngBytes } from "@/lib/ai/fake-provider";
+import { isLiveApiKeyConfigured, isProduction } from "@/lib/env/policy";
+import type { Env } from "@/lib/bindings";
 import type {
   ProviderAdapter,
   ProviderOutput,
@@ -96,27 +98,116 @@ export function registerProvider(adapter: ProviderAdapter): void {
   registry.set(adapter.name, adapter);
 }
 
+const defaultFakeAdapter = new FakeProviderAdapter();
+const defaultGeminiAdapter = new GeminiFlashImageAdapter();
+
 /** Reset to the default registry (fake + gemini flash image adapter). Used between tests. */
 export function resetProviders(): void {
   registry.clear();
-  registry.set("fake", new FakeProviderAdapter());
-  registry.set("gemini", new GeminiFlashImageAdapter({ offlineFallback: true }));
+  registry.set("fake", defaultFakeAdapter);
+  registry.set("gemini", defaultGeminiAdapter);
 }
 
 resetProviders();
 
-/**
- * Resolve a provider adapter by name. Unknown providers fall back to the fake
- * adapter in non-production environments and to the real stub otherwise, so an
- * unknown name can never silently skip the lifecycle.
- */
-export function getProvider(name: string, environment = "local"): ProviderAdapter {
-  const found = registry.get(name);
-  if (found) return found;
-  if (environment === "production") return new RealProviderAdapter(name);
-  return registry.get("fake")!;
-}
+export type ProviderEnv =
+  | string
+  | (Partial<Env> & {
+      ENVIRONMENT?: string;
+      AI_API_KEY?: string;
+      AI_API_BASE_URL?: string;
+      AI_DEFAULT_MODEL?: string;
+      AI_OFFLINE?: string;
+      fetchFn?: typeof fetch;
+    });
 
+/**
+ * Resolve a provider adapter by name and environment/bindings.
+ *
+ * Selection rules (Ticket #33):
+ * 1. Production strictly bans FakeProvider (returns RealProviderAdapter).
+ * 2. If no valid live API key is configured:
+ *    - In allowed offline environments, requested "fake" (or default/unknown) resolves to FakeProviderAdapter with zero network calls.
+ *    - Explicit live provider request (e.g. "gemini") without a configured key returns RealProviderAdapter (failing submit closed with PROVIDER_NOT_CONFIGURED).
+ * 3. In production or with a live API key:
+ *    - "gemini" resolves to GeminiFlashImageAdapter initialized with the configured key.
+ *    - Missing key in production fails closed with RealProviderAdapter (PROVIDER_NOT_CONFIGURED).
+ */
+export function getProvider(
+  name: string,
+  envOrEnvironment: ProviderEnv = "local"
+): ProviderAdapter {
+  const envObj =
+    typeof envOrEnvironment === "string"
+      ? { ENVIRONMENT: envOrEnvironment }
+      : envOrEnvironment ?? { ENVIRONMENT: "local" };
+
+  const envName = envObj.ENVIRONMENT || "local";
+  const isProd = isProduction({ ENVIRONMENT: envName });
+
+  const apiKey =
+    envObj.AI_API_KEY ??
+    (typeof process !== "undefined" ? process.env?.AI_API_KEY : undefined);
+
+  const hasLiveKey = isLiveApiKeyConfigured(apiKey);
+  const isOfflineMarker =
+    envObj.AI_OFFLINE === "1" ||
+    envObj.AI_OFFLINE === "true" ||
+    envObj.AI_OFFLINE === "yes" ||
+    (typeof apiKey === "string" && ["fake", "test", "offline", "mock"].includes(apiKey.trim().toLowerCase()));
+
+  // 1. Production: never fake
+  if (isProd) {
+    if (name === "fake") {
+      return new RealProviderAdapter("fake");
+    }
+    const custom = registry.get(name);
+    if (custom && custom !== defaultGeminiAdapter && custom.name !== "fake") {
+      return custom;
+    }
+    if (!hasLiveKey || isOfflineMarker) {
+      return new RealProviderAdapter(name);
+    }
+    if (name === "gemini") {
+      return new GeminiFlashImageAdapter({
+        environment: "production",
+        apiKey,
+        baseUrl: envObj.AI_API_BASE_URL,
+        defaultModel: envObj.AI_DEFAULT_MODEL,
+        bucket: envObj.HD_PRIVATE,
+        fetchFn: envObj.fetchFn,
+      });
+    }
+    return new RealProviderAdapter(name);
+  }
+
+  // 2. Non-production (local, dev, preview, staging, test)
+  if (name === "fake") {
+    return registry.get("fake") ?? defaultFakeAdapter;
+  }
+
+  const custom = registry.get(name);
+  if (custom && custom !== defaultGeminiAdapter) {
+    return custom;
+  }
+
+  if (name === "gemini") {
+    if (hasLiveKey && !isOfflineMarker) {
+      return new GeminiFlashImageAdapter({
+        environment: envName,
+        apiKey,
+        baseUrl: envObj.AI_API_BASE_URL,
+        defaultModel: envObj.AI_DEFAULT_MODEL,
+        bucket: envObj.HD_PRIVATE,
+        fetchFn: envObj.fetchFn,
+      });
+    }
+    return new RealProviderAdapter("gemini");
+  }
+
+  if (custom) return custom;
+  return registry.get("fake") ?? defaultFakeAdapter;
+}
 function failureMarker(prompt: string): string | null {
   const m = /FAIL:([A-Z0-9_]+)/.exec(prompt);
   return m ? m[1] : null;

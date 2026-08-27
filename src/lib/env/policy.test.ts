@@ -8,6 +8,9 @@ import {
   isFreeGrantAllowed,
   isGenerationAllowed,
   isAuthBypassEnabled,
+  isExplicitOfflineMarker,
+  isLiveApiKeyConfigured,
+  isOfflineProviderAllowed,
   isProduction,
   isTestingEconomyAllowed,
 } from "@/lib/env/policy";
@@ -82,5 +85,35 @@ describe("environment policy matrix (ticket #18)", () => {
     } finally {
       process.env.VITEST = prev;
     }
+  });
+
+  it("isLiveApiKeyConfigured identifies valid non-placeholder keys", () => {
+    expect(isLiveApiKeyConfigured(undefined)).toBe(false);
+    expect(isLiveApiKeyConfigured(null)).toBe(false);
+    expect(isLiveApiKeyConfigured("")).toBe(false);
+    expect(isLiveApiKeyConfigured("   ")).toBe(false);
+    expect(isLiveApiKeyConfigured("fake")).toBe(false);
+    expect(isLiveApiKeyConfigured("test")).toBe(false);
+    expect(isLiveApiKeyConfigured("offline")).toBe(false);
+    expect(isLiveApiKeyConfigured("mock")).toBe(false);
+    expect(isLiveApiKeyConfigured("test-live-key-12345")).toBe(true);
+  });
+
+  it("isExplicitOfflineMarker identifies offline vars and markers", () => {
+    expect(isExplicitOfflineMarker({ AI_OFFLINE: "1" })).toBe(true);
+    expect(isExplicitOfflineMarker({ AI_OFFLINE: "true" })).toBe(true);
+    expect(isExplicitOfflineMarker({ AI_OFFLINE: "yes" })).toBe(true);
+    expect(isExplicitOfflineMarker({ AI_OFFLINE: "0" })).toBe(false);
+    expect(isExplicitOfflineMarker({}, "fake")).toBe(true);
+    expect(isExplicitOfflineMarker({}, "test")).toBe(true);
+    expect(isExplicitOfflineMarker({}, "live-key")).toBe(false);
+  });
+
+  it("isOfflineProviderAllowed permits non-prod and forbids prod", () => {
+    expect(isOfflineProviderAllowed("local")).toBe(true);
+    expect(isOfflineProviderAllowed("development")).toBe(true);
+    expect(isOfflineProviderAllowed("preview")).toBe(true);
+    expect(isOfflineProviderAllowed("staging")).toBe(true);
+    expect(isOfflineProviderAllowed("production")).toBe(false);
   });
 });
