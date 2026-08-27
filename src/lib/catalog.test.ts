@@ -6,8 +6,11 @@ import {
   BEFORE_AFTER_PAIRS,
   POPULAR_STYLES,
   IDEAS,
+  EXTERIOR_POPULAR_STYLES,
+  EXTERIOR_IDEAS,
   PRICING_TIERS,
   FAQ_ITEMS,
+  buildCatalogPresetHref,
 } from "@/lib/catalog";
 
 const ENGLISH_ONLY = /^[A-Za-z0-9 ,.'&()/:;!?—–-]+$/;
@@ -69,10 +72,49 @@ describe("landing catalog seed (ticket 12)", () => {
   });
 
   it("every style and idea card links to a design-flow route", () => {
-    for (const item of [...POPULAR_STYLES, ...IDEAS]) {
+    for (const item of [
+      ...POPULAR_STYLES,
+      ...IDEAS,
+      ...EXTERIOR_POPULAR_STYLES,
+      ...EXTERIOR_IDEAS,
+    ]) {
       expect(item.href).toMatch(/^\/(ai-interior-design|ai-exterior-design)$/);
       expect(item.previewLabel).toBeTruthy();
       expect(item.useLabel).toBeTruthy();
+    }
+  });
+
+  it("buildCatalogPresetHref encodes interior style presets", () => {
+    const modernWarm = POPULAR_STYLES.find((s) => s.title === "Modern Warm")!;
+    expect(buildCatalogPresetHref(modernWarm)).toBe(
+      "/ai-interior-design?style=Modern+Warm"
+    );
+  });
+
+  it("buildCatalogPresetHref encodes interior roomType presets", () => {
+    const kitchen = IDEAS.find((i) => i.title === "Kitchen")!;
+    expect(buildCatalogPresetHref(kitchen)).toBe(
+      "/ai-interior-design?roomType=Kitchen"
+    );
+  });
+
+  it("buildCatalogPresetHref encodes exterior style and area presets", () => {
+    const modern = EXTERIOR_POPULAR_STYLES.find((s) => s.title === "Modern")!;
+    expect(buildCatalogPresetHref(modern)).toBe(
+      "/ai-exterior-design?style=Modern"
+    );
+
+    const porch = EXTERIOR_IDEAS.find((i) => i.title === "Front Porch")!;
+    expect(buildCatalogPresetHref(porch)).toBe(
+      "/ai-exterior-design?area=Front+Porch"
+    );
+  });
+
+  it("exterior cards use Preview area idea and Try this look labels", () => {
+    for (const item of [...EXTERIOR_POPULAR_STYLES, ...EXTERIOR_IDEAS]) {
+      expect(item.previewLabel).toBe("Preview area idea");
+      expect(item.useLabel).toBe("Try this look");
+      expect(item.href).toBe("/ai-exterior-design");
     }
   });
 });

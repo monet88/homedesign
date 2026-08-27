@@ -94,6 +94,19 @@ const useLabels = {
   idea: "Try this look",
 } as const;
 
+/** Build a design-flow URL with preset query params for catalog "Use" links. */
+export function buildCatalogPresetHref(item: CatalogItem): string {
+  if (!item.preset) return item.href;
+  const params = new URLSearchParams();
+  if (item.preset.style) params.set("style", item.preset.style);
+  if (item.preset.roomType) params.set("roomType", item.preset.roomType);
+  if (item.preset.area) params.set("area", item.preset.area);
+  if (item.preset.colorScheme) params.set("colorScheme", item.preset.colorScheme);
+  if (item.preset.aspectRatio) params.set("aspectRatio", item.preset.aspectRatio);
+  const query = params.toString();
+  return query ? `${item.href}?${query}` : item.href;
+}
+
 export const POPULAR_STYLES: CatalogItem[] = [
   "Modern Warm",
   "Japandi",
@@ -138,6 +151,49 @@ export const IDEAS: CatalogItem[] = [
   previewLabel: previewLabels.idea,
   useLabel: useLabels.idea,
   preset: { scene: "interior", roomType: title },
+}));
+
+// ---------------------------------------------------------------------------
+// Exterior galleries — Popular Styles + Ideas for Every Area (ticket 17).
+// Labels per DESIGN.md §4: Preview area idea / Try this look.
+// ---------------------------------------------------------------------------
+
+const EXTERIOR_STYLE_IMAGE = cdn("landing/ai-exterior-design-poster.webp");
+const EXTERIOR_IDEA_IMAGE = cdn("landing/ai-floor-plan-poster.webp");
+
+export const EXTERIOR_POPULAR_STYLES: CatalogItem[] = [
+  "Modern",
+  "Modern Farmhouse",
+  "Contemporary",
+  "Colonial",
+  "Craftsman",
+  "Mediterranean",
+  "Minimal",
+  "Industrial",
+].map((title) => ({
+  title,
+  image: EXTERIOR_STYLE_IMAGE,
+  href: DESIGN_TOOLS.exterior,
+  previewLabel: previewLabels.areaIdea,
+  useLabel: useLabels.idea,
+  preset: { scene: "exterior", style: title },
+}));
+
+export const EXTERIOR_IDEAS: CatalogItem[] = [
+  "House Facade",
+  "Front Porch",
+  "Backyard",
+  "Front Yard",
+  "Patio",
+  "Driveway",
+  "Garden",
+].map((title) => ({
+  title,
+  image: EXTERIOR_IDEA_IMAGE,
+  href: DESIGN_TOOLS.exterior,
+  previewLabel: previewLabels.areaIdea,
+  useLabel: useLabels.idea,
+  preset: { scene: "exterior", area: title },
 }));
 
 // ---------------------------------------------------------------------------

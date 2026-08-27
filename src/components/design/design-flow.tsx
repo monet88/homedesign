@@ -7,6 +7,7 @@ import {
   CLIENT_POLL_MAX_WAIT_MS,
 } from "@/lib/ai/types";
 import type { DesignPreset } from "@/lib/design/state";
+import { DesignCatalogGalleries } from "./design-catalog-galleries";
 import { DesignForm } from "./design-form";
 import type { DesignFormHandle } from "./design-form";
 import { ResultSlider } from "./result-slider";
@@ -345,6 +346,8 @@ export function DesignFlow({
           </section>
         </aside>
       </div>
+
+      <DesignCatalogGalleries scene={scene} />
     </main>
   );
 }
