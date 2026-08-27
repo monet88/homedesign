@@ -1,0 +1,55 @@
+package.json
+  s_5e84a4c736087e::t_e3cc6f7088d471 21
+src/lib/ai/config.ts
+  s_3cf9f95b99f20b::t_c36d3e45180193 265-271
+src/lib/ai/provider-adapter.ts
+  s_3cf9f95b99f20b::t_3e11e1fcfabc5f 18,102,106
+src/lib/auth/auth.wtest.ts
+  s_3cf9f95b99f20b::t_d5bf1c82de0135 382-383
+src/lib/auth/server.ts
+  s_5e84a4c736087e::t_4c81a28fa962a2 40-41,56-57,66-67,79,109-117,139-148,292-294
+src/lib/auth/session-stub.ts
+  s_3cf9f95b99f20b::t_37719f719a81a6 26-27,54,58,76,135,137,140
+src/lib/auth/session.test.ts
+  s_3cf9f95b99f20b::t_ac8fb30100ddbf 50
+src/lib/bindings.ts
+  s_3cf9f95b99f20b::t_e4faadb25b7397 22-26
+src/lib/credits/ledger.wtest.ts
+  s_3cf9f95b99f20b::t_2aa92e6594287b 188-189
+src/lib/library/library.wtest.ts
+  s_624565fd86fb4d::t_dcc28fb704a307 345-346
+src/lib/payments/payments.wtest.ts
+  s_3cf9f95b99f20b::t_d08ffbe38a37c7 451-452
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "2d149353575544866f7db094cb68eaad5e3b17c2",
+  "prompts": {},
+  "sessions": {
+    "s_3cf9f95b99f20b": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03d35-50b9-7aa5-9aa3-d39826031a9f",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_5e84a4c736087e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2c2760a1-19e3-4f89-a12b-5af7b06c7360",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_624565fd86fb4d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "995c2abf-92d2-4889-80b4-ad4b943a86c0",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
