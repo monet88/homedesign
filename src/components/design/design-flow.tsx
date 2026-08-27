@@ -131,10 +131,17 @@ export function DesignFlow({
       setPolling(true);
       setStatus("queued");
 
-      const startTime = Date.now();
+      const session = {
+        taskId,
+        sourceAssetId,
+        start: Date.now(),
+        timer: null as ReturnType<typeof setInterval> | null,
+      };
+      activeRef.current = session;
 
       const poll = async () => {
-        if (Date.now() - startTime > CLIENT_POLL_MAX_WAIT_MS) {
+        if (!activeRef.current || activeRef.current !== session) return;
+        if (Date.now() - session.start > CLIENT_POLL_MAX_WAIT_MS) {
           stopPolling();
           setStatus("timeout");
           showToast(
@@ -149,6 +156,8 @@ export function DesignFlow({
             credentials: "same-origin",
           });
 
+          if (!activeRef.current || activeRef.current !== session) return;
+
           if (!res.ok) {
             stopPolling();
             setStatus("error");
@@ -161,6 +170,8 @@ export function DesignFlow({
             data?: StatusView;
             error?: string;
           };
+
+          if (!activeRef.current || activeRef.current !== session) return;
 
           if (json.code !== 0 || !json.data) {
             stopPolling();
@@ -189,8 +200,8 @@ export function DesignFlow({
       };
 
       await poll();
-      if (activeRef.current) {
-        activeRef.current.timer = setInterval(poll, CLIENT_POLL_INTERVAL_MS);
+      if (activeRef.current === session) {
+        session.timer = setInterval(poll, CLIENT_POLL_INTERVAL_MS);
       }
     },
     [appendResult, stopPolling]

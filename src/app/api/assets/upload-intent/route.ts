@@ -42,7 +42,13 @@ export async function POST(request: Request) {
       secretAccessKey: env.R2_SECRET_ACCESS_KEY ?? "",
     };
     let presignedUrl: string | null = null;
-    if (creds.accountId && creds.accessKeyId && creds.secretAccessKey) {
+    if (
+      env.ENVIRONMENT === "local" ||
+      env.R2_ACCOUNT_ID === "local-dev-account" ||
+      !creds.accountId
+    ) {
+      presignedUrl = `/api/assets/${intent.assetId}/upload`;
+    } else if (creds.accountId && creds.accessKeyId && creds.secretAccessKey) {
       const presigned = await presignPutUrl(creds, {
         bucket: "homedesign-private",
         key: intent.key,

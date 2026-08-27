@@ -179,7 +179,6 @@ export function FloorPlanFlow() {
 
   const handleUploadReady = useCallback(async (assetId: string, file: File) => {
     setSourceAssetId(assetId);
-    setPreviewUrl(URL.createObjectURL(file));
     setRoom(null);
     setProposal(null);
     setProjectDetail(null);
@@ -189,6 +188,7 @@ export function FloorPlanFlow() {
       setBusy(true);
       const id = await ensureProject(assetId);
       setProjectId(id);
+      setPreviewUrl(URL.createObjectURL(file));
       await refreshProject(id);
     } catch (err) {
       showToast((err as Error).message, "error");
@@ -486,7 +486,7 @@ export function FloorPlanFlow() {
         onError={(message) => showToast(message, "error")}
       />
 
-      {previewUrl ? (
+      {previewUrl && !busy ? (
         <section className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium">

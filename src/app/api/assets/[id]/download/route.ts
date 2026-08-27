@@ -45,7 +45,13 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     secretAccessKey: env.R2_SECRET_ACCESS_KEY ?? "",
   };
 
-  if (creds.accountId && creds.accessKeyId && creds.secretAccessKey) {
+  if (
+    env.ENVIRONMENT !== "local" &&
+    env.R2_ACCOUNT_ID !== "local-dev-account" &&
+    creds.accountId &&
+    creds.accessKeyId &&
+    creds.secretAccessKey
+  ) {
     const signed = await presignGetUrl(creds, {
       bucket: PRIVATE_BUCKET,
       key: row.storage_key,

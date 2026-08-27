@@ -19,6 +19,22 @@ export async function POST(request: Request) {
 
   try {
     const result = await createDesign(auth.env as unknown as Env, auth.userId, body);
+
+    // In Next.js local development without background queue consumers, run generation loop
+    if (process.env.NODE_ENV === "development" && (auth.env.ENVIRONMENT === "local" || !auth.env.ENVIRONMENT)) {
+      void (async () => {
+        try {
+          const { runGeneration, completeGeneration } = await import("@/lib/ai/lifecycle");
+          const r = await runGeneration(auth.env as unknown as Env, result.id);
+          if (r.status === "quarantined") {
+            await completeGeneration(auth.env as unknown as Env, result.id);
+          }
+        } catch (e) {
+          console.error("Local dev background generation error:", e);
+        }
+      })();
+    }
+
     return Response.json({ code: 0, message: "ok", data: { id: result.id } });
   } catch (err) {
     return designErrorResponse(err);

@@ -47,8 +47,9 @@ ON CONFLICT(email) DO UPDATE SET
   updatedAt = ${now};`;
 
     const accountSql = `INSERT INTO account (id, accountId, providerId, issuer, userId, password, createdAt, updatedAt)
-VALUES ('${accountId}', '${userId}', 'credential', 'credential', (SELECT id FROM user WHERE email = '${config.email}'), '${hashedPassword}', ${now}, ${now})
+VALUES ('${accountId}', '${userId}', 'credential', 'local:credential', (SELECT id FROM user WHERE email = '${config.email}'), '${hashedPassword}', ${now}, ${now})
 ON CONFLICT(id) DO UPDATE SET
+  issuer = 'local:credential',
   password = '${hashedPassword}',
   updatedAt = ${now};`;
 

@@ -369,7 +369,6 @@ export async function createDesign(
   return { id: taskId, cached: false, status: "accepted", cost: config.cost, projectId };
 }
 
-/** Send the dispatch message and record the attempt (reconciler input). */
 export async function dispatchTask(env: Env, taskId: string): Promise<void> {
   await env.DB.prepare(`UPDATE ai_tasks SET dispatched_at = ?2 WHERE id = ?1`)
     .bind(taskId, Date.now())
@@ -539,7 +538,13 @@ async function buildProviderRequest(env: Env, task: TaskRow): Promise<ProviderRe
  * Worker and is never persisted on the Design row.
  */
 async function resolveSourceAccess(env: Env, key: string): Promise<string> {
-  if (env.R2_ACCOUNT_ID && env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY) {
+  if (
+    env.ENVIRONMENT !== "local" &&
+    env.R2_ACCOUNT_ID !== "local-dev-account" &&
+    env.R2_ACCOUNT_ID &&
+    env.R2_ACCESS_KEY_ID &&
+    env.R2_SECRET_ACCESS_KEY
+  ) {
     const signed = await presignGetUrl(
       {
         accountId: env.R2_ACCOUNT_ID,

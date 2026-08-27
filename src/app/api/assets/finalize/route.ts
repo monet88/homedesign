@@ -45,5 +45,23 @@ export async function POST(request: Request) {
     return Response.json({ error: "FINALIZE_FAILED", reason: res.reason }, { status });
   }
 
+  // In Next.js local development without background queue consumers, validate inline
+  if (env.ENVIRONMENT === "local" || !env.ENVIRONMENT) {
+    const { validateAsset } = await import("@/lib/intake/validator");
+    const asset = await env.DB.prepare(
+      `SELECT id, storage_key, declared_size, mime_type FROM assets WHERE id = ?1`
+    ).bind(assetId).first<{ id: string; storage_key: string; declared_size: number; mime_type: string }>();
+
+    if (asset) {
+      await validateAsset(env as any, {
+        assetId,
+        key: asset.storage_key,
+        declaredSize: asset.declared_size,
+        declaredMime: asset.mime_type,
+        attempt: 1,
+      });
+    }
+  }
+
   return Response.json({ code: 0, data: { assetId, lifecycle: res.lifecycle } });
 }

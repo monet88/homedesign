@@ -76,15 +76,18 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
       return trimmed;
     }
     if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-      const res = await this.fetchFn(trimmed);
-      if (!res.ok) {
-        throw new Error(`Failed to fetch source image from URL: ${res.status} ${res.statusText}`);
+      try {
+        const res = await this.fetchFn(trimmed);
+        if (res.ok) {
+          const contentType = res.headers.get("content-type") || "image/jpeg";
+          const arrayBuffer = await res.arrayBuffer();
+          const bytes = new Uint8Array(arrayBuffer);
+          const base64 = bytesToBase64(bytes);
+          return `data:${contentType.split(";")[0]};base64,${base64}`;
+        }
+      } catch {
+        // Fall back to fixture or bucket read
       }
-      const contentType = res.headers.get("content-type") || "image/jpeg";
-      const arrayBuffer = await res.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuffer);
-      const base64 = bytesToBase64(bytes);
-      return `data:${contentType.split(";")[0]};base64,${base64}`;
     }
     if (
       this.bucket &&
