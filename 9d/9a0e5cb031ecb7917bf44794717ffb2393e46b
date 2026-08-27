@@ -1,0 +1,20 @@
+src/lib/fixtures/images.ts
+  h_17f2fa2b92da6a 70-135
+src/lib/intake/intake.wtest.ts
+  h_17f2fa2b92da6a 6-13,22,438-712
+src/lib/intake/validator.ts
+  h_17f2fa2b92da6a 57-61,129-150,167-171,174-175,182-183,185-187,189-201
+src/lib/worker/queue-consumer.ts
+  h_17f2fa2b92da6a 48-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "9d9a0e5cb031ecb7917bf44794717ffb2393e46b",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
