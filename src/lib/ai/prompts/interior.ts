@@ -13,7 +13,11 @@ function pick(preset: string | undefined, custom: string | undefined, fallback: 
   return fallback;
 }
 
-/** Interior redesign template — verbatim from origin chunk 6f41c63bad4e9f32.js */
+/**
+ * Interior redesign template (Ticket #27, ADR 0007).
+ * Structured 4-layer prompt: Task & Scene, PBR Materiality & Palette,
+ * Structural Invariants, Quality/Daylight & Optics, plus optional Custom Requirements.
+ */
 export function buildInteriorPrompt(intent: InteriorIntent): string {
   if (intent.mode === "edit") {
     return (intent.editInstruction ?? intent.requirements ?? "").trim();
@@ -25,10 +29,9 @@ export function buildInteriorPrompt(intent: InteriorIntent): string {
 
   const lines = [
     `Redesign this ${roomType} in a ${style} direction.`,
-    `Use ${colorScheme}.`,
-    `Keep the existing walls, doors, windows, and structural layout.`,
-    `Update furniture, materials, lighting, decor, and styling.`,
-    `Create a photorealistic interior render with natural scale and realistic daylight.`,
+    `Apply ${colorScheme} with high-detail physically based rendering (PBR) materials, tactile fabrics, natural wood grains, and realistic surface finishes across updated furniture, lighting, and decor.`,
+    `Strictly preserve existing walls, ceiling heights, doors, window placements, structural columns, and room layout without geometric warping.`,
+    `Create a photorealistic interior render with natural scale, balanced daylight entering naturally through openings, accurate global illumination, and eye-level architectural perspective.`,
   ];
 
   const requirements = intent.requirements?.trim();
@@ -36,3 +39,4 @@ export function buildInteriorPrompt(intent: InteriorIntent): string {
 
   return lines.join("\n");
 }
+

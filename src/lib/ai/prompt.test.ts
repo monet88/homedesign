@@ -11,6 +11,10 @@ import { buildPrompt } from "@/lib/ai/lifecycle";
 import {
   buildExteriorPrompt,
   buildInteriorPrompt,
+  buildFloorPlanBriefPrompt,
+  buildFloorPlanLayoutPrompt,
+  buildFloorPlanRenderPrompt,
+  buildFloorPlanPanoramaPrompt,
   getSystemPrompt,
   getNegativeConstraints,
   ARCHITECTURAL_SYSTEM_INSTRUCTION,
@@ -21,26 +25,26 @@ import {
   type DesignConfig,
   type ExteriorIntent,
   type InteriorIntent,
+  type FloorPlanIntent,
 } from "@/lib/ai/types";
+import type { RoomBriefProposal } from "@/lib/floor-plan/types";
 
 const INTERIOR_TEMPLATE = [
   "Redesign this living room in a modern direction.",
-  "Use warm neutrals.",
-  "Keep the existing walls, doors, windows, and structural layout.",
-  "Update furniture, materials, lighting, decor, and styling.",
-  "Create a photorealistic interior render with natural scale and realistic daylight.",
+  "Apply warm neutrals with high-detail physically based rendering (PBR) materials, tactile fabrics, natural wood grains, and realistic surface finishes across updated furniture, lighting, and decor.",
+  "Strictly preserve existing walls, ceiling heights, doors, window placements, structural columns, and room layout without geometric warping.",
+  "Create a photorealistic interior render with natural scale, balanced daylight entering naturally through openings, accurate global illumination, and eye-level architectural perspective.",
 ].join("\n");
 
 const EXTERIOR_TEMPLATE = [
   "Redesign this front yard exterior in a farmhouse direction.",
-  "Use earth tones.",
-  "Keep the existing building footprint, roofline, doors, windows, and structural geometry.",
-  "Update facade materials, exterior finishes, landscaping, lighting, and curb appeal.",
-  "Create a photorealistic exterior render with natural scale and realistic daylight.",
+  "Apply earth tones with high-detail physically based rendering (PBR) facade materials, authentic siding, stone, brick, or timber textures, and refined exterior finishes.",
+  "Strictly preserve the existing building footprint, rooflines, structural massing, window and door placements, and architectural geometry.",
+  "Create a photorealistic exterior render with natural scale, realistic outdoor daylighting, soft global illumination, refined landscaping, and enhanced curb appeal.",
 ].join("\n");
 
-describe("interior prompt template (verbatim origin snapshot)", () => {
-  it("builds the 5-line redesign template from the intent", () => {
+describe("interior prompt template (structured 4-layer PBR & Optics)", () => {
+  it("builds the structured 4-layer redesign template from the intent", () => {
     const intent: InteriorIntent = {
       mode: "redesign",
       roomType: "living room",
@@ -54,10 +58,9 @@ describe("interior prompt template (verbatim origin snapshot)", () => {
     expect(buildInteriorPrompt({ mode: "redesign" })).toBe(
       [
         "Redesign this the room in a custom design direction.",
-        "Use a custom color palette.",
-        "Keep the existing walls, doors, windows, and structural layout.",
-        "Update furniture, materials, lighting, decor, and styling.",
-        "Create a photorealistic interior render with natural scale and realistic daylight.",
+        "Apply a custom color palette with high-detail physically based rendering (PBR) materials, tactile fabrics, natural wood grains, and realistic surface finishes across updated furniture, lighting, and decor.",
+        "Strictly preserve existing walls, ceiling heights, doors, window placements, structural columns, and room layout without geometric warping.",
+        "Create a photorealistic interior render with natural scale, balanced daylight entering naturally through openings, accurate global illumination, and eye-level architectural perspective.",
       ].join("\n")
     );
   });
@@ -73,7 +76,7 @@ describe("interior prompt template (verbatim origin snapshot)", () => {
       customColorScheme: "muted greens",
     });
     expect(prompt).toContain("Redesign this reading nook in a wabi-sabi direction.");
-    expect(prompt).toContain("Use muted greens.");
+    expect(prompt).toContain("Apply muted greens with high-detail");
     expect(prompt).not.toContain("living room");
     expect(prompt).not.toContain("modern");
   });
@@ -109,8 +112,8 @@ describe("interior prompt template (verbatim origin snapshot)", () => {
   });
 });
 
-describe("exterior prompt template (clone contract snapshot)", () => {
-  it("builds the 5-line exterior template from the intent", () => {
+describe("exterior prompt template (structured 4-layer Facade & Curb Appeal)", () => {
+  it("builds the structured 4-layer exterior template from the intent", () => {
     const intent: ExteriorIntent = {
       mode: "redesign",
       area: "front yard",
@@ -120,7 +123,7 @@ describe("exterior prompt template (clone contract snapshot)", () => {
     expect(buildExteriorPrompt(intent)).toBe(EXTERIOR_TEMPLATE);
   });
 
-  it("preserves structural geometry wording (clone contract) and falls back", () => {
+  it("preserves structural geometry invariants and falls back", () => {
     const prompt = buildExteriorPrompt({ mode: "redesign" });
     // Fallback area is "the exterior" (origin-style fallback), so the first
     // line reads "…the exterior exterior…" — snapshotted as clone behavior.
@@ -128,7 +131,7 @@ describe("exterior prompt template (clone contract snapshot)", () => {
       "Redesign this the exterior exterior in a custom design direction."
     );
     expect(prompt).toContain(
-      "Keep the existing building footprint, roofline, doors, windows, and structural geometry."
+      "Strictly preserve the existing building footprint, rooflines, structural massing, window and door placements, and architectural geometry."
     );
   });
 
@@ -211,6 +214,124 @@ describe("buildPrompt dispatch by scene", () => {
     });
     expect(panoramaPrompt).toContain("equirectangular");
     expect(panoramaPrompt).toContain("4096×2048");
+  });
+});
+
+describe("Floor Plan 4-Stage Prompt Suite (Ticket #28)", () => {
+  const sampleProposal: RoomBriefProposal = {
+    recognition: {
+      roomType: "primary bedroom",
+      openings: ["north window", "south door"],
+      shape: "rectangular",
+      regionHint: "top-right quadrant",
+      dimensions: { widthPx: 1400, heightPx: 1000, source: "asset-metadata" },
+    },
+    style: "japandi",
+    stylePreference: "minimalist zen with light oak",
+    questionnaire: [{ id: "bed-size", question: "Preferred bed size?", options: ["King", "Queen"] }],
+    freeformRequirements: "Include a reading corner near window",
+    designProposal: "Open flow with king bed on west wall and reading nook by north window",
+  };
+
+  it("builds structured Room Brief prompt with style guidance, questionnaire integration, and strict dimensions", () => {
+    const intent: FloorPlanIntent = {
+      stage: "brief",
+      marker: { x: 45, y: 55 },
+      roomId: "room-101",
+      style: "japandi",
+      stylePreference: "minimalist zen with light oak",
+      intake: { bedSize: "King", naturalLight: "High" },
+      feedback: "Ensure adequate wardrobe space",
+      recognition: {
+        roomType: "primary bedroom",
+        designProposal: "Spacious master bedroom with ensuite access",
+      },
+    };
+
+    const prompt = buildFloorPlanBriefPrompt(intent);
+    expect(prompt).toContain("marker (45%, 55%)");
+    expect(prompt).toContain("structured Room Brief for primary bedroom");
+    expect(prompt).toContain("Style guidance: Target style is japandi");
+    expect(prompt).toContain("Style preference: minimalist zen with light oak");
+    expect(prompt).toContain('Room questionnaire integration: {"bedSize":"King","naturalLight":"High"}');
+    expect(prompt).toContain("User feedback: Ensure adequate wardrobe space");
+    expect(prompt).toContain("Recognition proposal: Spacious master bedroom with ensuite access");
+    expect(prompt).toContain("Strict dimension verification: Do not fabricate measurements");
+  });
+
+  it("builds default style guidance when no explicit style is provided for brief", () => {
+    const prompt = buildFloorPlanBriefPrompt({
+      stage: "brief",
+      marker: { x: 20, y: 30 },
+    });
+    expect(prompt).toContain("marker (20%, 30%)");
+    expect(prompt).toContain("Style guidance: Propose a cohesive and context-appropriate aesthetic style direction");
+  });
+
+  it("builds 2D Layout prompt with ergonomic furniture layout, circulation/traffic flow, and zone labels", () => {
+    const intent: FloorPlanIntent = {
+      stage: "layout",
+      marker: { x: 45, y: 55 },
+      roomId: "room-101",
+      feedback: "Wider passage between bed and dresser",
+    };
+
+    const prompt = buildFloorPlanLayoutPrompt(intent, sampleProposal);
+    expect(prompt).toContain("ergonomic 2D architectural furniture layout board for primary bedroom");
+    expect(prompt).toContain("marker (45%, 55%)");
+    expect(prompt).toContain("Layout & Ergonomics: Design an optimized, ergonomic 2D furniture layout");
+    expect(prompt).toContain("unobstructed circulation/traffic flow");
+    expect(prompt).toContain("Visual Annotations: Show furniture placement with clear annotations and readable zone labels");
+    expect(prompt).toContain("Room Brief: Open flow with king bed on west wall and reading nook by north window");
+    expect(prompt).toContain("Target style: japandi");
+    expect(prompt).toContain("User feedback: Wider passage between bed and dresser");
+    expect(prompt).toContain("Source dimensions (metadata only): 1400x1000px");
+    expect(prompt).toContain("Strict dimension verification: Do not fabricate measurements");
+    expect(prompt).toContain("This is a generated design board — not an editable CAD drawing");
+  });
+
+  it("builds 3D Render prompt with confirmed 2D placement, realistic daylight, and PBR textures", () => {
+    const intent: FloorPlanIntent = {
+      stage: "render",
+      marker: { x: 45, y: 55 },
+      roomId: "room-101",
+      feedback: "Warm afternoon lighting",
+    };
+
+    const prompt = buildFloorPlanRenderPrompt(intent, sampleProposal);
+    expect(prompt).toContain("photorealistic 3D interior render for primary bedroom");
+    expect(prompt).toContain("aligned with the confirmed 2D furniture layout and spatial placement");
+    expect(prompt).toContain("marker (45%, 55%)");
+    expect(prompt).toContain("Optics & Perspective: Eye-level architectural perspective, 24-35mm lens");
+    expect(prompt).toContain("Lighting & Atmosphere: Balanced realistic daylight");
+    expect(prompt).toContain("Materials & Shading: High-detail physically based rendering (PBR) textures");
+    expect(prompt).toContain("Room Brief: Open flow with king bed on west wall and reading nook by north window");
+    expect(prompt).toContain("Target style: japandi");
+    expect(prompt).toContain("User feedback: Warm afternoon lighting");
+    expect(prompt).toContain("Strictly respect the confirmed 2D furniture placement");
+    expect(prompt).toContain("This is a photorealistic image — not a 3D mesh");
+  });
+
+  it("builds 360° Panorama prompt with 2:1 equirectangular projection, viewer orientation, and spatial continuity", () => {
+    const intent: FloorPlanIntent = {
+      stage: "panorama",
+      marker: { x: 45, y: 55 },
+      roomId: "room-101",
+      panoramaOrientation: { yaw: 45, pitch: -5, hfov: 95 },
+      feedback: "Keep chandelier visible in initial view",
+    };
+
+    const prompt = buildFloorPlanPanoramaPrompt(intent, sampleProposal);
+    expect(prompt).toContain("seamless 360° equirectangular panorama for primary bedroom");
+    expect(prompt).toContain("marker (45%, 55%)");
+    expect(prompt).toContain("Strict 2:1 equirectangular projection (4096×2048 pixels)");
+    expect(prompt).toContain("360° Spatial Continuity: Ensure full spherical 360° spatial continuity");
+    expect(prompt).toContain("Initial viewer orientation (degrees): yaw 45, pitch -5, hfov 95");
+    expect(prompt).toContain("Room Brief: Open flow with king bed on west wall and reading nook by north window");
+    expect(prompt).toContain("Target style: japandi");
+    expect(prompt).toContain("User feedback: Keep chandelier visible in initial view");
+    expect(prompt).toContain("Preserve the confirmed render's materials, PBR textures, daylighting, and spatial coherence");
+    expect(prompt).toContain("This is a single-room panorama — not a tour");
   });
 });
 

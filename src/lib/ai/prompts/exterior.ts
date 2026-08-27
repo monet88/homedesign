@@ -12,7 +12,11 @@ function pick(preset: string | undefined, custom: string | undefined, fallback: 
   return fallback;
 }
 
-/** Exterior template — clone contract (facade & footprint preservation) */
+/**
+ * Exterior redesign template (Ticket #27, ADR 0007).
+ * Structured 4-layer prompt: Facade & Area, Facade Materials & Palette (PBR),
+ * Geometry Invariants, Landscaping & Daylight (Curb Appeal), plus optional Custom Requirements.
+ */
 export function buildExteriorPrompt(intent: ExteriorIntent): string {
   if (intent.mode === "edit") {
     return (intent.editInstruction ?? intent.requirements ?? "").trim();
@@ -24,10 +28,9 @@ export function buildExteriorPrompt(intent: ExteriorIntent): string {
 
   const lines = [
     `Redesign this ${area} exterior in a ${style} direction.`,
-    `Use ${colorScheme}.`,
-    `Keep the existing building footprint, roofline, doors, windows, and structural geometry.`,
-    `Update facade materials, exterior finishes, landscaping, lighting, and curb appeal.`,
-    `Create a photorealistic exterior render with natural scale and realistic daylight.`,
+    `Apply ${colorScheme} with high-detail physically based rendering (PBR) facade materials, authentic siding, stone, brick, or timber textures, and refined exterior finishes.`,
+    `Strictly preserve the existing building footprint, rooflines, structural massing, window and door placements, and architectural geometry.`,
+    `Create a photorealistic exterior render with natural scale, realistic outdoor daylighting, soft global illumination, refined landscaping, and enhanced curb appeal.`,
   ];
 
   const requirements = intent.requirements?.trim();
@@ -35,3 +38,4 @@ export function buildExteriorPrompt(intent: ExteriorIntent): string {
 
   return lines.join("\n");
 }
+
