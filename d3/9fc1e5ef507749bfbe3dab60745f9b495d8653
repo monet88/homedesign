@@ -1,0 +1,19 @@
+src/components/shell/header.tsx
+  s_624565fd86fb4d::t_1ac51e1c805ac7 92-101,186-194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "d39fc1e5ef507749bfbe3dab60745f9b495d8653",
+  "prompts": {},
+  "sessions": {
+    "s_624565fd86fb4d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "995c2abf-92d2-4889-80b4-ad4b943a86c0",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
