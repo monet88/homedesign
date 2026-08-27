@@ -1,9 +1,9 @@
 import type { InteriorIntent } from "@/lib/ai/types";
-
-// Fallbacks (origin behavior: empty custom value falls back to these)
-export const FALLBACK_ROOM_TYPE = "the room";
-export const FALLBACK_STYLE = "custom design";
-export const FALLBACK_COLOR_SCHEME = "a custom color palette";
+import {
+  FALLBACK_COLOR_SCHEME,
+  FALLBACK_ROOM_TYPE,
+  FALLBACK_STYLE,
+} from "./constants";
 
 function pick(preset: string | undefined, custom: string | undefined, fallback: string): string {
   const c = custom?.trim();

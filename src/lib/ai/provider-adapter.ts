@@ -18,16 +18,13 @@
 import { GeminiFlashImageAdapter } from "@/lib/ai/gemini-adapter";
 import { fixturePngBytes } from "@/lib/ai/fake-provider";
 import type {
+  ProviderAdapter,
   ProviderOutput,
   ProviderRequest,
   ProviderSubmitResult,
 } from "@/lib/ai/types";
 
-export interface ProviderAdapter {
-  readonly name: string;
-  submit(req: ProviderRequest): Promise<ProviderSubmitResult>;
-  fetchOutput(req?: ProviderRequest, providerTaskId?: string): Promise<ProviderOutput | null>;
-}
+export type { ProviderAdapter };
 
 /**
  * Fake provider (ticket #1 seam) — the working implementation for every

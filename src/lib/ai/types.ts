@@ -188,6 +188,12 @@ export interface ProviderOutput {
   contentType: string;
 }
 
+export interface ProviderAdapter {
+  readonly name: string;
+  submit(req: ProviderRequest): Promise<ProviderSubmitResult>;
+  fetchOutput(req?: ProviderRequest, providerTaskId?: string): Promise<ProviderOutput | null>;
+}
+
 // ── Task lifecycle ───────────────────────────────────────────────────────────
 
 /**

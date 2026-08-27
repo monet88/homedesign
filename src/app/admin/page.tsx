@@ -4,37 +4,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSession } from "@/lib/auth/session-stub";
 
-interface AdminUser {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  createdAt: number;
-  creditBalance: number;
-}
-
-interface AdminTask {
-  id: string;
-  scene: string;
-  provider: string;
-  model: string;
-  prompt: string;
-  status: string;
-  created_at: number;
-  updated_at: number;
-  cost_credits: number;
-  error_code: string | null;
-  duration: number;
-  durationMs: number;
-}
-
-interface HealthCheckResult {
-  status: "healthy" | "unhealthy";
-  latencyMs: number;
-  models: string[];
-  endpoint: string;
-  checkedAt?: number;
-}
+import type {
+  AdminApiResponse,
+  AdminCreditAdjustmentData,
+  AdminPagination,
+  AdminTask,
+  AdminTasksData,
+  AdminUser,
+  AdminUsersData,
+  HealthCheckResult,
+} from "@/lib/admin/types";
 
 type TabType = "users" | "tasks" | "health";
 
@@ -85,7 +64,7 @@ export default function AdminDashboardPage() {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error || `HTTP ${res.status}`);
       }
-      const json = await res.json();
+      const json = (await res.json()) as AdminApiResponse<AdminUsersData>;
       setUsers(json?.data?.users ?? []);
       if (json?.data?.pagination) {
         setUserPagination(json.data.pagination);
@@ -107,7 +86,7 @@ export default function AdminDashboardPage() {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error || `HTTP ${res.status}`);
       }
-      const json = await res.json();
+      const json = (await res.json()) as AdminApiResponse<AdminTasksData>;
       setTasks(json?.data?.tasks ?? []);
     } catch (err) {
       setTasksError(err instanceof Error ? err.message : "Failed to load tasks");
@@ -130,7 +109,7 @@ export default function AdminDashboardPage() {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error || `HTTP ${res.status}`);
       }
-      const json = await res.json();
+      const json = (await res.json()) as AdminApiResponse<HealthCheckResult>;
       setHealth({
         ...json.data,
         checkedAt: Date.now(),
@@ -193,7 +172,7 @@ export default function AdminDashboardPage() {
         throw new Error(body.error || `HTTP ${res.status}`);
       }
 
-      const json = await res.json();
+      const json = (await res.json()) as AdminApiResponse<AdminCreditAdjustmentData>;
       const newBalance = json?.data?.creditBalance ?? json?.data?.balance ?? 0;
 
       // Update local state

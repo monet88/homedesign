@@ -7,6 +7,18 @@ import {
   POST as postHealth,
 } from "@/app/api/admin/health/route";
 import type { ResolvedSession, AuthEnv } from "@/lib/auth/server";
+import type {
+  AdminApiResponse,
+  AdminApiErrorResponse,
+  AdminCreditAdjustmentData,
+  AdminTasksData,
+  AdminUsersData,
+  HealthCheckResult,
+} from "@/lib/admin/types";
+
+async function readJson<T>(res: Response): Promise<T> {
+  return (await res.json()) as T;
+}
 
 // Current mock session state
 let mockSession: ResolvedSession | null = null;
@@ -315,7 +327,7 @@ describe("Admin Operations API Endpoints", () => {
       const res = await getUsers(req);
 
       expect(res.status).toBe(401);
-      const json = await res.json();
+      const json = await readJson<AdminApiErrorResponse>(res);
       expect(json.error).toBe("UNAUTHORIZED");
     });
 
@@ -325,7 +337,7 @@ describe("Admin Operations API Endpoints", () => {
       const res = await getUsers(req);
 
       expect(res.status).toBe(403);
-      const json = await res.json();
+      const json = await readJson<AdminApiErrorResponse>(res);
       expect(json.error).toBe("FORBIDDEN");
     });
 
@@ -335,7 +347,7 @@ describe("Admin Operations API Endpoints", () => {
       const res = await getUsers(req);
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json = await readJson<AdminApiResponse<AdminUsersData>>(res);
       expect(json.code).toBe(0);
       expect(Array.isArray(json.data.users)).toBe(true);
       expect(json.data.users.length).toBe(2);
@@ -346,15 +358,15 @@ describe("Admin Operations API Endpoints", () => {
         totalPages: 1,
       });
 
-      const admin = json.data.users.find((u: any) => u.email === "minhthang421992@gmail.com");
+      const admin = json.data.users.find((u) => u.email === "minhthang421992@gmail.com");
       expect(admin).toBeDefined();
-      expect(admin.role).toBe("admin");
-      expect(admin.creditBalance).toBe(99999);
+      expect(admin?.role).toBe("admin");
+      expect(admin?.creditBalance).toBe(99999);
 
-      const standard = json.data.users.find((u: any) => u.email === "user@example.com");
+      const standard = json.data.users.find((u) => u.email === "user@example.com");
       expect(standard).toBeDefined();
-      expect(standard.role).toBe("user");
-      expect(standard.creditBalance).toBe(10);
+      expect(standard?.role).toBe("user");
+      expect(standard?.creditBalance).toBe(10);
     });
 
     it("respects page and limit search parameters", async () => {
@@ -363,7 +375,7 @@ describe("Admin Operations API Endpoints", () => {
       const res = await getUsers(req);
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json = await readJson<AdminApiResponse<AdminUsersData>>(res);
       expect(json.code).toBe(0);
       expect(json.data.users.length).toBe(1);
       expect(json.data.pagination).toEqual({
@@ -422,7 +434,7 @@ describe("Admin Operations API Endpoints", () => {
       });
       const res = await adjustCredits(req);
       expect(res.status).toBe(404);
-      const json = await res.json();
+      const json = await readJson<AdminApiErrorResponse>(res);
       expect(json.error).toBe("USER_NOT_FOUND");
     });
 
@@ -439,7 +451,7 @@ describe("Admin Operations API Endpoints", () => {
       const res = await adjustCredits(req);
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json = await readJson<AdminApiResponse<AdminCreditAdjustmentData>>(res);
       expect(json.code).toBe(0);
       expect(json.data.userId).toBe("user-standard");
       expect(json.data.creditBalance).toBe(510); // 10 + 500
@@ -460,7 +472,7 @@ describe("Admin Operations API Endpoints", () => {
       const res = await adjustCredits(req);
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json = await readJson<AdminApiResponse<AdminCreditAdjustmentData>>(res);
       expect(json.code).toBe(0);
       expect(json.data.userId).toBe("user-standard");
       expect(json.data.creditBalance).toBe(5); // 10 - 5
@@ -489,7 +501,7 @@ describe("Admin Operations API Endpoints", () => {
       const res = await getTasks(req);
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json = await readJson<AdminApiResponse<AdminTasksData>>(res);
       expect(json.code).toBe(0);
       expect(Array.isArray(json.data.tasks)).toBe(true);
       expect(json.data.tasks.length).toBe(2);
@@ -544,7 +556,7 @@ describe("Admin Operations API Endpoints", () => {
       const res = await postHealth(req);
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json = await readJson<AdminApiResponse<HealthCheckResult>>(res);
       expect(json.code).toBe(0);
       expect(json.data.status).toBe("healthy");
       expect(json.data.latencyMs).toBeGreaterThan(0);
@@ -564,7 +576,7 @@ describe("Admin Operations API Endpoints", () => {
       const res = await getHealth(req);
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json = await readJson<AdminApiResponse<HealthCheckResult>>(res);
       expect(json.code).toBe(0);
       expect(json.data.status).toBe("unhealthy");
       expect(json.data.models).toEqual([]);

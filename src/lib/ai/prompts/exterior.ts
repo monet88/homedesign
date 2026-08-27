@@ -1,8 +1,9 @@
 import type { ExteriorIntent } from "@/lib/ai/types";
-
-export const FALLBACK_AREA = "the exterior";
-export const FALLBACK_STYLE = "custom design";
-export const FALLBACK_COLOR_SCHEME = "a custom color palette";
+import {
+  FALLBACK_AREA,
+  FALLBACK_COLOR_SCHEME,
+  FALLBACK_STYLE,
+} from "./constants";
 
 function pick(preset: string | undefined, custom: string | undefined, fallback: string): string {
   const c = custom?.trim();
