@@ -1,0 +1,34 @@
+.github/workflows/ci.yml
+  h_17f2fa2b92da6a 16-17,27-29
+docs/adr/0007-cliproxy-gemini-image-provider-and-admin-system.md
+  h_17f2fa2b92da6a 19
+docs/specs/0001-real-ai-provider-admin-system-e2e.md
+  h_17f2fa2b92da6a 90
+e2e/helpers/auth-helper.ts
+  h_17f2fa2b92da6a 4-5,10-11
+scripts/secret-gate.sh
+  h_17f2fa2b92da6a 1-100
+scripts/seed-admin.mjs
+  h_17f2fa2b92da6a 27-30
+src/app/api/admin/admin-api.test.ts
+  h_17f2fa2b92da6a 194
+src/app/api/admin/health/route.ts
+  h_17f2fa2b92da6a 23
+src/lib/ai/gemini-adapter.ts
+  h_17f2fa2b92da6a 25,62
+src/lib/auth/admin.test.ts
+  h_17f2fa2b92da6a 120,128,133,143
+src/lib/auth/admin.ts
+  h_17f2fa2b92da6a 22,40-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "35554b8e9b3730c91c06a57fd15a0699b3cbbd83",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
