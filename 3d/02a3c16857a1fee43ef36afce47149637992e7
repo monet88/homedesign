@@ -1,0 +1,51 @@
+playwright.config.ts
+  s_3cf9f95b99f20b::t_d84316a25fd34c 10,12,38
+src/app/api/ai/generate/route.ts
+  s_3cf9f95b99f20b::t_b02ed38aaea34c 22-37
+src/app/api/assets/[id]/download/route.ts
+  s_3cf9f95b99f20b::t_e19493ee697642 48-54
+src/app/api/assets/finalize/route.ts
+  s_3cf9f95b99f20b::t_41704baf4d32d7 48-65
+src/app/api/assets/upload-intent/route.ts
+  s_624565fd86fb4d::t_755cbbff23bb81 45-51
+src/app/api/designs/route.ts
+  s_3cf9f95b99f20b::t_e7d29000170ad9 33-51
+src/components/design/design-flow.tsx
+  s_624565fd86fb4d::t_12ac95a75569de 134-140,143-144,159-160,174-175,203-204
+src/components/floor-plan/floor-plan-flow.tsx
+  s_624565fd86fb4d::t_ee9249b29994ad 191,489
+src/lib/ai/lifecycle.ts
+  s_5e84a4c736087e::t_b7061a4c8e1c17 541-547
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "3d02a3c16857a1fee43ef36afce47149637992e7",
+  "prompts": {},
+  "sessions": {
+    "s_3cf9f95b99f20b": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03d35-50b9-7aa5-9aa3-d39826031a9f",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_5e84a4c736087e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2c2760a1-19e3-4f89-a12b-5af7b06c7360",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_624565fd86fb4d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "995c2abf-92d2-4889-80b4-ad4b943a86c0",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
