@@ -11,6 +11,7 @@
 //   * Offline fallback support.
 
 import { fixturePngBytes } from "@/lib/ai/fake-provider";
+import { getNegativeConstraints, getSystemPrompt } from "@/lib/ai/prompts";
 import type {
   ProviderAdapter,
   ProviderOutput,
@@ -151,9 +152,14 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
 
     const model =
       req.model && req.model !== "gemini-2.5-flash-image" ? req.model : this.defaultModel;
+    const systemPrompt = `${getSystemPrompt(req.scene)}\n${getNegativeConstraints()}`;
     const payload = {
       model,
       messages: [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
         {
           role: "user",
           content: contents,

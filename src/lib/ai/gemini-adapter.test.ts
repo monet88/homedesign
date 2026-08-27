@@ -192,8 +192,10 @@ describe("GeminiFlashImageAdapter Adapter Lifecycle", () => {
 
     const sentPayload = JSON.parse(callInit.body);
     expect(sentPayload.model).toBe("gemini-3.1-flash-image");
-    expect(sentPayload.messages[0].role).toBe("user");
-    expect(sentPayload.messages[0].content).toEqual([
+    expect(sentPayload.messages[0].role).toBe("system");
+    expect(sentPayload.messages[0].content).toContain("architectural visualizer");
+    expect(sentPayload.messages[1].role).toBe("user");
+    expect(sentPayload.messages[1].content).toEqual([
       { type: "text", text: REQ.prompt },
       { type: "image_url", image_url: { url: REQ.options.image_input![0] } },
     ]);
@@ -306,7 +308,9 @@ describe("GeminiFlashImageAdapter Adapter Lifecycle", () => {
     );
     expect(completionCall).toBeDefined();
     const payload = JSON.parse(completionCall![1].body);
-    expect(payload.messages[0].content[1].image_url.url).toContain("data:image/jpeg;base64,");
+    const userMessage = payload.messages.find((m: { role: string }) => m.role === "user");
+    expect(userMessage).toBeDefined();
+    expect(userMessage.content[1].image_url.url).toContain("data:image/jpeg;base64,");
   });
 
   it("resolves private storage references with mock R2Bucket", async () => {
