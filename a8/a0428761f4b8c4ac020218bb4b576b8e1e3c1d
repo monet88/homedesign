@@ -1,0 +1,79 @@
+.github/workflows/preview-provision.yml
+  s_2ffe3f9c901626::t_cad5a73bee0e82 1-33
+.github/workflows/preview-janitor.yml
+  s_2ffe3f9c901626::t_17cad08c881a0c 1-29
+src/lib/credits/ledger.ts
+  s_2ffe3f9c901626::t_e7d65de6da2fb1 21
+  s_2ffe3f9c901626::t_252ad8df3c158a 115-119
+wrangler.jsonc
+  s_2ffe3f9c901626::t_15b49b10d4c063 55,70-259,261
+  s_2ffe3f9c901626::t_9b06b8fac26b4f 66-67
+src/lib/payments/core.ts
+  s_2ffe3f9c901626::t_889da149d79cc2 180
+  s_2ffe3f9c901626::t_7cd18b3fb75c24 16
+src/lib/env/policy.ts
+  s_2ffe3f9c901626::t_c0c8bf552e03e4 1-65
+scripts/free-first-gate.sh
+  s_2ffe3f9c901626::t_6a2455249a8954 1-52
+src/lib/ai/lifecycle.ts
+  s_2ffe3f9c901626::t_445fd7b91214d3 156-157
+  s_2ffe3f9c901626::t_57fc343a3dd041 66
+src/lib/env/policy.test.ts
+  s_2ffe3f9c901626::t_7a93d6ff7755b5 1-68
+src/lib/ai/types.ts
+  s_2ffe3f9c901626::t_3203a433a0f52a 267
+scripts/smoke.sh
+  s_2ffe3f9c901626::t_433e3cfa9cd429 16-20
+  s_2ffe3f9c901626::t_6825ee6b571895 1-15,21-22
+scripts/seed-smoke.mjs
+  s_2ffe3f9c901626::t_9ddc67a054dd96 1-32
+scripts/preview-provision.sh
+  s_2ffe3f9c901626::t_6be84ccb8bffdf 1-64
+.github/workflows/ci.yml
+  s_2ffe3f9c901626::t_3993a1e8030d2e 34-35
+  s_2ffe3f9c901626::t_33b91a0b2e0763 1-33,36-38
+.github/workflows/staging-smoke.yml
+  s_2ffe3f9c901626::t_91d7af871a800f 1-28,31,38-42
+  s_2ffe3f9c901626::t_4cc54464bd9716 29-30,32-37,43-48
+scripts/preview-destroy.sh
+  s_2ffe3f9c901626::t_93d0a7de021ae6 1-39
+src/lib/env/deploy-policy.wtest.ts
+  s_2ffe3f9c901626::t_daac5c4a3c2ef5 1-9,11-68,77-178
+  s_2ffe3f9c901626::t_f4e825999f8041 10
+  s_2ffe3f9c901626::t_28e67a452b8879 69-76
+src/app/api/auth/[...all]/route.ts
+  s_2ffe3f9c901626::t_f31f1d3684d533 2,11
+tests/deploy.test.ts
+  s_2ffe3f9c901626::t_8e00dd528ee202 1-27,34-40,42,44-89
+  s_2ffe3f9c901626::t_57bb42210b081a 41,43
+  s_2ffe3f9c901626::t_801fa6d55574f0 28-33
+migrations/0009_smoke_markers.sql
+  s_2ffe3f9c901626::t_0266414594fe87 1-5
+package.json
+  s_2ffe3f9c901626::t_3aa224b1787298 17-18
+scripts/preview-janitor.sh
+  s_2ffe3f9c901626::t_3ebdf23775f19a 1-36
+scripts/setup-cloudflare-envs.sh
+  s_2ffe3f9c901626::t_9146370f9ecffa 1-75
+src/lib/auth/server.ts
+  s_2ffe3f9c901626::t_29df673543ea1b 4
+  s_2ffe3f9c901626::t_b0a3a611da8b41 92-105
+.github/workflows/preview-destroy.yml
+  s_2ffe3f9c901626::t_13a2c791c92235 1-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "a8a0428761f4b8c4ac020218bb4b576b8e1e3c1d",
+  "prompts": {},
+  "sessions": {
+    "s_2ffe3f9c901626": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "32d4bb31-337c-420e-b7f5-fb8f5235e10d",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
