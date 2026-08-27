@@ -47,6 +47,7 @@ describe("toShellSession (session shape contract)", () => {
     expect(shell.user?.initial).toBe("C");
     expect(shell.user?.email).toBe("monet@example.com");
     expect(shell.user?.emailVerified).toBe(true);
+    expect(shell.user?.role).toBe("user");
     expect(shell.credits).toBe(10);
   });
 

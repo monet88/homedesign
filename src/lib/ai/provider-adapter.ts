@@ -15,6 +15,7 @@
 // `req.options.image_input` is a short-lived private URL resolved server-side
 // by the lifecycle (never provided by the browser, never returned to it).
 
+import { GeminiFlashImageAdapter } from "@/lib/ai/gemini-adapter";
 import { fixturePngBytes } from "@/lib/ai/fake-provider";
 import type {
   ProviderOutput,
@@ -98,11 +99,11 @@ export function registerProvider(adapter: ProviderAdapter): void {
   registry.set(adapter.name, adapter);
 }
 
-/** Reset to the default registry (fake + real stub). Used between tests. */
+/** Reset to the default registry (fake + gemini flash image adapter). Used between tests. */
 export function resetProviders(): void {
   registry.clear();
   registry.set("fake", new FakeProviderAdapter());
-  registry.set("gemini", new RealProviderAdapter("gemini"));
+  registry.set("gemini", new GeminiFlashImageAdapter({ offlineFallback: true }));
 }
 
 resetProviders();

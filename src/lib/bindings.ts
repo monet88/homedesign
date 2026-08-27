@@ -19,6 +19,11 @@ export interface Env {
   // Vars
   ENVIRONMENT: string;
 
+  // AI Provider (Ticket #21 / ADR 0007)
+  AI_API_BASE_URL?: string;
+  AI_API_KEY?: string;
+  AI_DEFAULT_MODEL?: string;
+
   // R2 S3 API credentials for presigned upload URLs (ADR 0003). Set per
   // environment as secrets; local defaults live in wrangler.jsonc vars.
   R2_ACCOUNT_ID?: string;

@@ -37,6 +37,8 @@ function isTestOutbox(env: AuthEnv): boolean {
 export const LOCAL_BYPASS_USER_ID = "local-bypass-user";
 export const LOCAL_BYPASS_EMAIL = "local@homedesign.dev";
 
+export type UserRole = "admin" | "user";
+
 export type ResolvedSession = {
   session: {
     id: string;
@@ -51,6 +53,8 @@ export type ResolvedSession = {
     name: string;
     email: string;
     emailVerified: boolean;
+    role: UserRole;
+    image?: string | null;
     createdAt: Date;
     updatedAt: Date;
   };
@@ -59,8 +63,8 @@ export type ResolvedSession = {
 async function ensureLocalBypassUser(env: AuthEnv): Promise<ResolvedSession["user"]> {
   const now = Date.now();
   await env.DB.prepare(
-    `INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt)
-     VALUES (?1, 'Local tester', ?2, 1, ?3, ?3)
+    `INSERT INTO user (id, name, email, emailVerified, role, createdAt, updatedAt)
+     VALUES (?1, 'Local tester', ?2, 1, 'user', ?3, ?3)
      ON CONFLICT(id) DO UPDATE SET emailVerified = 1, name = excluded.name`
   )
     .bind(LOCAL_BYPASS_USER_ID, LOCAL_BYPASS_EMAIL, now)
@@ -72,6 +76,7 @@ async function ensureLocalBypassUser(env: AuthEnv): Promise<ResolvedSession["use
     name: "Local tester",
     email: LOCAL_BYPASS_EMAIL,
     emailVerified: true,
+    role: "user",
     createdAt: created,
     updatedAt: created,
   };
@@ -101,7 +106,15 @@ export async function resolveSession(
     return bypassSession(user);
   }
   const auth = createAuth(env);
-  return (await auth.api.getSession({ headers: request.headers })) as ResolvedSession | null;
+  const rawSession = (await auth.api.getSession({ headers: request.headers })) as any;
+  if (!rawSession?.user) return null;
+  return {
+    session: rawSession.session,
+    user: {
+      ...rawSession.user,
+      role: (rawSession.user.role as UserRole) || "user",
+    },
+  };
 }
 
 export function requireVerifiedUser(session: { user: { emailVerified: boolean } } | null): void {
@@ -123,6 +136,16 @@ export function createAuth(env: AuthEnv) {
     baseURL: env.BETTER_AUTH_URL,
     secret: env.BETTER_AUTH_SECRET,
     database: env.DB,
+    user: {
+      additionalFields: {
+        role: {
+          type: "string",
+          required: false,
+          defaultValue: "user",
+          input: false,
+        },
+      },
+    },
     advanced: {
       useSecureCookies: isProduction(env) || env.BETTER_AUTH_URL.startsWith("https://"),
     },
@@ -266,3 +289,6 @@ export async function listOutbox(env: AuthEnv, email?: string) {
      FROM email_outbox ORDER BY created_at DESC`
   ).all();
 }
+
+export { requireAdminSession, type AdminAuthResult } from "@/lib/auth/admin";
+

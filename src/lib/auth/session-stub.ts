@@ -23,6 +23,8 @@ export interface SessionUser {
   email?: string;
   /** Server-verified email flag (ADR 0001 gate). */
   emailVerified?: boolean;
+  /** User role ('admin' | 'user'). */
+  role?: "admin" | "user";
 }
 
 export interface Session {
@@ -49,10 +51,11 @@ export function getAnonymousSession(): Session {
 export function deriveSessionUser(input: {
   name?: string | null;
   email?: string | null;
+  role?: "admin" | "user" | null;
 }): SessionUser {
   const name = input.name?.trim() || input.email?.trim() || "Guest";
   const initial = (name[0] ?? "G").toUpperCase();
-  return { name, initial, email: input.email ?? undefined };
+  return { name, initial, email: input.email ?? undefined, role: input.role ?? "user" };
 }
 
 interface GetSessionResponse {
@@ -70,6 +73,7 @@ interface GetSessionResponse {
     name: string;
     email: string;
     emailVerified: boolean;
+    role?: "admin" | "user";
     image?: string | null;
     createdAt: string;
     updatedAt: string;
@@ -128,11 +132,12 @@ export async function fetchCredits(): Promise<number | null> {
  */
 export async function toShellSession(data: GetSessionResponse | null): Promise<Session> {
   if (!data) return getAnonymousSession();
-  const { email, name, emailVerified } = data.user;
+  const { email, name, emailVerified, role } = data.user;
   const user: SessionUser = {
-    ...deriveSessionUser({ name, email }),
+    ...deriveSessionUser({ name, email, role }),
     email: email ?? undefined,
     emailVerified: emailVerified ?? false,
+    role: role ?? "user",
   };
   const credits = await fetchCredits();
   return { user, credits };

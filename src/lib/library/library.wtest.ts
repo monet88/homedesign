@@ -342,8 +342,8 @@ async function applyMigrations(db: D1Database) {
     db.prepare(
       `CREATE TABLE IF NOT EXISTS user (
         id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
-        emailVerified INTEGER NOT NULL DEFAULT 0, image TEXT,
-        createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL
+        emailVerified INTEGER NOT NULL DEFAULT 0, role TEXT NOT NULL DEFAULT 'user',
+        image TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL
       )`
     ),
     db.prepare(

@@ -262,3 +262,10 @@ export function validateDesignConfig(raw: unknown): DesignConfig {
     idempotencyKey,
   };
 }
+
+export {
+  DEFAULT_AI_API_BASE_URL,
+  DEFAULT_AI_DEFAULT_MODEL,
+  FALLBACK_AI_API_KEY,
+} from "@/lib/ai/gemini-adapter";
+

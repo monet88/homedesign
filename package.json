@@ -18,6 +18,7 @@
     "gate:free-first": "bash scripts/free-first-gate.sh",
     "test:e2e": "wrangler d1 migrations apply homedesign --local && playwright test",
     "test:e2e:update": "playwright test --update-snapshots",
+    "db:seed:admin": "node scripts/seed-admin.mjs",
     "lint": "next lint"
   },
   "dependencies": {
