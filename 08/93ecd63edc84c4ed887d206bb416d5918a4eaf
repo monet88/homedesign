@@ -1,0 +1,34 @@
+.github/workflows/ci.yml
+  h_17f2fa2b92da6a 26
+package.json
+  h_17f2fa2b92da6a 14
+src/app/admin/page.tsx
+  h_17f2fa2b92da6a 7-16,67,89,112,175
+src/app/api/admin/admin-api.test.ts
+  h_17f2fa2b92da6a 10-21,330,340,350,361,363-364,366,368-369,378,437,454,475,504,559,579
+src/lib/admin/types.ts
+  h_17f2fa2b92da6a 1-64
+src/lib/ai/prompts/constants.ts
+  h_17f2fa2b92da6a 1-4
+src/lib/ai/prompts/exterior.ts
+  h_17f2fa2b92da6a 2-6
+src/lib/ai/prompts/index.ts
+  h_17f2fa2b92da6a 1
+src/lib/ai/prompts/interior.ts
+  h_17f2fa2b92da6a 2-6
+src/lib/ai/provider-adapter.ts
+  h_17f2fa2b92da6a 21,27
+src/lib/ai/types.ts
+  h_17f2fa2b92da6a 191-196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "0893ecd63edc84c4ed887d206bb416d5918a4eaf",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
