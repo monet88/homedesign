@@ -1,0 +1,44 @@
+src/components/landing/catalog-card.tsx
+  s_c7e005239f8abc::t_bff090e81f5840 1-2,4-6,9,12-14,16-42,44-52
+e2e/catalog-wiring.spec.ts
+  s_c7e005239f8abc::t_dbeb7b9493b1d2 1-72
+src/components/design/design-catalog-galleries.tsx
+  s_c7e005239f8abc::t_ce46ddee8becb0 1-45
+src/lib/catalog.ts
+  s_c7e005239f8abc::t_fd4fb3fc1d71eb 97-109,156
+  s_c7e005239f8abc::t_25defc5351afce 157-198
+vitest.config.ts
+  s_c7e005239f8abc::t_5808b0d7808d33 13
+src/lib/catalog.test.ts
+  s_c7e005239f8abc::t_77c9b31eb1a7ee 75-80,86-117
+  s_c7e005239f8abc::t_261f29c9735456 9-10,13,118-119
+src/components/landing/catalog-preview-modal.test.tsx
+  s_c7e005239f8abc::t_cc5c82ff05bee8 2-18,21-32,34-35
+  s_c7e005239f8abc::t_8c64a46170f3c1 19-20,33
+  s_c7e005239f8abc::t_db315b29adcea0 1
+src/components/landing/catalog-preview-modal.tsx
+  s_c7e005239f8abc::t_ac5a59b766ae9e 1-51
+src/components/design/design-flow.tsx
+  s_c7e005239f8abc::t_66c6accae2d3d1 10
+  s_c7e005239f8abc::t_5865093c269cb3 349-350
+package-lock.json
+  s_c7e005239f8abc::t_9578396efe6ef4 23-24,28-29,49-99,1214-1248,1394-1406,1746-1885,2350-2367,4922-4969,4976-4982,5047-5063,5256-5265,5485-5494,5562-5574,5891-5904,5912-5973,5991-5997,6022-6031,6041-6047,6145-6157,6697-6715,6755-6767,6846-6852,6914-7009,7310-7319,7339-7345,8347-8372,8498-8525,8539-8548,8614-8630,8703-8715,9091-9097,9187-9206,9216-9228,9784-9796,9812-9821,10139-10155
+package.json
+  s_c7e005239f8abc::t_58bc8087494588 34-35,39-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "79a3ff6406010535b1850c42246b9d52d0f2ff39",
+  "prompts": {},
+  "sessions": {
+    "s_c7e005239f8abc": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "31af0b86-0471-4e5b-aeed-bf2cf094d512",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
