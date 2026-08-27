@@ -21,7 +21,7 @@ is_allowlisted_for_rule2() {
     src/lib/ai/gemini-adapter.test.ts|src/lib/intake/presign.test.ts)
       return 0
       ;;
-    src/lib/auth/auth.wtest.ts|src/lib/env/deploy-policy.wtest.ts)
+    src/lib/auth/auth.wtest.ts|src/lib/auth/outbox.wtest.ts|src/lib/env/deploy-policy.wtest.ts)
       return 0
       ;;
     *)
