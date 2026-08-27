@@ -1,0 +1,133 @@
+tests/deploy.test.ts
+  s_0fa7511ab2a1e5::t_3256b528239b15 39-40
+.dev.vars.example
+  s_0fa7511ab2a1e5::t_cd92c569e113bf 9-10
+src/app/api/auth/get-session/route.ts
+  s_0fa7511ab2a1e5::t_f376bd9db23f0e 2
+  s_0fa7511ab2a1e5::t_df21f008a98513 10
+src/lib/bindings.ts
+  s_0fa7511ab2a1e5::t_564ad4486a559b 35-36
+src/lib/env/policy.ts
+  s_0fa7511ab2a1e5::t_d797c167c98937 21-25,28-31
+  s_0fa7511ab2a1e5::t_c7aab275a226a9 26-27
+src/app/api/assets/finalize/route.ts
+  s_0fa7511ab2a1e5::t_5733461622b166 38
+  s_0fa7511ab2a1e5::t_d672645207a960 14-16
+  s_0fa7511ab2a1e5::t_bdea32db112364 1
+src/app/api/assets/[id]/download/route.ts
+  s_0fa7511ab2a1e5::t_a1fb67acc42a0d 16-18,21
+  s_0fa7511ab2a1e5::t_e7c6755ab1de1a 1
+.gitignore
+  s_0fa7511ab2a1e5::t_7cfef570f3699a 16-20
+  s_3cf9f95b99f20b::t_2dc5da5a91c4c6 21-22
+docs/agents/local-dev.md
+  s_0fa7511ab2a1e5::t_19a77bcaedc291 1-33
+src/lib/ai/http.ts
+  s_0fa7511ab2a1e5::t_fc5eafef0d452c 21
+  s_0fa7511ab2a1e5::t_e5d831fc724263 2
+src/app/api/assets/upload-intent/route.ts
+  s_0fa7511ab2a1e5::t_115fbdf12dce83 14-17
+  s_0fa7511ab2a1e5::t_31f0bd99d52430 1
+AGENTS.md
+  s_0fa7511ab2a1e5::t_d929d9a40feebf 11-14
+src/app/api/auth/require-verified/route.ts
+  s_0fa7511ab2a1e5::t_ac5133e2e5a64a 1,15-16,19
+src/lib/auth/server.ts
+  s_0fa7511ab2a1e5::t_19a5b39e6626da 4-5
+  s_0fa7511ab2a1e5::t_e3d0300b37ef8f 37-106
+src/app/api/credits/route.ts
+  s_0fa7511ab2a1e5::t_583b9e700f4a3d 1,18-19,21-22
+src/app/api/payments/mock/route.ts
+  s_0fa7511ab2a1e5::t_339cd217fd79c9 41
+  s_0fa7511ab2a1e5::t_731c86673efac4 19-21
+  s_0fa7511ab2a1e5::t_a093b40be41139 1
+src/lib/env/policy.test.ts
+  s_0fa7511ab2a1e5::t_75cf40cb0cb7e4 74-75
+  s_0fa7511ab2a1e5::t_8e61ebfd36fa8f 10
+  s_0fa7511ab2a1e5::t_2b9d80cb676bf6 76-84
+  s_0fa7511ab2a1e5::t_32241d440f445c 69-73,85
+src/app/ai-exterior-design/page.tsx
+  s_3cf9f95b99f20b::t_3dd25c294009bc 6,8,38-39
+src/app/ai-floor-plan/page.tsx
+  s_c14c58c3cf9bdd::t_005d69e509e799 2,5,8,10,15-62
+src/app/ai-interior-design/page.tsx
+  s_3cf9f95b99f20b::t_0744040e3067d8 6,8,38
+src/app/globals.css
+  s_3cf9f95b99f20b::t_c1554e0f0f7e57 6-26,30,36-59,65,67,72-88
+src/app/layout.tsx
+  s_624565fd86fb4d::t_d87849bc43b284 4,20,22-27,35,37,42
+src/app/page.tsx
+  s_624565fd86fb4d::t_be684c743edd60 2,6,8-13,16,18,23-24,26-27,29-55,57-58,60,62-63,67-200,205-209,211-217,219-220,224-251,257-258,260-284,288
+src/components/design/design-flow.tsx
+  s_624565fd86fb4d::t_e390d3d19c7c26 4,22-28,63,67,69,77,91,94,125-126,130-144,148,155,159-163,165,167-168,172-173,175-178,180,182,187,191-194,196,209-211,215-218,233-235,243-246,260,263-277,279-295,297-322,324-336,338-339,342-343,345-346,349-365,367-389,391-438,442-443,447-448,455-466,474
+src/components/design/design-form.tsx
+  s_3cf9f95b99f20b::t_1ca0228ff92bf8 26-35,42,53-79,85,93-96,98-99,101-105,107-109,111-118,120-125,127-136,138-140,142-160,163-170,173-195,197-216,218-219,221-246,249-331,334-343,345-346,348-359,362-397,400-431,433-446
+src/components/design/uploader.tsx
+  s_3cf9f95b99f20b::t_e6b6936efe4991 5,7,11,14,18-73,78-84,86,96-97,107,121-135,137-138,140-142,147,155-169,171-220,224-228
+src/components/floor-plan/floor-plan-flow.tsx
+  s_624565fd86fb4d::t_5587d2a13ce8cc 482,485
+src/components/landing/before-after.tsx
+  s_3cf9f95b99f20b::t_283c8098401d04 4-10,12-16,18-23,26-45,48-114,117-119,121-133,135,137,139-141,143-175,177-213,215-277
+src/components/landing/catalog-card.tsx
+  s_c4aefca05755db::t_8cef4f203fcab2 8-14,18-28,31-41,44,48,50,54-55,68-69
+src/components/landing/catalog-preview-modal.tsx
+  s_c4aefca05755db::t_6cd5f75cba1441 3-4,10-11,19-20,26,37,40-71
+src/components/landing/pricing-section.tsx
+  s_624565fd86fb4d::t_f24e02e46612b4 5-83,90,92-104,107,109-155,159-176
+src/components/shell/footer.tsx
+  s_3cf9f95b99f20b::t_7071cdd45c7433 3,7-9,13,17,19-20,24,27-30,35,46-70
+src/components/shell/header.tsx
+  s_624565fd86fb4d::t_0ccfcc681a6762 4,8,12-20,23-38,40-47,50-51,53-57,59-79,81-86,88-175,178-179,181,186,190-206,209-212
+src/components/shell/index.ts
+  s_3cf9f95b99f20b::t_66f3c4ca670a73 3-5
+src/lib/catalog.ts
+  s_c4aefca05755db::t_b6226c9d16b712 1,10-47,50-53,59,65,71,77,83-151,156,159-256,258-260,262-343,345-347,349-604,608,615-616,620,623-648,651-672,674,676,678,681-694,696,699,701,704,706,709,711
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "e7dc4bc19746e16c9e70d251000687c41d5136b2",
+  "prompts": {},
+  "sessions": {
+    "s_0fa7511ab2a1e5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "fd7b836e-7844-45a4-852a-90e2a527470b",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_3cf9f95b99f20b": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03d35-50b9-7aa5-9aa3-d39826031a9f",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_624565fd86fb4d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "995c2abf-92d2-4889-80b4-ad4b943a86c0",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_c14c58c3cf9bdd": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0f4e5eac-b997-45e2-98a9-a5410f0949b2",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_c4aefca05755db": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "47d23b97-ed62-413c-80ce-d8c4420232a8",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
