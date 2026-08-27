@@ -1,0 +1,18 @@
+src/lib/floor-plan/stages.ts
+  h_17f2fa2b92da6a 146-151
+src/lib/library/share.ts
+  h_17f2fa2b92da6a 5,46,49,127-188,195,197-199,201,209,212-221,231,357-370,375,405-410,427-433
+src/lib/library/share.wtest.ts
+  h_17f2fa2b92da6a 10,12,24,221-623,625-636,672-701
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "207dfcd2c8a7f5462eb96f27c9e05673c0364075",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
