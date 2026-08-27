@@ -122,25 +122,29 @@ export async function isStageRunStale(env: Env, stageRunId: string): Promise<boo
   const run = await env.DB.prepare(`SELECT * FROM floor_plan_stage_runs WHERE id = ?1`)
     .bind(stageRunId)
     .first<StageRunRow>();
-  if (!run || run.stage !== "render") return false;
+  if (!run || (run.stage !== "render" && run.stage !== "panorama")) return false;
 
   const design = await env.DB.prepare(`SELECT config_json FROM designs WHERE id = ?1`)
     .bind(run.design_id)
     .first<{ config_json: string }>();
   if (!design) return false;
 
-  let layoutRunId: string | undefined;
+  let upstreamRunId: string | undefined;
   try {
-    const config = JSON.parse(design.config_json) as { intent?: { layoutRunId?: string } };
-    layoutRunId = config.intent?.layoutRunId;
+    const config = JSON.parse(design.config_json) as {
+      intent?: { layoutRunId?: string; renderRunId?: string };
+    };
+    upstreamRunId =
+      run.stage === "render" ? config.intent?.layoutRunId : config.intent?.renderRunId;
   } catch {
     return false;
   }
-  if (!layoutRunId) return false;
+  if (!upstreamRunId) return false;
 
-  const activeLayout = await getActiveConfirmedStageRun(env, run.room_design_id, "layout");
-  if (!activeLayout) return false;
-  return activeLayout.id !== layoutRunId;
+  const upstreamStage = run.stage === "render" ? "layout" : "render";
+  const activeUpstream = await getActiveConfirmedStageRun(env, run.room_design_id, upstreamStage);
+  if (!activeUpstream) return false;
+  return activeUpstream.id !== upstreamRunId;
 }
 
 export async function assertRenderStageAllowed(
@@ -198,6 +202,51 @@ export async function assertRoomDesignForRender(
   const row = await assertRoomDesignForStage(env, userId, roomDesignId, sourceAssetId, marker);
   const layoutRun = await assertRenderStageAllowed(env, userId, roomDesignId);
   return { row, layoutRun };
+}
+
+export async function assertPanoramaStageAllowed(
+  env: Env,
+  userId: string,
+  roomDesignId: string
+): Promise<StageRunRow> {
+  await loadOwnedRoomDesign(env, userId, roomDesignId);
+  const render = await getActiveConfirmedStageRun(env, roomDesignId, "render");
+  if (!render) {
+    throw new FloorPlanError("RENDER_NOT_CONFIRMED", 409, "confirm room render before panorama");
+  }
+  return render;
+}
+
+async function loadRenderOutputAssetId(env: Env, renderRun: StageRunRow): Promise<string> {
+  if (!renderRun.design_id) {
+    throw new FloorPlanError("STAGE_NOT_READY", 409, "render run has no design");
+  }
+  const renderDesign = await env.DB.prepare(`SELECT output_asset_id FROM designs WHERE id = ?1`)
+    .bind(renderRun.design_id)
+    .first<{ output_asset_id: string | null }>();
+  if (!renderDesign?.output_asset_id) {
+    throw new FloorPlanError("STAGE_NOT_READY", 409, "render output asset missing");
+  }
+  const asset = await env.DB.prepare(`SELECT lifecycle FROM assets WHERE id = ?1`)
+    .bind(renderDesign.output_asset_id)
+    .first<{ lifecycle: string }>();
+  if (asset?.lifecycle !== "ready") {
+    throw new FloorPlanError("SOURCE_ASSET_NOT_READY", 409, "render output asset not ready");
+  }
+  return renderDesign.output_asset_id;
+}
+
+export async function assertRoomDesignForPanorama(
+  env: Env,
+  userId: string,
+  roomDesignId: string,
+  sourceAssetId: string,
+  marker: MarkerPosition
+): Promise<{ row: RoomDesignRow; renderRun: StageRunRow; renderOutputAssetId: string }> {
+  const row = await assertRoomDesignForStage(env, userId, roomDesignId, sourceAssetId, marker);
+  const renderRun = await assertPanoramaStageAllowed(env, userId, roomDesignId);
+  const renderOutputAssetId = await loadRenderOutputAssetId(env, renderRun);
+  return { row, renderRun, renderOutputAssetId };
 }
 
 export function parseRoomProposal(row: RoomDesignRow): RoomBriefProposal | null {

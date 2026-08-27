@@ -5,7 +5,6 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { createDesign } from "@/lib/ai/lifecycle";
 import { handleProviderNotify } from "@/lib/ai/notify-consumer";
 import { buildPrompt } from "@/lib/ai/lifecycle";
-import { DesignError } from "@/lib/ai/types";
 import {
   assertLayoutStageAllowed,
   assertNoProcessingRun,
@@ -244,7 +243,7 @@ describe("Brief stage lifecycle", () => {
 });
 
 describe("buildPrompt floor-plan", () => {
-  it("builds brief prompt and layout/render prompts; panorama stays 501", () => {
+  it("builds brief, layout, render, and panorama prompts", () => {
     const prompt = buildPrompt({
       sourceAssetId: "a1",
       mediaType: "image",
@@ -276,21 +275,25 @@ describe("buildPrompt floor-plan", () => {
     });
     expect(layoutPrompt).toContain("2D furniture layout");
 
-    expect(() =>
-      buildPrompt({
-        sourceAssetId: "a1",
-        mediaType: "image",
-        scene: "floor-plan",
+    const panoramaPrompt = buildPrompt({
+      sourceAssetId: "a1",
+      mediaType: "image",
+      scene: "floor-plan",
+      stage: "panorama",
+      provider: "fake",
+      model: "gemini-2.5-flash-image",
+      providerScene: "room-design-panorama",
+      intent: {
         stage: "panorama",
-        provider: "fake",
-        model: "gemini-2.5-flash-image",
-        providerScene: "room-design-panorama",
-        intent: { stage: "panorama", marker: { x: 1, y: 1 } },
-        options: {},
-        cost: 4,
-        idempotencyKey: "k3",
-      })
-    ).toThrow(DesignError);
+        marker: { x: 1, y: 1 },
+        panoramaOrientation: { yaw: 0, pitch: 0, hfov: 100 },
+      },
+      options: { aspect_ratio: "2:1", resolution: "4096x2048" },
+      cost: 4,
+      idempotencyKey: "k3",
+    });
+    expect(panoramaPrompt).toContain("equirectangular");
+    expect(panoramaPrompt).toContain("4096×2048");
   });
 });
 
@@ -421,13 +424,103 @@ describe("Retry and regenerate lineage", () => {
   });
 });
 
-describe("Panorama still 501", () => {
-  it("rejects panorama generation", async () => {
+async function setupConfirmedRender(userId: string): Promise<{
+  sourceId: string;
+  projectId: string;
+  roomId: string;
+  marker: { x: number; y: number };
+  renderDesignId: string;
+  renderOutputAssetId: string;
+}> {
+  const { sourceId, projectId, roomId, marker } = await setupConfirmedBrief(userId);
+
+  const layout = await createDesign(
+    env,
+    userId,
+    stagePayload("layout", sourceId, roomId, marker, `layout-${roomId}-pano`)
+  );
+  await runDesignToReady(layout.id);
+  await confirmRoomLayout(env, userId, roomId, layout.id);
+
+  const render = await createDesign(
+    env,
+    userId,
+    stagePayload("render", sourceId, roomId, marker, `render-${roomId}-pano`)
+  );
+  await runDesignToReady(render.id);
+  await confirmRoomRender(env, userId, roomId, render.id);
+
+  const design = await env.DB.prepare(`SELECT output_asset_id FROM designs WHERE id = ?1`)
+    .bind(render.id)
+    .first<{ output_asset_id: string }>();
+
+  return {
+    sourceId,
+    projectId,
+    roomId,
+    marker,
+    renderDesignId: render.id,
+    renderOutputAssetId: design!.output_asset_id!,
+  };
+}
+
+describe("Panorama stage lifecycle", () => {
+  it("gates panorama on confirmed render and settles 4 credits", async () => {
     const userId = await seedUser();
     const { sourceId, roomId, marker } = await setupConfirmedBrief(userId);
+
     await expect(
-      createDesign(env, userId, stagePayload("panorama", sourceId, roomId, marker, "panorama-501"))
-    ).rejects.toMatchObject({ code: "SCENE_NOT_IMPLEMENTED", status: 501 });
+      createDesign(env, userId, stagePayload("panorama", sourceId, roomId, marker, "panorama-no-render"))
+    ).rejects.toMatchObject({ code: "INVALID_INTENT", status: 409 });
+
+    const billUser = await seedUser();
+    const { sourceId: src, roomId: rid, marker: m, projectId } = await setupConfirmedRender(billUser);
+    expect(await isRoomDesignComplete(env, rid)).toBe(true);
+
+    const panorama = await createDesign(
+      env,
+      billUser,
+      stagePayload("panorama", src, rid, m, "panorama-run")
+    );
+    expect(panorama.cost).toBe(4);
+    expect(await getAvailableCredits(env, billUser)).toBe(0);
+
+    await runDesignToReady(panorama.id);
+    const run = await getStageRunByDesignId(env, panorama.id);
+    expect(run?.status).toBe("success");
+
+    const room = await env.DB.prepare(`SELECT progress FROM room_designs WHERE id = ?1`)
+      .bind(rid)
+      .first<{ progress: string }>();
+    expect(room?.progress).toBe("panorama-ready");
+
+    const detail = await getFloorPlanProjectDetail(env, billUser, projectId);
+    const panoramaView = detail.rooms
+      .find((r) => r.id === rid)
+      ?.stageRuns.find((r) => r.stage === "panorama" && r.status === "success");
+    expect(panoramaView?.outputAssetId).toBeTruthy();
+    expect(panoramaView?.panoramaOrientation).toEqual({ yaw: 0, pitch: 0, hfov: 100 });
+
+    await expect(assertCreditInvariant(env, billUser)).resolves.toBe(true);
+  });
+
+  it("skip panorama still completes room from confirmed render", async () => {
+    const userId = await seedUser();
+    const { roomId } = await setupConfirmedRender(userId);
+    expect(await isRoomDesignComplete(env, roomId)).toBe(true);
+  });
+
+  it("max one processing panorama run per room design", async () => {
+    const userId = await seedUser();
+    const { sourceId, roomId, marker } = await setupConfirmedRender(userId);
+
+    await createDesign(env, userId, stagePayload("panorama", sourceId, roomId, marker, "panorama-a"));
+    await expect(assertNoProcessingRun(env, roomId, "panorama")).rejects.toMatchObject({
+      code: "STAGE_PROCESSING",
+    });
+    await expect(
+      createDesign(env, userId, stagePayload("panorama", sourceId, roomId, marker, "panorama-b"))
+    ).rejects.toMatchObject({ code: "INVALID_INTENT", status: 409 });
   });
 });
 

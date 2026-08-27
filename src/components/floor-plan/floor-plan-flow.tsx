@@ -13,8 +13,9 @@ import type {
 } from "@/lib/floor-plan/types";
 import { Toast } from "@/components/design/toast";
 import { Uploader } from "@/components/design/uploader";
+import { PanoramaViewer } from "@/components/floor-plan/panorama-viewer";
 
-type StageKind = "brief" | "layout" | "render";
+type StageKind = "brief" | "layout" | "render" | "panorama";
 
 function activeRunId(runs: StageRunView[], stage: StageRunView["stage"]): string | null {
   const confirmed = runs
@@ -120,7 +121,13 @@ export function FloorPlanFlow() {
     for (const task of detail.processingTasks) {
       setStatus("processing");
       const label =
-        task.stage === "layout" ? "Room Layout" : task.stage === "render" ? "Room Render" : "Room Brief";
+        task.stage === "layout"
+          ? "Room Layout"
+          : task.stage === "render"
+            ? "Room Render"
+            : task.stage === "panorama"
+              ? "Room Panorama"
+              : "Room Brief";
       try {
         await pollTask(task.designId, label);
       } catch (err) {
@@ -253,7 +260,7 @@ export function FloorPlanFlow() {
     if (!sourceAssetId || !room) return;
     if (stage === "brief" && !proposal) return;
 
-    const costs = { brief: 1, layout: 2, render: 3 };
+    const costs = { brief: 1, layout: 2, render: 3, panorama: 4 };
     setBusy(true);
     setStatus("processing");
     try {
@@ -277,7 +284,12 @@ export function FloorPlanFlow() {
       const data = (await res.json()) as { code?: number; data?: { id: string }; error?: string };
       if (!res.ok || data.code !== 0 || !data.data?.id) throw new Error(data.error ?? `HTTP ${res.status}`);
 
-      const labels = { brief: "Room Brief", layout: "Room Layout", render: "Room Render" };
+      const labels = {
+        brief: "Room Brief",
+        layout: "Room Layout",
+        render: "Room Render",
+        panorama: "Room Panorama",
+      };
       await pollTask(data.data.id, labels[stage]);
       if (stage === "brief") await runRecognition();
       if (projectId) await refreshProject(projectId);
@@ -364,6 +376,15 @@ export function FloorPlanFlow() {
   const canAddNextRoom = Boolean(
     projectDetail && overview && overview.completeRooms > 0 && overview.currentRoomId === null
   );
+  const renderConfirmed = currentRoomDetail?.stageRuns.some(
+    (r) => r.stage === "render" && r.status === "confirmed"
+  );
+  const panoramaRun = currentRoomDetail?.stageRuns.find(
+    (r) => r.stage === "panorama" && r.status === "success" && r.outputAssetId
+  );
+  const canGeneratePanorama =
+    Boolean(renderConfirmed) &&
+    !currentRoomDetail?.stageRuns.some((r) => r.stage === "panorama" && r.status === "processing");
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-10">
@@ -573,12 +594,48 @@ export function FloorPlanFlow() {
         </section>
       ) : null}
 
+      {renderConfirmed ? (
+        <section className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-6">
+          <h2 className="text-lg font-medium">Room Panorama (optional)</h2>
+          <p className="text-sm text-neutral-600">
+            Generate a 360° panorama (4 Credits) or skip — the room is already complete after
+            confirming the render.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-full border border-neutral-300 px-4 py-2 text-sm disabled:opacity-50"
+              disabled={busy || !canGeneratePanorama}
+              onClick={() => void generateStage("panorama")}
+            >
+              Generate Panorama (4 Credits)
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-emerald-600 px-4 py-2 text-sm text-emerald-700 disabled:opacity-50"
+              disabled={busy}
+              onClick={() => showToast("Panorama skipped — room complete.")}
+            >
+              Skip Panorama
+            </button>
+          </div>
+          {panoramaRun?.outputAssetId ? (
+            <PanoramaViewer
+              assetId={panoramaRun.outputAssetId}
+              orientation={panoramaRun.panoramaOrientation}
+              alt="Room panorama"
+            />
+          ) : null}
+          {status ? <p className="text-sm text-neutral-500">Run: {status}</p> : null}
+        </section>
+      ) : null}
+
       {currentRoomDetail && currentRoomDetail.stageRuns.length > 0 ? (
         <section className="rounded-xl border border-neutral-200 bg-white p-6">
           <h2 className="text-lg font-medium">Stage Run History</h2>
           <ul className="mt-3 space-y-2 text-sm">
             {currentRoomDetail.stageRuns
-              .filter((r) => r.stage === "layout" || r.stage === "render")
+              .filter((r) => r.stage === "layout" || r.stage === "render" || r.stage === "panorama")
               .map((run) => {
                 const isActive = activeRunId(currentRoomDetail.stageRuns, run.stage) === run.id;
                 const canRestore =

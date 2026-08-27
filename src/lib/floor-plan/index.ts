@@ -18,7 +18,9 @@ export {
   assertNoProcessingRun,
   assertRenderStageAllowed,
   assertRoomDesignForLayout,
+  assertRoomDesignForPanorama,
   assertRoomDesignForRender,
+  assertPanoramaStageAllowed,
   confirmRoomLayout,
   confirmRoomRender,
   createStageRun,
@@ -54,4 +56,5 @@ export type {
   QuestionnaireItem,
   StageRunStatus,
   StageRunView,
+  PanoramaOrientationView,
 } from "@/lib/floor-plan/types";

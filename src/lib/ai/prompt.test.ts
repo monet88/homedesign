@@ -180,7 +180,7 @@ describe("buildPrompt dispatch by scene", () => {
     expect(prompt).toContain("Do not fabricate measurements");
   });
 
-  it("floor-plan layout/render build prompts; panorama remains 501", () => {
+  it("floor-plan layout/render/panorama build prompts", () => {
     const layoutPrompt = buildPrompt({
       ...config("floor-plan", { stage: "layout", marker: { x: 10, y: 10 }, roomId: "room-1" }),
       stage: "layout",
@@ -189,18 +189,20 @@ describe("buildPrompt dispatch by scene", () => {
     });
     expect(layoutPrompt).toContain("2D furniture layout");
 
-    try {
-      buildPrompt({
-        ...config("floor-plan", { stage: "panorama", marker: { x: 10, y: 10 } }),
+    const panoramaPrompt = buildPrompt({
+      ...config("floor-plan", { stage: "panorama", marker: { x: 10, y: 10 }, roomId: "room-1" }),
+      stage: "panorama",
+      providerScene: "room-design-panorama",
+      cost: 4,
+      options: { aspect_ratio: "2:1", resolution: "4096x2048" },
+      intent: {
         stage: "panorama",
-        providerScene: "room-design-panorama",
-        cost: 4,
-      });
-      throw new Error("expected SCENE_NOT_IMPLEMENTED");
-    } catch (err) {
-      expect(err).toBeInstanceOf(DesignError);
-      expect((err as DesignError).code).toBe("SCENE_NOT_IMPLEMENTED");
-      expect((err as DesignError).status).toBe(501);
-    }
+        marker: { x: 10, y: 10 },
+        roomId: "room-1",
+        panoramaOrientation: { yaw: 0, pitch: 0, hfov: 100 },
+      },
+    });
+    expect(panoramaPrompt).toContain("equirectangular");
+    expect(panoramaPrompt).toContain("4096×2048");
   });
 });

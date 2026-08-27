@@ -25,12 +25,13 @@
 //     it never resurrects the task and never settles a released hold.
 
 import { getProvider } from "@/lib/ai/provider-adapter";
-import { buildExteriorPrompt, buildFloorPlanBriefPrompt, buildFloorPlanLayoutPrompt, buildFloorPlanRenderPrompt, buildInteriorPrompt } from "@/lib/ai/prompt";
+import { buildExteriorPrompt, buildFloorPlanBriefPrompt, buildFloorPlanLayoutPrompt, buildFloorPlanPanoramaPrompt, buildFloorPlanRenderPrompt, buildInteriorPrompt } from "@/lib/ai/prompt";
 import {
   DesignError,
   isTerminal,
   publicErrorCode,
   toPublicStatus,
+  DEFAULT_PANORAMA_ORIENTATION,
   type DesignConfig,
   type ExteriorIntent,
   type FloorPlanIntent,
@@ -42,10 +43,12 @@ import { createBriefStageRun, completeBriefStageRun, assertRoomDesignForBrief } 
 import {
   assertNoProcessingRun,
   assertRoomDesignForLayout,
+  assertRoomDesignForPanorama,
   assertRoomDesignForRender,
   completeStageRun,
   createStageRun,
   failStageRun,
+  getStageRunByDesignId,
   parseRoomProposal,
 } from "@/lib/floor-plan/stages";
 import { FloorPlanError } from "@/lib/floor-plan/errors";
@@ -121,7 +124,8 @@ export function buildPrompt(config: DesignConfig, proposal?: import("@/lib/floor
     if (config.stage === "brief") return buildFloorPlanBriefPrompt(fp);
     if (config.stage === "layout") return buildFloorPlanLayoutPrompt(fp, proposal);
     if (config.stage === "render") return buildFloorPlanRenderPrompt(fp, proposal);
-    throw new DesignError("SCENE_NOT_IMPLEMENTED", 501, "floor-plan panorama ships in #11");
+    if (config.stage === "panorama") return buildFloorPlanPanoramaPrompt(fp, proposal);
+    throw new DesignError("SCENE_NOT_IMPLEMENTED", 501, "unknown floor-plan stage");
   }
   throw new DesignError("SCENE_NOT_IMPLEMENTED", 501, "unknown scene");
 }
@@ -150,11 +154,8 @@ export async function createDesign(
 ): Promise<CreateDesignResult> {
   const config = validateDesignConfig(rawBody);
 
-  if (config.scene === "floor-plan" && config.stage === "panorama") {
-    throw new DesignError("SCENE_NOT_IMPLEMENTED", 501, "floor-plan panorama ships in #11");
-  }
-
   let floorPlanProposal: import("@/lib/floor-plan/types").RoomBriefProposal | null = null;
+  let effectiveSourceAssetId = config.sourceAssetId;
 
   if (config.scene === "floor-plan" && config.stage === "brief") {
     const fp = config.intent as FloorPlanIntent;
@@ -208,10 +209,39 @@ export async function createDesign(
     }
   }
 
+  if (config.scene === "floor-plan" && config.stage === "panorama") {
+    const fp = config.intent as FloorPlanIntent;
+    if (!fp.roomId?.trim()) {
+      throw new DesignError("INVALID_INTENT", 400, "roomId is required for floor-plan panorama");
+    }
+    try {
+      const { row, renderRun, renderOutputAssetId } = await assertRoomDesignForPanorama(
+        env,
+        userId,
+        fp.roomId,
+        config.sourceAssetId,
+        fp.marker
+      );
+      await assertNoProcessingRun(env, fp.roomId, "panorama");
+      floorPlanProposal = parseRoomProposal(row);
+      (config.intent as FloorPlanIntent).renderRunId = renderRun.id;
+      (config.intent as FloorPlanIntent).panoramaOrientation = DEFAULT_PANORAMA_ORIENTATION;
+      config.options = {
+        ...config.options,
+        aspect_ratio: "2:1",
+        resolution: "4096x2048",
+      };
+      effectiveSourceAssetId = renderOutputAssetId;
+    } catch (err) {
+      if (err instanceof FloorPlanError) throw mapFloorPlanError(err);
+      throw err;
+    }
+  }
+
   // Authorize the source Asset: exists, owned by the caller, lifecycle `ready`.
   const asset = await env.DB.prepare(
     `SELECT id, user_id, lifecycle, storage_key, mime_type FROM assets WHERE id = ?1`
-  ).bind(config.sourceAssetId).first<{
+  ).bind(effectiveSourceAssetId).first<{
     id: string;
     user_id: string | null;
     lifecycle: string;
@@ -324,6 +354,9 @@ export async function createDesign(
   }
   if (config.scene === "floor-plan" && config.stage === "render") {
     await createStageRun(env, (config.intent as FloorPlanIntent).roomId!, "render", taskId);
+  }
+  if (config.scene === "floor-plan" && config.stage === "panorama") {
+    await createStageRun(env, (config.intent as FloorPlanIntent).roomId!, "panorama", taskId);
   }
 
   // Dispatch. The Workflow/queue instance identity IS the task id, so a
@@ -650,8 +683,21 @@ export async function completeGeneration(
   if (design.scene === "floor-plan" && design.stage === "brief") {
     await completeBriefStageRun(env, taskId);
   }
-  if (design.scene === "floor-plan" && (design.stage === "layout" || design.stage === "render")) {
+  if (
+    design.scene === "floor-plan" &&
+    (design.stage === "layout" || design.stage === "render" || design.stage === "panorama")
+  ) {
     await completeStageRun(env, taskId);
+    if (design.stage === "panorama") {
+      const run = await getStageRunByDesignId(env, taskId);
+      if (run) {
+        await env.DB.prepare(
+          `UPDATE room_designs SET progress = 'panorama-ready', updated_at = ?2 WHERE id = ?1`
+        )
+          .bind(run.room_design_id, now)
+          .run();
+      }
+    }
   }
 
   return { status: "ready" };
@@ -873,6 +919,7 @@ function mapFloorPlanError(err: FloorPlanError): DesignError {
     PROJECT_SOURCE_MISMATCH: "INVALID_INTENT",
     BRIEF_NOT_CONFIRMED: "INVALID_INTENT",
     LAYOUT_NOT_CONFIRMED: "INVALID_INTENT",
+    RENDER_NOT_CONFIRMED: "INVALID_INTENT",
     STAGE_NOT_READY: "INVALID_INTENT",
     STAGE_PROCESSING: "INVALID_INTENT",
     NOT_FOUND: "ASSET_NOT_FOUND",

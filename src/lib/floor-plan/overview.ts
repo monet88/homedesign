@@ -10,10 +10,12 @@ import {
 } from "@/lib/floor-plan/stages";
 import type {
   FloorPlanProjectDetailView,
+  PanoramaOrientationView,
   ProjectOverview,
   RoomDesignDetailView,
   StageRunView,
 } from "@/lib/floor-plan/types";
+import type { FloorPlanIntent } from "@/lib/ai/types";
 
 async function loadOwnedFloorPlanProject(
   env: Env,
@@ -58,12 +60,46 @@ async function loadStageRunRows(env: Env, roomDesignId: string): Promise<StageRu
 }
 
 async function rowToStageRunView(env: Env, row: StageRunRow): Promise<StageRunView> {
-  const stale = row.stage === "render" ? await isStageRunStale(env, row.id) : false;
+  const stale =
+    row.stage === "render" || row.stage === "panorama"
+      ? await isStageRunStale(env, row.id)
+      : false;
+
+  let outputAssetId: string | null = null;
+  let panoramaOrientation: PanoramaOrientationView | null = null;
+
+  if (row.design_id) {
+    const design = await env.DB.prepare(
+      `SELECT output_asset_id, config_json FROM designs WHERE id = ?1`
+    )
+      .bind(row.design_id)
+      .first<{ output_asset_id: string | null; config_json: string }>();
+
+    if (design?.output_asset_id) {
+      const asset = await env.DB.prepare(`SELECT lifecycle FROM assets WHERE id = ?1`)
+        .bind(design.output_asset_id)
+        .first<{ lifecycle: string }>();
+      if (asset?.lifecycle === "ready") outputAssetId = design.output_asset_id;
+    }
+
+    if (row.stage === "panorama" && design?.config_json) {
+      try {
+        const config = JSON.parse(design.config_json) as { intent?: FloorPlanIntent };
+        const o = config.intent?.panoramaOrientation;
+        if (o) panoramaOrientation = { yaw: o.yaw, pitch: o.pitch, hfov: o.hfov };
+      } catch {
+        /* ignore malformed config */
+      }
+    }
+  }
+
   return {
     id: row.id,
     stage: row.stage,
     status: row.status as StageRunView["status"],
     designId: row.design_id,
+    outputAssetId,
+    panoramaOrientation,
     confirmedAt: row.confirmed_at,
     stale,
     createdAt: row.created_at,

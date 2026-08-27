@@ -86,10 +86,8 @@ export interface ExteriorIntent {
 
 /**
  * Floor-plan stage intent — forward-declared shape (ADR 0004 §Stage contract).
- * Validated here so #15/#10 can implement the stage runner without changing
- * this contract; `POST /api/designs` currently rejects the scene with
- * `SCENE_NOT_IMPLEMENTED` (see notes) so no hold is ever created for a
- * pipeline that cannot run.
+ * Validated here so stage runners can depend on the contract without changing
+ * the public API shape.
  */
 export interface FloorPlanIntent {
   stage: FloorPlanStage;
@@ -103,7 +101,24 @@ export interface FloorPlanIntent {
   intake?: Record<string, unknown>;
   /** Confirmed layout stage run id — set server-side for render lineage (ADR 0004). */
   layoutRunId?: string;
+  /** Confirmed render stage run id — set server-side for panorama lineage (ADR 0004). */
+  renderRunId?: string;
+  /** Initial viewer orientation — persisted with panorama artifact (ADR 0004). */
+  panoramaOrientation?: PanoramaOrientation;
 }
+
+/** Pannellum-compatible initial view (degrees). */
+export interface PanoramaOrientation {
+  yaw: number;
+  pitch: number;
+  hfov: number;
+}
+
+export const DEFAULT_PANORAMA_ORIENTATION: PanoramaOrientation = {
+  yaw: 0,
+  pitch: 0,
+  hfov: 100,
+};
 
 export type DesignIntent = InteriorIntent | ExteriorIntent | FloorPlanIntent;
 
@@ -115,7 +130,7 @@ export interface DesignOptions {
   quality?: string;
 }
 
-export const ASPECT_RATIOS = ["1:1", "4:3", "16:9", "3:4", "9:16"] as const;
+export const ASPECT_RATIOS = ["1:1", "4:3", "16:9", "3:4", "9:16", "2:1"] as const;
 
 /** Browser → App Worker payload for `POST /api/designs` (`/api/ai/generate`). */
 export interface DesignConfigInput {

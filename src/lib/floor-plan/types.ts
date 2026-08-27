@@ -56,11 +56,20 @@ export interface RoomDesignView {
 
 export type StageRunStatus = "draft" | "processing" | "success" | "failed" | "confirmed";
 
+export interface PanoramaOrientationView {
+  yaw: number;
+  pitch: number;
+  hfov: number;
+}
+
 export interface StageRunView {
   id: string;
   stage: "brief" | "layout" | "render" | "panorama";
   status: StageRunStatus;
   designId: string | null;
+  /** Ready generated asset id — authorized download via `/api/assets/{id}/download`. */
+  outputAssetId: string | null;
+  panoramaOrientation: PanoramaOrientationView | null;
   confirmedAt: number | null;
   stale: boolean;
   createdAt: number;

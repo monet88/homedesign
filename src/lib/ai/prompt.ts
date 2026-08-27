@@ -150,3 +150,29 @@ export function buildFloorPlanRenderPrompt(
 
   return lines.join("\n");
 }
+
+/** Room Panorama stage prompt (ADR 0004) — equirectangular 360° image. */
+export function buildFloorPlanPanoramaPrompt(
+  intent: FloorPlanIntent,
+  proposal?: RoomBriefProposal | null
+): string {
+  const roomType = proposal?.recognition?.roomType ?? "the selected room";
+  const orientation = intent.panoramaOrientation;
+  const lines = [
+    `Generate an equirectangular 360° panorama for ${roomType} from the confirmed photorealistic render at marker (${intent.marker.x}%, ${intent.marker.y}%).`,
+    "Output must be a 2:1 equirectangular image; prefer 4096×2048 pixels for clarity and WebGL performance.",
+    "This is a single-room panorama — not a tour, hotspot graph, or 360° video.",
+  ];
+
+  if (proposal?.designProposal) lines.push(`Room Brief: ${proposal.designProposal}.`);
+  if (proposal?.style) lines.push(`Target style: ${proposal.style}.`);
+  if (intent.feedback) lines.push(`User feedback: ${intent.feedback}.`);
+  if (orientation) {
+    lines.push(
+      `Initial viewer orientation (degrees): yaw ${orientation.yaw}, pitch ${orientation.pitch}, hfov ${orientation.hfov}.`
+    );
+  }
+  lines.push("Preserve the confirmed render's materials, lighting, and spatial coherence.");
+
+  return lines.join("\n");
+}
