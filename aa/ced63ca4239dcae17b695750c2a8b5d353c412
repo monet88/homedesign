@@ -1,0 +1,57 @@
+src/lib/floor-plan/errors.ts
+  s_19cd9098fe83e7::t_f2f41d57da2332 10-12
+src/lib/floor-plan/floor-plan.wtest.ts
+  s_19cd9098fe83e7::t_6e7eb6f70fc4bc 243,260-274,280,283-284,286-287,293-318,322-364,367-369,371-380,382-426
+  s_19cd9098fe83e7::t_bf71a62123e663 370
+  s_19cd9098fe83e7::t_3c9480ec5ba96a 381
+  s_19cd9098fe83e7::t_7aefa9aa890c2d 319-321
+  s_19cd9098fe83e7::t_22a6c991eacf24 65,75,80-104
+  s_19cd9098fe83e7::t_2855c07f343b6e 182,193-205,207-208
+  s_19cd9098fe83e7::t_fe3ddf0cf5a55c 66
+  s_19cd9098fe83e7::t_5d36052c6715a1 222
+  s_19cd9098fe83e7::t_452a2895c8a047 365-366
+  s_19cd9098fe83e7::t_ca1fe41bf3dcba 11,13-14,16-17,105-106,427-429
+src/lib/ai/types.ts
+  s_19cd9098fe83e7::t_be467b7a27ebfb 104-105
+src/lib/ai/prompt.test.ts
+  s_19cd9098fe83e7::t_9ef49ac9c40a1f 183-191,194-197
+src/lib/ai/prompt.ts
+  s_19cd9098fe83e7::t_669915f4cf9063 12
+  s_19cd9098fe83e7::t_49806b02a523d1 107-152
+src/lib/floor-plan/index.ts
+  s_19cd9098fe83e7::t_5429af8177ebdf 17-31
+src/lib/floor-plan/stages.ts
+  s_19cd9098fe83e7::t_619bcc95aef9d5 1-275
+src/app/api/floor-plan/room-designs/[id]/confirm-layout/route.ts
+  s_19cd9098fe83e7::t_4a02f1ff09c309 1-29
+src/app/api/floor-plan/room-designs/[id]/confirm-render/route.ts
+  s_19cd9098fe83e7::t_c8d2c4daa71fc5 1-29
+src/lib/ai/lifecycle.wtest.ts
+  s_19cd9098fe83e7::t_a23eda82a0a402 231,238,240
+src/lib/ai/lifecycle.ts
+  s_19cd9098fe83e7::t_3f61766806ad9a 42-50
+  s_19cd9098fe83e7::t_be5422b9ed648e 153-154,157-159,174-206
+  s_19cd9098fe83e7::t_34f0ace6b8bc92 322-327
+  s_19cd9098fe83e7::t_500967b31efb60 116,120-124
+  s_19cd9098fe83e7::t_23b3f75d7b7c42 28,207-210
+  s_19cd9098fe83e7::t_3905d8c0e64bca 228
+  s_19cd9098fe83e7::t_87fc4eb8f986d3 653-655
+  s_19cd9098fe83e7::t_8b5322a0e6fc30 673-676
+  s_19cd9098fe83e7::t_fefa3eae5c77ee 875-877
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "aaced63ca4239dcae17b695750c2a8b5d353c412",
+  "prompts": {},
+  "sessions": {
+    "s_19cd9098fe83e7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "98339ff3-4e6b-42ee-bf12-61625b616010",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
