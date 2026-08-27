@@ -49,6 +49,40 @@ export function isEmailSignUpAllowed(env: Pick<Env, "ENVIRONMENT">): boolean {
   return !isProduction(env);
 }
 
+/** Helper to check if a provider API key is a non-empty, non-fake live key. */
+export function isLiveApiKeyConfigured(apiKey?: string | null): boolean {
+  if (!apiKey || typeof apiKey !== "string") return false;
+  const trimmed = apiKey.trim().toLowerCase();
+  if (trimmed === "" || trimmed === "fake" || trimmed === "test" || trimmed === "offline" || trimmed === "mock") {
+    return false;
+  }
+  return true;
+}
+
+/** Check if explicit offline marker variable or marker key is set. */
+export function isExplicitOfflineMarker(
+  env?: { AI_OFFLINE?: string } | null,
+  apiKey?: string | null
+): boolean {
+  const offlineVar = env?.AI_OFFLINE?.trim().toLowerCase();
+  if (offlineVar === "1" || offlineVar === "true" || offlineVar === "yes") {
+    return true;
+  }
+  if (typeof apiKey === "string") {
+    const trimmed = apiKey.trim().toLowerCase();
+    if (trimmed === "fake" || trimmed === "test" || trimmed === "offline" || trimmed === "mock") {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Check if offline fallback / fake provider is allowed in this environment (banned in production). */
+export function isOfflineProviderAllowed(env: Pick<Env, "ENVIRONMENT"> | string): boolean {
+  const envName = typeof env === "string" ? env : env.ENVIRONMENT;
+  return envName !== "production";
+}
+
 export function assertGenerationAllowed(env: Pick<Env, "ENVIRONMENT">): void {
   if (!isGenerationAllowed(env)) {
     throw new DesignError(

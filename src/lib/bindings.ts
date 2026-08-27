@@ -23,6 +23,7 @@ export interface Env {
   AI_API_BASE_URL?: string;
   AI_API_KEY?: string;
   AI_DEFAULT_MODEL?: string;
+  AI_OFFLINE?: string;
 
   // R2 S3 API credentials for presigned upload URLs (ADR 0003). Set per
   // environment as secrets; local defaults live in wrangler.jsonc vars.

@@ -237,6 +237,7 @@ describe("GeminiFlashImageAdapter Adapter Lifecycle", () => {
     });
 
     const adapter401 = new GeminiFlashImageAdapter({
+      apiKey: "sk-test-key",
       fetchFn: mockFetch401 as unknown as typeof fetch,
     });
 
@@ -254,6 +255,7 @@ describe("GeminiFlashImageAdapter Adapter Lifecycle", () => {
     });
 
     const adapter500 = new GeminiFlashImageAdapter({
+      apiKey: "sk-test-key",
       fetchFn: mockFetch500 as unknown as typeof fetch,
     });
 
@@ -292,6 +294,7 @@ describe("GeminiFlashImageAdapter Adapter Lifecycle", () => {
     });
 
     const adapter = new GeminiFlashImageAdapter({
+      apiKey: "sk-test-key",
       fetchFn: mockFetch as unknown as typeof fetch,
     });
 
@@ -337,6 +340,7 @@ describe("GeminiFlashImageAdapter Adapter Lifecycle", () => {
     });
 
     const adapter = new GeminiFlashImageAdapter({
+      apiKey: "sk-test-key",
       bucket: mockBucket,
       fetchFn: mockFetch as unknown as typeof fetch,
     });
@@ -360,7 +364,7 @@ describe("GeminiFlashImageAdapter Adapter Lifecycle", () => {
     const submitRes = await adapter.submit(REQ);
     expect(submitRes).toEqual({
       ok: false,
-      error: "AI_API_KEY_MISSING",
+      error: "PROVIDER_NOT_CONFIGURED",
       retryable: false,
     });
   });
@@ -401,13 +405,19 @@ describe("GeminiFlashImageAdapter Adapter Lifecycle", () => {
 });
 
 describe("Provider Registry with GeminiFlashImageAdapter", () => {
-  it("resolves 'gemini' to GeminiFlashImageAdapter by default", () => {
-    const provider = getProvider("gemini");
+  it("resolves 'gemini' to GeminiFlashImageAdapter when API key is provided", () => {
+    const provider = getProvider("gemini", { AI_API_KEY: "sk-test-key" });
     expect(provider.name).toBe("gemini");
     expect(provider).toBeInstanceOf(GeminiFlashImageAdapter);
   });
 
-  it("allows custom registration and reset restores GeminiFlashImageAdapter", () => {
+  it("resolves 'gemini' to RealProviderAdapter when API key is missing (fail closed)", () => {
+    const provider = getProvider("gemini");
+    expect(provider.name).toBe("gemini");
+    expect(provider.submit).toBeDefined();
+  });
+
+  it("allows custom registration and reset restores defaults", () => {
     const customStub: ProviderAdapter = {
       name: "gemini",
       submit: async () => ({ ok: true, providerTaskId: "custom-1" }),
@@ -417,6 +427,6 @@ describe("Provider Registry with GeminiFlashImageAdapter", () => {
     expect(getProvider("gemini")).toBe(customStub);
 
     resetProviders();
-    expect(getProvider("gemini")).toBeInstanceOf(GeminiFlashImageAdapter);
+    expect(getProvider("gemini", { AI_API_KEY: "sk-test-key" })).toBeInstanceOf(GeminiFlashImageAdapter);
   });
 });
