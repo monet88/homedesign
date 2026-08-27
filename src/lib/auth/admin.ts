@@ -19,7 +19,7 @@ export function getAdminSeedConfig(
   env: Record<string, string | undefined> = process.env
 ): AdminSeedConfig {
   const email = (env.ADMIN_EMAIL || "minhthang421992@gmail.com").trim().toLowerCase();
-  const password = env.ADMIN_PASSWORD || "Tonight123@";
+  const password = env.ADMIN_PASSWORD || undefined;
   const credits = parseInt(env.ADMIN_INITIAL_CREDITS || "99999", 10);
   const name = env.ADMIN_NAME || "Administrator";
   return {
@@ -37,7 +37,10 @@ export const seedAdminDatabase = {
     const userId = `admin-${config.email.replace(/[^a-zA-Z0-9]/g, "_")}`;
     const accountId = `acc-${userId}`;
     const ledgerId = `ledger-${userId}-initial-grant`;
-    const hashedPassword = config.password ? await hashPassword(config.password) : "";
+    if (!config.password) {
+      throw new Error("ADMIN_PASSWORD is required for admin database seeding.");
+    }
+    const hashedPassword = await hashPassword(config.password);
 
     const userSql = `INSERT INTO user (id, name, email, emailVerified, role, createdAt, updatedAt)
 VALUES ('${userId}', '${config.name.replace(/'/g, "''")}', '${config.email}', 1, 'admin', ${now}, ${now})

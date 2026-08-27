@@ -22,8 +22,7 @@ import { validJpegBytes } from "@/lib/fixtures/images";
 
 export const DEFAULT_AI_API_BASE_URL = "https://cliproxy.monet.uno/v1";
 export const DEFAULT_AI_DEFAULT_MODEL = "gemini-3.1-flash-image";
-export const FALLBACK_AI_API_KEY = "sk-k3skgrBK1nw8fExaR";
-
+export const FALLBACK_AI_API_KEY = "";
 export interface GeminiAdapterOptions {
   baseUrl?: string;
   apiKey?: string;
@@ -60,8 +59,7 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
       .replace(/\/+$/, "");
     this.apiKey =
       options.apiKey ??
-      (typeof process !== "undefined" ? process.env?.AI_API_KEY : undefined) ??
-      (this.environment !== "production" ? FALLBACK_AI_API_KEY : undefined);
+      (typeof process !== "undefined" ? process.env?.AI_API_KEY : undefined);
     this.defaultModel =
       options.defaultModel ??
       (typeof process !== "undefined" ? process.env?.AI_DEFAULT_MODEL : undefined) ??

@@ -1,14 +1,14 @@
 import { Page, expect } from "@playwright/test";
 
 export const ADMIN_CREDENTIALS = {
-  email: "minhthang421992@gmail.com",
-  password: "Tonight123@",
+  email: process.env.ADMIN_EMAIL || "minhthang421992@gmail.com",
+  password: process.env.ADMIN_PASSWORD || `admin-test-${Math.random().toString(36).slice(2)}!Aa1`,
 };
 
 export const TEST_USER_CREDENTIALS = {
   name: "Standard User",
-  email: "standard-user@example.com",
-  password: "StandardUser123!",
+  email: `test-user-${Date.now()}@example.com`,
+  password: `user-test-${Math.random().toString(36).slice(2)}!Aa1`,
 };
 
 /**

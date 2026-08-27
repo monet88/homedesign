@@ -203,7 +203,7 @@ const mockEnv: AuthEnv = {
   BETTER_AUTH_SECRET: "test-secret-at-least-32-chars-long",
   BETTER_AUTH_URL: "http://localhost:3000",
   AI_API_BASE_URL: "https://cliproxy.monet.uno/v1",
-  AI_API_KEY: "sk-k3skgrBK1nw8fExaR",
+  AI_API_KEY: "mock-ai-api-key",
   DB: createMockDb() as unknown as AuthEnv["DB"],
 } as unknown as AuthEnv;
 

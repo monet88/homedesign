@@ -117,7 +117,7 @@ describe("getAdminSeedConfig", () => {
   it("returns default admin credentials when env vars are not set", () => {
     const config = getAdminSeedConfig({});
     expect(config.email).toBe("minhthang421992@gmail.com");
-    expect(config.password).toBe("Tonight123@");
+    expect(config.password).toBeUndefined();
     expect(config.credits).toBe(99999);
     expect(config.role).toBe("admin");
   });
@@ -125,12 +125,12 @@ describe("getAdminSeedConfig", () => {
   it("reads custom admin credentials from environment", () => {
     const config = getAdminSeedConfig({
       ADMIN_EMAIL: "custom_admin@example.com",
-      ADMIN_PASSWORD: "CustomSecretPassword123!",
+      ADMIN_PASSWORD: "test-admin-password-123!",
       ADMIN_INITIAL_CREDITS: "50000",
       ADMIN_NAME: "Super Admin",
     });
     expect(config.email).toBe("custom_admin@example.com");
-    expect(config.password).toBe("CustomSecretPassword123!");
+    expect(config.password).toBe("test-admin-password-123!");
     expect(config.credits).toBe(50000);
     expect(config.name).toBe("Super Admin");
   });
@@ -140,7 +140,7 @@ describe("seedAdminDatabase", () => {
   it("generates idempotent SQL migration statements for admin provisioning", async () => {
     const config = {
       email: "minhthang421992@gmail.com",
-      password: "Tonight123@",
+      password: "test-admin-password-123!",
       credits: 99999,
       name: "Administrator",
       role: "admin" as const,

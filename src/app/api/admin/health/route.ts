@@ -20,8 +20,7 @@ async function checkHealth(request: Request) {
 
   const apiKey =
     auth.env.AI_API_KEY ||
-    (typeof process !== "undefined" ? process.env?.AI_API_KEY : undefined) ||
-    (auth.env.ENVIRONMENT !== "production" ? FALLBACK_AI_API_KEY : undefined);
+    (typeof process !== "undefined" ? process.env?.AI_API_KEY : undefined);
 
   const endpoint = baseUrl.endsWith("/v1")
     ? `${baseUrl}/models`

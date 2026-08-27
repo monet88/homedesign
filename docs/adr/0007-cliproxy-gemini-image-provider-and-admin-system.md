@@ -16,7 +16,7 @@ The HomeDesign application previously operated with fake/stubbed provider adapte
    - Parse returned base64 image data URL from `choices[0].message.images[0].image_url.url` and stream into R2/Storage as validated `ready` assets.
 
 2. **Admin Provisioning & Panel**:
-   - Store Admin configuration in environment variables (`ADMIN_EMAIL=minhthang421992@gmail.com`, `ADMIN_PASSWORD=Tonight123@`, `ADMIN_INITIAL_CREDITS=99999`).
+   - Store Admin configuration in environment variables (`ADMIN_EMAIL=minhthang421992@gmail.com`, `ADMIN_PASSWORD=<admin-password>`, `ADMIN_INITIAL_CREDITS=99999`).
    - Provide automated seeding script `npm run db:seed:admin` to insert/update the admin user and grant 99,999 credits in the Credit Ledger.
    - Build a dedicated `/admin` dashboard with sub-views: User Management, Credit Adjustments, AI Task Monitor, and Provider Health Check.
    - Restrict `/admin` route via server session role check (`user.role === 'admin'`).

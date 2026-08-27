@@ -24,7 +24,10 @@ const d1TargetFlag = isRemote ? "--remote" : "--local";
  */
 export async function buildAdminSeedSql(config = {}) {
   const email = (config.email || process.env.ADMIN_EMAIL || "minhthang421992@gmail.com").trim().toLowerCase();
-  const password = config.password || process.env.ADMIN_PASSWORD || "Tonight123@";
+  const password = config.password || process.env.ADMIN_PASSWORD;
+  if (!password) {
+    throw new Error("ADMIN_PASSWORD environment variable is required for admin database seeding.");
+  }
   const credits = parseInt(String(config.credits || process.env.ADMIN_INITIAL_CREDITS || "99999"), 10);
   const name = (config.name || process.env.ADMIN_NAME || "Administrator").replace(/'/g, "''");
 

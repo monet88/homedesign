@@ -87,5 +87,5 @@ The HomeDesign application currently has a 1:1 pixel-perfect frontend clone of `
 
 ## Further Notes
 
-- API Endpoint tested & validated: `https://cliproxy.monet.uno/v1` with model `gemini-3.1-flash-image` (Bearer token `sk-k3skgrBK1nw8fExaR`).
+- API Endpoint tested & validated: `https://cliproxy.monet.uno/v1` with model `gemini-3.1-flash-image` (configured via `AI_API_KEY` environment variable).
 - Response latency during testing was ~15.6s for high-resolution 1024x1024 photorealistic renders.
