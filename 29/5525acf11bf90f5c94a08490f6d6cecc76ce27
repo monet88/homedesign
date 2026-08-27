@@ -1,0 +1,51 @@
+src/lib/library/share.ts
+  s_89711382b4feb0::t_0973e03a187c0e 1-356
+src/app/share/[token]/share-view.tsx
+  s_89711382b4feb0::t_e79c782e2e40da 1,7-14
+  s_89711382b4feb0::t_bf6278e7d4ff70 2-6,15-61
+src/lib/library/library.wtest.ts
+  s_89711382b4feb0::t_863d1efbdc8800 403-413
+src/lib/library/assets.ts
+  s_89711382b4feb0::t_9b33d1b4161e2f 4
+  s_89711382b4feb0::t_7ce41231f90426 149
+e2e/share.spec.ts
+  s_89711382b4feb0::t_c177659dd984cf 1-9,11-18,20-26
+  s_89711382b4feb0::t_a7c4212bc1de13 10
+  s_89711382b4feb0::t_4916083c57fc43 19
+src/app/api/share/[token]/assets/[assetId]/route.ts
+  s_89711382b4feb0::t_bdbeb717cdfa1d 1-18
+src/app/share/[token]/page.tsx
+  s_89711382b4feb0::t_7cb9662cc2ce88 5-7,11
+  s_89711382b4feb0::t_3145d75401079c 1-4,8-10
+migrations/0007_project_shares.sql
+  s_89711382b4feb0::t_67f457cc2ef34f 1-15
+src/lib/library/share.wtest.ts
+  s_89711382b4feb0::t_fb73c3bfc519b6 1-112,114-115,120,122,124,126-272
+  s_89711382b4feb0::t_8de4516b60eef6 113,116-119,121,123,125
+src/app/api/test/share-fixture/route.ts
+  s_89711382b4feb0::t_bf2c444b861079 1-61
+package.json
+  s_89711382b4feb0::t_516cc5fd7aa123 17
+src/app/api/share/[token]/route.ts
+  s_89711382b4feb0::t_79aaaa38779dd6 1-19
+src/app/api/projects/[id]/visibility/route.ts
+  s_89711382b4feb0::t_4787f33223b935 1-30
+src/app/api/projects/[id]/share/route.ts
+  s_89711382b4feb0::t_9b92c7c2ae8509 1-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "295525acf11bf90f5c94a08490f6d6cecc76ce27",
+  "prompts": {},
+  "sessions": {
+    "s_89711382b4feb0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4adc724a-fb5f-4a1a-9ca5-da214ee44621",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
