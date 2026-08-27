@@ -41,3 +41,9 @@ jobs:
 
       - name: Free-first gate (bundle ≤3MB)
         run: bash scripts/free-first-gate.sh
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: End-to-end deterministic test suite
+        run: npm run test:e2e

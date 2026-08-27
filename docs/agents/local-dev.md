@@ -28,6 +28,38 @@ Same LAN/Tailscale bind may also print a `Network:` URL in the Next banner.
 
 Kill the `npm run dev` / Next process (the shell PID that started it, or whatever owns port 3000). Do not leave a stale `next dev` running; it locks 3000 for the next agent.
 
-## Login back on
+## Deterministic End-to-End (E2E) Testing
 
-Set `AUTH_BYPASS=0` in `.dev.vars`, restart `npm run dev`. Playwright e2e expects Sign In — turn bypass off before `npm run test:e2e`.
+HomeDesign includes a self-provisioning, deterministic Playwright test suite covering complete user and administrator journeys.
+
+### Single Command
+
+```bash
+npm run test:e2e
+```
+
+To update visual regression baselines:
+
+```bash
+npm run test:e2e:update
+```
+
+### What It Provisions Automatically
+
+Running `npm run test:e2e` executes `scripts/run-e2e.mjs`, which handles all lifecycle requirements from a clean environment without manual setup:
+
+1. **Test Fixtures**: Generates standard 1x1 image fixtures (`room.png`, `house.jpg`, `floor-plan.png`, `facade.png`) via `scripts/create-e2e-fixtures.mjs`.
+2. **Local D1 Database**: Applies local D1 migrations via `wrangler d1 migrations apply homedesign --local`.
+3. **Admin Actor**: Generates dynamic per-run administrator credentials and provisions the admin user in the local D1 database via `scripts/seed-admin.mjs`.
+4. **Standard User & Verification**: Tests register standard user actors and verify emails via the Ticket #32 authorized test-outbox endpoint (`/api/auth/test-outbox`), triggering the initial 5 Free Credit Grant.
+5. **Offline Fake AI Provider**: Runs without live AI provider credentials (`AI_API_KEY=""`), executing the Ticket #33 offline FakeProvider pipeline with zero external network dependencies.
+6. **Web Server Lifecycle**: Automatically launches the local development server and tears down resources upon test completion.
+
+### Prerequisites
+
+- Node.js 22+
+- Playwright Chromium browser installed:
+  ```bash
+  npx playwright install chromium
+  ```
+- If `.dev.vars` exists locally with `AUTH_BYPASS=1`, ensure `AUTH_BYPASS=0` when running manual server debugging for E2E tests.

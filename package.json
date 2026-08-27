@@ -17,8 +17,8 @@
     "wrangler:test": "vitest run --config vitest.workers.config.ts",
     "smoke": "bash scripts/smoke.sh",
     "gate:free-first": "bash scripts/free-first-gate.sh",
-    "test:e2e": "wrangler d1 migrations apply homedesign --local && playwright test",
-    "test:e2e:update": "playwright test --update-snapshots",
+    "test:e2e": "node scripts/run-e2e.mjs",
+    "test:e2e:update": "node scripts/run-e2e.mjs --update-snapshots",
     "db:seed:admin": "node scripts/seed-admin.mjs",
     "lint": "next lint"
   },
