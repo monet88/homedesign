@@ -1,0 +1,2 @@
+# Force LF for shell scripts — Windows checkout must not get CRLF (bash chokes on \r)
+*.sh text eol=lf
