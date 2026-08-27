@@ -17,6 +17,31 @@ export interface StageRunRow {
   created_at: number;
   updated_at: number;
 }
+interface StageConfig {
+  upstreamStage?: FloorPlanStage;
+  getUpstreamRunId?: (intent?: { layoutRunId?: string; renderRunId?: string }) => string | undefined;
+  isRecursiveStaleCheck?: boolean;
+  confirmedProgress?: string;
+  canRestore?: boolean;
+}
+
+const STAGE_CONFIGS: Partial<Record<FloorPlanStage, StageConfig>> = {
+  layout: {
+    confirmedProgress: "layout-ready",
+    canRestore: true,
+  },
+  render: {
+    upstreamStage: "layout",
+    getUpstreamRunId: (intent) => intent?.layoutRunId,
+    confirmedProgress: "render-ready",
+    canRestore: true,
+  },
+  panorama: {
+    upstreamStage: "render",
+    getUpstreamRunId: (intent) => intent?.renderRunId,
+    isRecursiveStaleCheck: true,
+  },
+};
 
 function assertMarker(marker: MarkerPosition): void {
   const { x, y } = marker;
@@ -122,7 +147,10 @@ export async function isStageRunStale(env: Env, stageRunId: string): Promise<boo
   const run = await env.DB.prepare(`SELECT * FROM floor_plan_stage_runs WHERE id = ?1`)
     .bind(stageRunId)
     .first<StageRunRow>();
-  if (!run || (run.stage !== "render" && run.stage !== "panorama")) return false;
+  if (!run) return false;
+
+  const stageConfig = STAGE_CONFIGS[run.stage];
+  if (!stageConfig?.upstreamStage || !stageConfig.getUpstreamRunId) return false;
 
   const design = await env.DB.prepare(`SELECT config_json FROM designs WHERE id = ?1`)
     .bind(run.design_id)
@@ -134,18 +162,20 @@ export async function isStageRunStale(env: Env, stageRunId: string): Promise<boo
     const config = JSON.parse(design.config_json) as {
       intent?: { layoutRunId?: string; renderRunId?: string };
     };
-    upstreamRunId =
-      run.stage === "render" ? config.intent?.layoutRunId : config.intent?.renderRunId;
+    upstreamRunId = stageConfig.getUpstreamRunId(config.intent);
   } catch {
     return false;
   }
   if (!upstreamRunId) return false;
 
-  const upstreamStage = run.stage === "render" ? "layout" : "render";
-  const activeUpstream = await getActiveConfirmedStageRun(env, run.room_design_id, upstreamStage);
+  const activeUpstream = await getActiveConfirmedStageRun(
+    env,
+    run.room_design_id,
+    stageConfig.upstreamStage
+  );
   if (!activeUpstream) return true;
   if (activeUpstream.id !== upstreamRunId) return true;
-  if (run.stage === "panorama") {
+  if (stageConfig.isRecursiveStaleCheck) {
     return await isStageRunStale(env, upstreamRunId);
   }
   return false;
@@ -293,7 +323,8 @@ async function confirmStageRun(
   }
 
   const now = Date.now();
-  const progress = stage === "layout" ? "layout-ready" : "render-ready";
+  const stageConfig = STAGE_CONFIGS[stage];
+  const progress = stageConfig?.confirmedProgress ?? "draft";
   await env.DB.batch([
     env.DB.prepare(
       `UPDATE floor_plan_stage_runs SET status = 'confirmed', confirmed_at = ?2, updated_at = ?2 WHERE id = ?1`
@@ -336,7 +367,8 @@ export async function restoreStageRun(
     .bind(stageRunId)
     .first<StageRunRow>();
   if (!run) throw new FloorPlanError("NOT_FOUND", 404, "stage run not found");
-  if (run.stage !== "layout" && run.stage !== "render") {
+  const stageConfig = STAGE_CONFIGS[run.stage];
+  if (!stageConfig?.canRestore) {
     throw new FloorPlanError("STAGE_NOT_READY", 409, "only layout and render runs can be restored");
   }
   if (run.status !== "success" && run.status !== "confirmed") {
@@ -346,7 +378,7 @@ export async function restoreStageRun(
   await loadOwnedRoomDesign(env, userId, run.room_design_id);
 
   const now = Date.now();
-  const progress = run.stage === "layout" ? "layout-ready" : "render-ready";
+  const progress = stageConfig.confirmedProgress ?? "draft";
   await env.DB.batch([
     env.DB.prepare(
       `UPDATE floor_plan_stage_runs SET status = 'confirmed', confirmed_at = ?2, updated_at = ?2 WHERE id = ?1`
