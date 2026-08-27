@@ -3,7 +3,14 @@
 // Exercises real D1 + R2 + Queue bindings through the ASSET_VALIDATE consumer.
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it, beforeEach } from "vitest";
-import { validPngBytes, validJpegBytes, invalidImageBytes, truncatedPngBytes, MAGIC } from "@/lib/fixtures/images";
+import {
+  validPngBytes,
+  validJpegBytes,
+  invalidImageBytes,
+  truncatedPngBytes,
+  createSyntheticPngStream,
+  MAGIC,
+} from "@/lib/fixtures/images";
 import {
   createUploadIntent,
   finalizeUpload,
@@ -12,7 +19,7 @@ import {
   checkQuota,
   type AssetValidationJob,
 } from "@/lib/intake/intake-service";
-import { validateAsset } from "@/lib/intake/validator";
+import { validateAsset, type CopyObjectOptions } from "@/lib/intake/validator";
 
 let userCounter = 0;
 function nextUser(): string {
@@ -427,5 +434,280 @@ describe("intake pipeline — delete + recovery (AC6)", () => {
     expect(row?.deleted_at).not.toBeNull();
     expect(row?.recovery_until).not.toBeNull();
     expect(row!.recovery_until! - row!.deleted_at!).toBe(30 * 24 * 3600_000);
+  });
+});
+
+describe("asset promotion streaming + bounded memory (Ticket 34)", () => {
+  it("promotes 50 MB maximum-size image via streaming without whole-object accumulation", async () => {
+    const stream = createSyntheticPngStream(50 * 1024 * 1024);
+    const intent = await createUploadIntent(env, {
+      userId: nextUser(),
+      name: "max-50mb.png",
+      mimeType: "image/png",
+      size: 50 * 1024 * 1024,
+    });
+    await env.HD_PRIVATE.put(intent.key, stream, { httpMetadata: { contentType: "image/png" } });
+    await finalizeUpload(env, intent.assetId);
+
+    const job: AssetValidationJob = {
+      assetId: intent.assetId,
+      key: intent.key,
+      declaredSize: 50 * 1024 * 1024,
+      declaredMime: "image/png",
+      attempt: 1,
+    };
+
+    const result = await validateAsset(env, job);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.lifecycle).toBe("ready");
+    expect(result.outcome.actualSize).toBe(50 * 1024 * 1024);
+    expect(result.outcome.width).toBe(100);
+    expect(result.outcome.height).toBe(100);
+
+    // Durable ready-key copy exists in R2 with exact size
+    const readyObj = await env.HD_PRIVATE.get(`ready/${intent.assetId}`);
+    expect(readyObj).not.toBeNull();
+    expect(readyObj!.size).toBe(50 * 1024 * 1024);
+
+    // Quarantine object deleted
+    expect(await env.HD_PRIVATE.get(intent.key)).toBeNull();
+    // Lifecycle is ready
+    expect(await getAssetLifecycle(env, intent.assetId)).toBe("ready");
+  });
+
+  it("asserts peak in-memory byte bound during 50 MB promotion stays below 8 MiB (<= 64 KiB per chunk)", async () => {
+    const stream = createSyntheticPngStream(50 * 1024 * 1024);
+    const intent = await createUploadIntent(env, {
+      userId: nextUser(),
+      name: "peak-bound-50mb.png",
+      mimeType: "image/png",
+      size: 50 * 1024 * 1024,
+    });
+    await env.HD_PRIVATE.put(intent.key, stream, { httpMetadata: { contentType: "image/png" } });
+    await finalizeUpload(env, intent.assetId);
+
+    let peakBytesInFlight = 0;
+    let totalBytesStreamed = 0;
+    let chunkCount = 0;
+
+    const copyOptions: CopyObjectOptions = {
+      transform(srcStream) {
+        return new ReadableStream<Uint8Array>({
+          async start(controller) {
+            const reader = srcStream.getReader();
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                  controller.close();
+                  break;
+                }
+                const len = value.byteLength;
+                chunkCount++;
+                totalBytesStreamed += len;
+                if (len > peakBytesInFlight) {
+                  peakBytesInFlight = len;
+                }
+                controller.enqueue(value);
+              }
+            } catch (err) {
+              controller.error(err);
+              throw err;
+            } finally {
+              reader.releaseLock();
+            }
+          },
+        });
+      },
+    };
+
+    const job: AssetValidationJob = {
+      assetId: intent.assetId,
+      key: intent.key,
+      declaredSize: 50 * 1024 * 1024,
+      declaredMime: "image/png",
+      attempt: 1,
+    };
+
+    const result = await validateAsset(env, job, { copyOptions });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(totalBytesStreamed).toBe(50 * 1024 * 1024);
+    // Assert peak in-memory bytes for any chunk in flight is strictly <= 8 MiB (and <= 64 KiB in practice)
+    expect(peakBytesInFlight).toBeLessThanOrEqual(8 * 1024 * 1024);
+    expect(peakBytesInFlight).toBeLessThanOrEqual(64 * 1024);
+    expect(chunkCount).toBeGreaterThan(100);
+    expect(await getAssetLifecycle(env, intent.assetId)).toBe("ready");
+  });
+
+  it("short read / stream truncation during copy leaves Asset quarantined for retry without corruption", async () => {
+    const intent = await createUploadIntent(env, {
+      userId: nextUser(),
+      name: "short-read.png",
+      mimeType: "image/png",
+      size: validPngBytes().length,
+    });
+    await env.HD_PRIVATE.put(intent.key, validPngBytes());
+    await finalizeUpload(env, intent.assetId);
+
+    const job: AssetValidationJob = {
+      assetId: intent.assetId,
+      key: intent.key,
+      declaredSize: validPngBytes().length,
+      declaredMime: "image/png",
+      attempt: 1,
+    };
+
+    // Simulate short read / stream error during copy
+    const failingCopyOptions: CopyObjectOptions = {
+      transform(srcStream) {
+        return new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.error(new Error("simulated short read / connection abort"));
+          },
+        });
+      },
+    };
+
+    const failResult = await validateAsset(env, job, { copyOptions: failingCopyOptions });
+    expect(failResult.ok).toBe(false);
+    if (failResult.ok) return;
+    expect(failResult.error).toMatch(/short read/);
+
+    // Asset must remain quarantined (NOT ready, NOT rejected)
+    expect(await getAssetLifecycle(env, intent.assetId)).toBe("quarantined");
+    // Ready object must not exist
+    expect(await env.HD_PRIVATE.get(`ready/${intent.assetId}`)).toBeNull();
+    // Quarantine object is preserved for retry
+    expect(await env.HD_PRIVATE.get(intent.key)).not.toBeNull();
+
+    // Retry with normal copy succeeds
+    const retryResult = await validateAsset(env, { ...job, attempt: 2 });
+    expect(retryResult.ok).toBe(true);
+    if (!retryResult.ok) return;
+    expect(retryResult.outcome.lifecycle).toBe("ready");
+    expect(await getAssetLifecycle(env, intent.assetId)).toBe("ready");
+    expect(await env.HD_PRIVATE.get(`ready/${intent.assetId}`)).not.toBeNull();
+    expect(await env.HD_PRIVATE.get(intent.key)).toBeNull();
+  });
+
+  it("missing source object or unreadable range leaves Asset quarantined without corruption", async () => {
+    const intent = await createUploadIntent(env, {
+      userId: nextUser(),
+      name: "missing.png",
+      mimeType: "image/png",
+      size: 1024,
+    });
+    // Set lifecycle directly to quarantined without putting bytes to HD_PRIVATE
+    await env.DB.prepare(`UPDATE assets SET lifecycle = 'quarantined' WHERE id = ?1`)
+      .bind(intent.assetId)
+      .run();
+
+    const job: AssetValidationJob = {
+      assetId: intent.assetId,
+      key: intent.key,
+      declaredSize: 1024,
+      declaredMime: "image/png",
+      attempt: 1,
+    };
+
+    const result = await validateAsset(env, job);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatch(/missing/);
+
+    // Asset stays quarantined
+    expect(await getAssetLifecycle(env, intent.assetId)).toBe("quarantined");
+    expect(await env.HD_PRIVATE.get(`ready/${intent.assetId}`)).toBeNull();
+  });
+
+  it("retry after partial copy failure is idempotent and does not duplicate assets or corrupt metadata", async () => {
+    const intent = await createUploadIntent(env, {
+      userId: nextUser(),
+      name: "retry-test.png",
+      mimeType: "image/png",
+      size: validPngBytes().length,
+    });
+    await env.HD_PRIVATE.put(intent.key, validPngBytes());
+    await finalizeUpload(env, intent.assetId);
+
+    const job: AssetValidationJob = {
+      assetId: intent.assetId,
+      key: intent.key,
+      declaredSize: validPngBytes().length,
+      declaredMime: "image/png",
+      attempt: 1,
+    };
+
+    // Attempt 1: fail during copy
+    let shouldFail = true;
+    const copyOptions: CopyObjectOptions = {
+      transform(srcStream) {
+        if (shouldFail) {
+          return new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.error(new Error("R2 storage transient network glitch"));
+            },
+          });
+        }
+        return srcStream;
+      },
+    };
+
+    const attempt1 = await validateAsset(env, job, { copyOptions });
+    expect(attempt1.ok).toBe(false);
+    expect(await getAssetLifecycle(env, intent.assetId)).toBe("quarantined");
+
+    // Attempt 2: transient error resolved, succeeds
+    shouldFail = false;
+    const attempt2 = await validateAsset(env, { ...job, attempt: 2 }, { copyOptions });
+    expect(attempt2.ok).toBe(true);
+    if (!attempt2.ok) return;
+    expect(attempt2.outcome.lifecycle).toBe("ready");
+    expect(await getAssetLifecycle(env, intent.assetId)).toBe("ready");
+
+    // Record initial updated_at and storage_key
+    const assetRow1 = await env.DB.prepare(
+      `SELECT id, lifecycle, storage_key, actual_size, width, height, updated_at FROM assets WHERE id = ?1`
+    ).bind(intent.assetId).first<{
+      id: string;
+      lifecycle: string;
+      storage_key: string;
+      actual_size: number;
+      width: number;
+      height: number;
+      updated_at: number;
+    }>();
+    expect(assetRow1).not.toBeNull();
+    expect(assetRow1!.storage_key).toBe(`ready/${intent.assetId}`);
+
+    // Attempt 3: duplicate job replay is an idempotent no-op
+    const attempt3 = await validateAsset(env, { ...job, attempt: 3 });
+    expect(attempt3.ok).toBe(true);
+    if (!attempt3.ok) return;
+    expect(attempt3.outcome.lifecycle).toBe("ready");
+
+    // Asset row remains unchanged (not duplicated, metadata preserved)
+    const assetRow2 = await env.DB.prepare(
+      `SELECT id, lifecycle, storage_key, actual_size, width, height, updated_at FROM assets WHERE id = ?1`
+    ).bind(intent.assetId).first<{
+      id: string;
+      lifecycle: string;
+      storage_key: string;
+      actual_size: number;
+      width: number;
+      height: number;
+      updated_at: number;
+    }>();
+    expect(assetRow2).toEqual(assetRow1);
+
+    // Total assets for this ID in DB is exactly 1
+    const count = await env.DB.prepare(
+      `SELECT COUNT(*) as cnt FROM assets WHERE id = ?1`
+    ).bind(intent.assetId).first<{ cnt: number }>();
+    expect(count?.cnt).toBe(1);
   });
 });

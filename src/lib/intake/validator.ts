@@ -54,7 +54,11 @@ export type ValidationResult = { ok: true; outcome: ValidationOutcome } | { ok: 
  * Throws on transient errors so the queue retries; permanent input failures
  * return a resolved `rejected` outcome (no retry).
  */
-export async function validateAsset(env: Env, job: AssetValidationJob): Promise<ValidationResult> {
+export async function validateAsset(
+  env: Env,
+  job: AssetValidationJob,
+  options?: { copyOptions?: CopyObjectOptions }
+): Promise<ValidationResult> {
   const { assetId, key } = job;
 
   // Idempotency guard: if the asset already reached a terminal state, no-op.
@@ -122,8 +126,28 @@ export async function validateAsset(env: Env, job: AssetValidationJob): Promise<
   // Pass → durable copy to ready key.
   const readyKey = readyKeyFor(key, assetId);
 
-  // Stream/copy the full object (R2 copy without buffering the whole file).
-  await copyObject(env, key, readyKey, obj.size, parsed.format === "png" ? "image/png" : "image/jpeg");
+  // Stream/copy the full object (R2 streaming copy without buffering the whole file).
+  try {
+    await copyObject(
+      env,
+      key,
+      readyKey,
+      obj.size,
+      parsed.format === "png" ? "image/png" : "image/jpeg",
+      options?.copyOptions
+    );
+  } catch (err) {
+    return {
+      ok: false,
+      error: `copy failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  // Asset becomes ready ONLY after the durable ready object exists
+  const readyObj = await env.HD_PRIVATE.head(readyKey);
+  if (!readyObj) {
+    return { ok: false, error: `ready object verification failed: ${readyKey}` };
+  }
 
   // Atomically mark ready and record dimensions.
   const now = Date.now();
@@ -140,33 +164,41 @@ export async function validateAsset(env: Env, job: AssetValidationJob): Promise<
   return { ok: true, outcome: { assetId, lifecycle: "ready", width: parsed.dimensions.width, height: parsed.dimensions.height, actualSize: obj.size } };
 }
 
+export interface CopyObjectOptions {
+  /** Optional stream transform for instrumentation, chunk monitoring, or testing */
+  transform?: (stream: ReadableStream<Uint8Array>) => ReadableStream<Uint8Array>;
+}
+
 /**
  * Copy an R2 object to a new key via streaming (no full-file buffering).
- * Falls back to a full read for objects small enough; for the test harness
- * this is fine. Real deployments use `bucket.put(readyKey, body)` from a
- * streaming body source.
+ * Pipes R2's native ReadableStream body directly into `put()` without whole-object
+ * accumulation or concatenation in memory.
  */
 async function copyObject(
   env: Env,
   srcKey: string,
   destKey: string,
   size: number,
-  contentType: string
+  contentType: string,
+  options?: CopyObjectOptions
 ): Promise<void> {
-  // R2 supports ranged reads; stream in bounded chunks so we never buffer
-  // the whole file. For 50MB objects this keeps peak memory well under the
-  // Worker isolate limit. (ponytail: chunked copy loop; R2's S3 API copy
-  // object would be cheaper in production — see notes.)
-  const CHUNK = 8 * 1024 * 1024;
-  const parts: Uint8Array[] = [];
-  for (let offset = 0; offset < size; offset += CHUNK) {
-    const len = Math.min(CHUNK, size - offset);
-    const part = await env.HD_PRIVATE.get(srcKey, { range: { offset, length: len } });
-    if (!part) throw new Error(`copy failed: missing range at ${offset}`);
-    parts.push(new Uint8Array(await part.arrayBuffer()));
+  const srcObj = await env.HD_PRIVATE.get(srcKey);
+  if (!srcObj) {
+    throw new Error(`copy failed: missing source object ${srcKey}`);
   }
-  const body = concat(parts, size);
-  await env.HD_PRIVATE.put(destKey, body, { httpMetadata: { contentType } });
+
+  let bodyStream: ReadableStream<Uint8Array> = srcObj.body;
+  if (options?.transform) {
+    const transformed = options.transform(bodyStream);
+    bodyStream = typeof FixedLengthStream !== "undefined"
+      ? transformed.pipeThrough(new FixedLengthStream(size))
+      : transformed;
+  }
+
+  await env.HD_PRIVATE.put(destKey, bodyStream, {
+    httpMetadata: { contentType },
+    customMetadata: srcObj.customMetadata,
+  });
 }
 
 async function reject(env: Env, assetId: string, key: string, reason: string): Promise<void> {
@@ -187,15 +219,6 @@ function readyKeyFor(quarantineKey: string, assetId: string): string {
   return `ready/${assetId}`;
 }
 
-function concat(parts: Uint8Array[], total: number): Uint8Array {
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (const p of parts) {
-    out.set(p, off);
-    off += p.length;
-  }
-  return out;
-}
 
 // Export for tests / seam reuse by ticket #7 (AI output validation).
 export { readyKeyFor, copyObject };

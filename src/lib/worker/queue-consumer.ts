@@ -45,7 +45,10 @@ export async function handleQueueBatch(
 
   if (isAssetValidateQueue(queue)) {
     for (const msg of batch.messages) {
-      await validateAsset(env, msg.body as AssetValidationJob);
+      const res = await validateAsset(env, msg.body as AssetValidationJob);
+      if (!res.ok) {
+        throw new Error(`validation transient failure: ${res.error}`);
+      }
       msg.ack?.();
     }
     return;
