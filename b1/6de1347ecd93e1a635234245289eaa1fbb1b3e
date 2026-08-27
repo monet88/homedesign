@@ -1,0 +1,20 @@
+src/app/api/auth/test-outbox/outbox.test.ts
+  h_17f2fa2b92da6a 2,169,183,195,206,215,228,260,282,303,330,342,357,401,412,426,439,450,452-453,456,461-463,467-468,471
+src/app/api/auth/test-outbox/route.ts
+  h_17f2fa2b92da6a 3,20,22-26,28
+src/lib/auth/outbox.wtest.ts
+  h_17f2fa2b92da6a 6,42,57,74,87,114,123,135,143
+src/lib/auth/server.ts
+  h_17f2fa2b92da6a 485-528
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "b16de1347ecd93e1a635234245289eaa1fbb1b3e",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
