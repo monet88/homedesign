@@ -1,0 +1,14 @@
+src/lib/auth/outbox.wtest.ts
+  h_17f2fa2b92da6a 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "5cf75b785a30c422b2a0af61def7bd11a0ba609e",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
