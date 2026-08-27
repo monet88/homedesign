@@ -138,13 +138,19 @@ describe("exterior prompt template (clone contract snapshot)", () => {
 
 describe("buildPrompt dispatch by scene", () => {
   function config(scene: DesignConfig["scene"], intent: DesignConfig["intent"]): DesignConfig {
+    const stage =
+      scene === "floor-plan" && "stage" in intent ? (intent as { stage?: string }).stage : undefined;
     return {
       sourceAssetId: "asset-1",
       mediaType: "image",
       scene,
+      stage: stage as DesignConfig["stage"],
       provider: "fake",
       model: "gemini-2.5-flash-image",
-      providerScene: scene === "floor-plan" ? "room-design-brief" : "image-to-image",
+      providerScene:
+        scene === "floor-plan"
+          ? (`room-design-${stage ?? "brief"}` as DesignConfig["providerScene"])
+          : "image-to-image",
       intent,
       options: {},
       cost: 1,
@@ -166,9 +172,22 @@ describe("buildPrompt dispatch by scene", () => {
     expect(prompt).toBe(EXTERIOR_TEMPLATE);
   });
 
-  it("floor-plan stages are not implemented yet (501, no prompt built)", () => {
+  it("builds a floor-plan brief prompt", () => {
+    const prompt = buildPrompt(
+      config("floor-plan", { stage: "brief", marker: { x: 10, y: 10 }, roomId: "room-1" })
+    );
+    expect(prompt).toContain("marker (10%, 10%)");
+    expect(prompt).toContain("Do not fabricate measurements");
+  });
+
+  it("floor-plan layout/render/panorama remain 501", () => {
     try {
-      buildPrompt(config("floor-plan", { stage: "brief", marker: { x: 10, y: 10 } }));
+      buildPrompt({
+        ...config("floor-plan", { stage: "layout", marker: { x: 10, y: 10 } }),
+        stage: "layout",
+        providerScene: "room-design-layout",
+        cost: 2,
+      });
       throw new Error("expected SCENE_NOT_IMPLEMENTED");
     } catch (err) {
       expect(err).toBeInstanceOf(DesignError);

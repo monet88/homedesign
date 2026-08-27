@@ -8,7 +8,7 @@
 // Local Edit (`mode: "edit"`) skips the template entirely and uses only the
 // instruction — same as origin.
 
-import type { ExteriorIntent, InteriorIntent } from "@/lib/ai/types";
+import type { ExteriorIntent, FloorPlanIntent, InteriorIntent } from "@/lib/ai/types";
 
 // Fallbacks (origin behavior: empty custom value falls back to these).
 const FALLBACK_ROOM_TYPE = "the room";
@@ -71,6 +71,35 @@ export function buildExteriorPrompt(intent: ExteriorIntent): string {
 
   const requirements = intent.requirements?.trim();
   if (requirements) lines.push(`Custom requirements: ${requirements}`);
+
+  return lines.join("\n");
+}
+
+/** Room Brief stage prompt (ADR 0004). Recognition is input, not a separate billed output. */
+export function buildFloorPlanBriefPrompt(intent: FloorPlanIntent): string {
+  const roomType =
+    (intent.recognition?.roomType as string | undefined) ??
+    (intent.intake?.roomType as string | undefined) ??
+    "the selected room";
+
+  const lines = [
+    `Analyze the floor plan region at marker (${intent.marker.x}%, ${intent.marker.y}%) and prepare a Room Brief for ${roomType}.`,
+    intent.style ? `Target style: ${intent.style}.` : "Propose an appropriate style direction.",
+  ];
+
+  if (intent.stylePreference) lines.push(`Style preference: ${intent.stylePreference}.`);
+  if (intent.intake) lines.push(`Room questionnaire answers: ${JSON.stringify(intent.intake)}.`);
+  if (intent.feedback) lines.push(`User feedback: ${intent.feedback}.`);
+  if (intent.recognition?.designProposal) {
+    lines.push(`Recognition proposal: ${String(intent.recognition.designProposal)}.`);
+  }
+
+  lines.push(
+    "Create a Design Proposal summarizing room context, openings, layout direction, and recommended design approach."
+  );
+  lines.push(
+    "Do not fabricate measurements; include dimensions only when they are readable from the source floor plan."
+  );
 
   return lines.join("\n");
 }

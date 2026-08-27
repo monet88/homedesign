@@ -1,6 +1,7 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createAuth, requireVerifiedUser, type AuthEnv } from "@/lib/auth/server";
 import { DesignError } from "@/lib/ai/types";
+import { FloorPlanError } from "@/lib/floor-plan/errors";
 
 // Shared HTTP plumbing for the generation endpoints (ticket #7).
 // Envelope convention: `{ code: 0, data: {...} }` on success, `{ error }` +
@@ -60,4 +61,15 @@ export async function readJson(request: Request): Promise<unknown | Response> {
   } catch {
     return Response.json({ error: "INVALID_JSON" }, { status: 400 });
   }
+}
+
+/** Map FloorPlanError to the documented `{ error }` envelope. */
+export function floorPlanErrorResponse(err: unknown): Response {
+  if (err instanceof FloorPlanError) {
+    return Response.json(
+      err.reason ? { error: err.code, reason: err.reason } : { error: err.code },
+      { status: err.status }
+    );
+  }
+  return designErrorResponse(err);
 }
