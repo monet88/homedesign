@@ -13,6 +13,7 @@
 //      primitives from #4.
 
 import type { Env } from "@/lib/bindings";
+import { assertMockPaymentAllowed } from "@/lib/env/policy";
 import {
   addCredits,
   holdCredits,
@@ -176,12 +177,7 @@ export async function mockPurchase(
   pack: MockPack,
   idempotencyKey: string
 ): Promise<MockPurchaseResult> {
-  // Production ban.
-  if (env.ENVIRONMENT === "production") {
-    const err = new Error("MOCK_PAYMENT_BANNED_IN_PRODUCTION") as Error & { status?: number };
-    err.status = 403;
-    throw err;
-  }
+  assertMockPaymentAllowed(env);
 
   const packDef = MOCK_PACKS[pack];
   if (!packDef) {

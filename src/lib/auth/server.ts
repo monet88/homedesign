@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { oneTap } from "better-auth/plugins";
 import type { Env } from "@/lib/bindings";
+import { assertEmailSignUpAllowed } from "@/lib/env/policy";
 
 // Ticket 03 (ADR 0001): BetterAuth server instance.
 //
@@ -87,6 +88,20 @@ export function createAuth(env: AuthEnv) {
 }
 
 export type AppAuth = ReturnType<typeof createAuth>;
+
+/** Auth HTTP entry with production sign-up gate (ADR 0006 / ticket #18). */
+export async function handleAuthRequest(env: AuthEnv, request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  if (url.pathname.endsWith("/sign-up/email") && request.method === "POST") {
+    try {
+      assertEmailSignUpAllowed(env);
+    } catch (err) {
+      const status = (err as { status?: number }).status ?? 403;
+      return Response.json({ error: "EMAIL_SIGNUP_BANNED_IN_PRODUCTION" }, { status });
+    }
+  }
+  return createAuth(env).handler(request);
+}
 
 // --- EmailDelivery adapter → environment-local test-outbox (ADR 0001) ---
 

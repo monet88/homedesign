@@ -18,6 +18,7 @@
 // IS NOT NULL makes concurrent INSERT … ON CONFLICT DO NOTHING atomic.
 
 import type { Env } from "@/lib/bindings";
+import { isFreeGrantAllowed } from "@/lib/env/policy";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -111,6 +112,11 @@ export async function ensureFreeCreditGrant(
   env: Env,
   userId: string
 ): Promise<boolean> {
+  // Banned in production (ADR 0006 / ticket #18).
+  if (!isFreeGrantAllowed(env)) {
+    return false;
+  }
+
   const id = uid();
   const now = Date.now();
   try {

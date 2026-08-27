@@ -1,0 +1,48 @@
+name: Staging smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Local smoke suite (always)
+        run: bash scripts/smoke.sh
+
+      - name: Remote staging smoke (requires secrets)
+        env:
+          CLOUDFLARE_STAGING_API_TOKEN: ${{ secrets.CLOUDFLARE_STAGING_API_TOKEN }}
+          CLOUDFLARE_STAGING_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_STAGING_ACCOUNT_ID }}
+        run: |
+          if [[ -z "${CLOUDFLARE_STAGING_API_TOKEN:-}" ]]; then
+            echo "Pipeline ready — live staging deploy awaits wizard/secrets (scripts/setup-cloudflare-envs.sh)"
+            exit 0
+          fi
+          export CLOUDFLARE_API_TOKEN="$CLOUDFLARE_STAGING_API_TOKEN"
+          export CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_STAGING_ACCOUNT_ID"
+          npx wrangler d1 migrations apply hd-staging --remote --env staging
+          npm run build
+          npx opennextjs-cloudflare build
+          npx wrangler deploy --env staging --dry-run
+
+      - name: Staging secrets note
+        if: always()
+        run: |
+          if [[ -z "${{ secrets.CLOUDFLARE_STAGING_API_TOKEN }}" ]]; then
+            echo "Live staging awaits CLOUDFLARE_STAGING_* secrets"
+          fi

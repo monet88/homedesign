@@ -1,5 +1,5 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createAuth, type AuthEnv } from "@/lib/auth/server";
+import { handleAuthRequest, type AuthEnv } from "@/lib/auth/server";
 
 // BetterAuth catch-all route handler. Serves every `/api/auth/*` endpoint
 // (sign-in/email, sign-up/email, sign-out, send-verification-email, verify-email,
@@ -8,8 +8,7 @@ import { createAuth, type AuthEnv } from "@/lib/auth/server";
 export async function handler(request: Request) {
   const cf = await getCloudflareContext({ async: true });
   const env = cf.env as unknown as AuthEnv;
-  const auth = createAuth(env);
-  return auth.handler(request);
+  return handleAuthRequest(env, request);
 }
 
 export { handler as GET, handler as POST, handler as DELETE, handler as PUT, handler as PATCH };

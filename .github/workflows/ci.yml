@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, implement/**, impl/**]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Workers-runtime integration suite
+        run: npm run wrangler:test
+
+      - name: Smoke suite (migrations → seed → tests)
+        run: SMOKE_SKIP_WRANGLER_TEST=1 bash scripts/smoke.sh
+
+      - name: Free-first gate (bundle ≤3MB)
+        run: bash scripts/free-first-gate.sh

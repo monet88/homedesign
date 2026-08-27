@@ -52,31 +52,210 @@
         "binding": "PROVIDER_NOTIFY",
         "queue": "homedesign-provider-notify"
       }
-    ],
-    // Queue CONSUMERS live on the dedicated Validation Worker (separate deploy
-    // artifact with its own queue() handler — src/lib/intake/validator.ts).
-    // The OpenNext main worker only PRODUCES onto ASSET_VALIDATE and does not
-    // export a queue() handler, so no consumers block belongs here.
-    // Deploy-time consumer config (ADR 0003 / research):
-    //   - homedesign-asset-validate: max_retries 3,
-    //     dead_letter_queue: homedesign-asset-validate-dlq
-    //   - homedesign-asset-validate-dlq: max_retries 0
-    //     (DLQ consumer rejects ONLY the Asset; never touches credits)
+    ]
   },
   "vars": {
     "ENVIRONMENT": "local",
-    // Local-only defaults so `next dev` / e2e run anonymous without .dev.vars.
-    // BETTER_AUTH_SECRET must be overridden per environment (secrets.required).
     "BETTER_AUTH_URL": "http://localhost:3000",
     "BETTER_AUTH_SECRET": "dev-only-insecure-secret-for-local-e2e",
     "EMAIL_DELIVERY_MODE": "test-outbox",
-    // R2 S3 API credentials for presigned upload URLs. Local placeholders;
-    // real values per environment (secrets.required for ACCESS_KEY/SECRET).
     "R2_ACCOUNT_ID": "local-dev-account",
     "R2_ACCESS_KEY_ID": "local-dev-access-key",
     "R2_SECRET_ACCESS_KEY": "local-dev-secret-key"
   },
+  // Deploy secrets (names only — values via `wrangler secret put` per account/env):
+  // BETTER_AUTH_SECRET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, GOOGLE_CLIENT_ID
   "observability": {
     "enabled": true
+  },
+  "env": {
+    "development": {
+      "name": "homedesign-dev",
+      "vars": {
+        "ENVIRONMENT": "development",
+        "EMAIL_DELIVERY_MODE": "test-outbox"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hd-dev",
+          "database_id": "__PROVISIONED_DEV__",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "NEXT_INC_CACHE_R2_BUCKET",
+          "bucket_name": "hd-dev-next-cache"
+        },
+        {
+          "binding": "HD_PRIVATE",
+          "bucket_name": "hd-dev-private"
+        },
+        {
+          "binding": "HD_PUBLIC",
+          "bucket_name": "hd-dev-public"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ASSET_VALIDATE",
+            "queue": "hd-dev-asset-validate"
+          },
+          {
+            "binding": "PROVIDER_NOTIFY",
+            "queue": "hd-dev-provider-notify"
+          }
+        ]
+      },
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "homedesign-dev"
+        }
+      ]
+    },
+    "preview": {
+      "name": "homedesign-preview",
+      "vars": {
+        "ENVIRONMENT": "preview",
+        "EMAIL_DELIVERY_MODE": "test-outbox"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hd-preview",
+          "database_id": "__PROVISIONED_PREVIEW__",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "NEXT_INC_CACHE_R2_BUCKET",
+          "bucket_name": "hd-preview-next-cache"
+        },
+        {
+          "binding": "HD_PRIVATE",
+          "bucket_name": "hd-preview-private"
+        },
+        {
+          "binding": "HD_PUBLIC",
+          "bucket_name": "hd-preview-public"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ASSET_VALIDATE",
+            "queue": "hd-preview-asset-validate"
+          },
+          {
+            "binding": "PROVIDER_NOTIFY",
+            "queue": "hd-preview-provider-notify"
+          }
+        ]
+      },
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "homedesign-preview"
+        }
+      ]
+    },
+    "staging": {
+      "name": "homedesign-staging",
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "EMAIL_DELIVERY_MODE": "test-outbox"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hd-staging",
+          "database_id": "__PROVISIONED_STAGING__",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "NEXT_INC_CACHE_R2_BUCKET",
+          "bucket_name": "hd-staging-next-cache"
+        },
+        {
+          "binding": "HD_PRIVATE",
+          "bucket_name": "hd-staging-private"
+        },
+        {
+          "binding": "HD_PUBLIC",
+          "bucket_name": "hd-staging-public"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ASSET_VALIDATE",
+            "queue": "hd-staging-asset-validate"
+          },
+          {
+            "binding": "PROVIDER_NOTIFY",
+            "queue": "hd-staging-provider-notify"
+          }
+        ]
+      },
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "homedesign-staging"
+        }
+      ]
+    },
+    "production": {
+      "name": "homedesign-prod",
+      "vars": {
+        "ENVIRONMENT": "production",
+        "EMAIL_DELIVERY_MODE": "production"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hd-prod",
+          "database_id": "__PROVISIONED_PROD__",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "NEXT_INC_CACHE_R2_BUCKET",
+          "bucket_name": "hd-prod-next-cache"
+        },
+        {
+          "binding": "HD_PRIVATE",
+          "bucket_name": "hd-prod-private"
+        },
+        {
+          "binding": "HD_PUBLIC",
+          "bucket_name": "hd-prod-public"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ASSET_VALIDATE",
+            "queue": "hd-prod-asset-validate"
+          },
+          {
+            "binding": "PROVIDER_NOTIFY",
+            "queue": "hd-prod-provider-notify"
+          }
+        ]
+      },
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "homedesign-prod"
+        }
+      ]
+    }
   }
 }

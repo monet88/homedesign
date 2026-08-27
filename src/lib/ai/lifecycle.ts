@@ -63,6 +63,7 @@ import {
   expireStaleTasks,
 } from "@/lib/payments/core";
 import { validateDesignConfig } from "@/lib/ai/config";
+import { assertGenerationAllowed } from "@/lib/env/policy";
 
 const PRIVATE_BUCKET = "homedesign-private";
 /** Short-lived private access handed to the provider adapter (never to a browser). */
@@ -152,6 +153,8 @@ export async function createDesign(
   userId: string,
   rawBody: unknown
 ): Promise<CreateDesignResult> {
+  assertGenerationAllowed(env);
+
   const config = validateDesignConfig(rawBody);
 
   let floorPlanProposal: import("@/lib/floor-plan/types").RoomBriefProposal | null = null;

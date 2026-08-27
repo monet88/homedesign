@@ -14,6 +14,8 @@
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "wrangler:test": "vitest run --config vitest.workers.config.ts",
+    "smoke": "bash scripts/smoke.sh",
+    "gate:free-first": "bash scripts/free-first-gate.sh",
     "test:e2e": "wrangler d1 migrations apply homedesign --local && playwright test",
     "test:e2e:update": "playwright test --update-snapshots",
     "lint": "next lint"

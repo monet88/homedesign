@@ -1,0 +1,33 @@
+name: Preview provision
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate workflow structure (no secrets required)
+        run: npm test -- tests/deploy.test.ts
+
+      - name: Provision PR preview (no-op without secrets)
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CLOUDFLARE_PREVIEW_API_TOKEN: ${{ secrets.CLOUDFLARE_PREVIEW_API_TOKEN }}
+          CLOUDFLARE_PREVIEW_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_PREVIEW_ACCOUNT_ID }}
+        run: bash scripts/preview-provision.sh
