@@ -9,7 +9,7 @@ import { presignPutUrl, type PresignCredentials } from "@/lib/intake/presign";
 // browser PUTs the bytes directly; the server never sees the body.
 //
 // Request:  { name, mimeType, size }
-// Response: { code:0, data:{ assetId, key, presignedUrl, expiresInSec } }
+// Response: { code:0, data:{ assetId, presignedUrl, expiresInSec } }
 
 export async function POST(request: Request) {
   const cf = await getCloudflareContext({ async: true });
@@ -67,7 +67,6 @@ export async function POST(request: Request) {
       code: 0,
       data: {
         assetId: intent.assetId,
-        key: intent.key,
         presignedUrl,
         expiresInSec: intent.expiresInSec,
       },

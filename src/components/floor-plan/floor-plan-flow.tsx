@@ -2,8 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { FLOOR_PLAN_STAGE_COST, CLIENT_POLL_INTERVAL_MS, CLIENT_POLL_MAX_WAIT_MS } from "@/lib/ai/types";
+import {
+  EMAIL_VERIFY_MESSAGE,
+  isEmailNotVerifiedError,
+  isInsufficientCreditsError,
+} from "@/lib/auth/verify-message";
 import { useSession } from "@/lib/auth/session-stub";
-import { CLIENT_POLL_INTERVAL_MS, CLIENT_POLL_MAX_WAIT_MS } from "@/lib/ai/types";
 import type {
   FloorPlanProjectDetailView,
   RoomBriefProposal,
@@ -13,6 +18,7 @@ import type {
 } from "@/lib/floor-plan/types";
 import { Toast } from "@/components/design/toast";
 import { Uploader } from "@/components/design/uploader";
+import { MockPaymentModal } from "@/components/payments/mock-payment-modal";
 import { PanoramaViewer } from "@/components/floor-plan/panorama-viewer";
 
 type StageKind = "brief" | "layout" | "render" | "panorama";
@@ -40,6 +46,8 @@ export function FloorPlanFlow() {
   const [toast, setToast] = useState<{ message: string; variant?: "error" } | null>(null);
   const [busy, setBusy] = useState(false);
   const [addingNextRoom, setAddingNextRoom] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const resumeLoaded = useRef(false);
 
@@ -257,10 +265,14 @@ export function FloorPlanFlow() {
       showToast("Sign in to generate.", "error");
       return;
     }
+    if (user.emailVerified === false) {
+      showToast(EMAIL_VERIFY_MESSAGE, "error");
+      return;
+    }
     if (!sourceAssetId || !room) return;
     if (stage === "brief" && !proposal) return;
 
-    const costs = { brief: 1, layout: 2, render: 3, panorama: 4 };
+    const cost = FLOOR_PLAN_STAGE_COST[stage];
     setBusy(true);
     setStatus("processing");
     try {
@@ -281,8 +293,24 @@ export function FloorPlanFlow() {
           idempotencyKey: `${stage}-${room.id}-${Date.now()}`,
         }),
       });
-      const data = (await res.json()) as { code?: number; data?: { id: string }; error?: string };
-      if (!res.ok || data.code !== 0 || !data.data?.id) throw new Error(data.error ?? `HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        code?: number;
+        data?: { id: string };
+        error?: string;
+        reason?: string;
+      };
+      if (!res.ok || data.code !== 0 || !data.data?.id) {
+        if (isInsufficientCreditsError(res.status, data.error)) {
+          setPaymentMessage(data.reason ?? "You need more Credits for this stage.");
+          setPaymentOpen(true);
+          return;
+        }
+        if (isEmailNotVerifiedError(res.status, data.error)) {
+          showToast(EMAIL_VERIFY_MESSAGE, "error");
+          return;
+        }
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
 
       const labels = {
         brief: "Room Brief",
@@ -293,7 +321,7 @@ export function FloorPlanFlow() {
       await pollTask(data.data.id, labels[stage]);
       if (stage === "brief") await runRecognition();
       if (projectId) await refreshProject(projectId);
-      showToast(`${labels[stage]} generated (${costs[stage]} Credit${costs[stage] > 1 ? "s" : ""}).`);
+      showToast(`${labels[stage]} generated (${cost} Credit${cost > 1 ? "s" : ""}).`);
     } catch (err) {
       setStatus("failed");
       showToast((err as Error).message, "error");
@@ -522,7 +550,7 @@ export function FloorPlanFlow() {
               disabled={busy || !proposal}
               onClick={() => void generateStage("brief")}
             >
-              Generate Brief (1 Credit)
+              Generate Brief ({FLOOR_PLAN_STAGE_COST.brief} Credit)
             </button>
             <button
               type="button"
@@ -553,7 +581,7 @@ export function FloorPlanFlow() {
               disabled={busy}
               onClick={() => void generateStage("layout")}
             >
-              Generate Layout (2 Credits)
+              Generate Layout ({FLOOR_PLAN_STAGE_COST.layout} Credits)
             </button>
             <button
               type="button"
@@ -574,7 +602,7 @@ export function FloorPlanFlow() {
               disabled={busy || !currentRoomDetail.stageRuns.some((r) => r.stage === "layout" && r.status === "confirmed")}
               onClick={() => void generateStage("render")}
             >
-              Generate Render (3 Credits)
+              Generate Render ({FLOOR_PLAN_STAGE_COST.render} Credits)
             </button>
             <button
               type="button"
@@ -598,7 +626,7 @@ export function FloorPlanFlow() {
         <section className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-6">
           <h2 className="text-lg font-medium">Room Panorama (optional)</h2>
           <p className="text-sm text-neutral-600">
-            Generate a 360° panorama (4 Credits) or skip — the room is already complete after
+            Generate a 360° panorama ({FLOOR_PLAN_STAGE_COST.panorama} Credits) or skip — the room is already complete after
             confirming the render.
           </p>
           <div className="flex flex-wrap gap-2">
@@ -608,7 +636,7 @@ export function FloorPlanFlow() {
               disabled={busy || !canGeneratePanorama}
               onClick={() => void generateStage("panorama")}
             >
-              Generate Panorama (4 Credits)
+              Generate Panorama ({FLOOR_PLAN_STAGE_COST.panorama} Credits)
             </button>
             <button
               type="button"
@@ -667,6 +695,13 @@ export function FloorPlanFlow() {
       ) : null}
 
       {toast ? <Toast message={toast.message} variant={toast.variant} onClose={() => setToast(null)} /> : null}
+
+      <MockPaymentModal
+        open={paymentOpen}
+        onClose={() => setPaymentOpen(false)}
+        message={paymentMessage}
+        onPurchased={() => window.location.reload()}
+      />
     </div>
   );
 }

@@ -365,6 +365,52 @@ describe("intake pipeline — DLQ rejects only the Asset (AC7)", () => {
   });
 });
 
+describe("intake expiry reconciler (24h purge_at)", () => {
+  it("rejects pending-upload assets past purge_at", async () => {
+    const userId = nextUser();
+    const intent = await createUploadIntent(env, {
+      userId,
+      name: "stale-pending.png",
+      mimeType: "image/png",
+      size: 1024,
+    });
+
+    const past = Date.now() - 1000;
+    await env.DB.prepare(`UPDATE assets SET purge_at = ?2 WHERE id = ?1`)
+      .bind(intent.assetId, past)
+      .run();
+
+    const { reconcileIntakeExpiry } = await import("@/lib/intake/expiry");
+    const result = await reconcileIntakeExpiry(env);
+    expect(result.expired).toBe(1);
+    expect(await getAssetLifecycle(env, intent.assetId)).toBe("rejected");
+  });
+
+  it("rejects quarantined assets past purge_at and deletes quarantine bytes", async () => {
+    const userId = nextUser();
+    const intent = await createUploadIntent(env, {
+      userId,
+      name: "stale-quarantine.png",
+      mimeType: "image/png",
+      size: 1024,
+    });
+
+    await env.HD_PRIVATE.put(intent.key, validPngBytes());
+    await finalizeUpload(env, intent.assetId);
+
+    const past = Date.now() - 1000;
+    await env.DB.prepare(`UPDATE assets SET purge_at = ?2 WHERE id = ?1`)
+      .bind(intent.assetId, past)
+      .run();
+
+    const { reconcileIntakeExpiry } = await import("@/lib/intake/expiry");
+    const result = await reconcileIntakeExpiry(env);
+    expect(result.expired).toBe(1);
+    expect(await getAssetLifecycle(env, intent.assetId)).toBe("rejected");
+    expect(await env.HD_PRIVATE.get(intent.key)).toBeNull();
+  });
+});
+
 describe("intake pipeline — delete + recovery (AC6)", () => {
   it("delete hides immediately and sets recovery_until (30 days)", async () => {
     const intent = await createUploadIntent(env, { userId: nextUser(), name: "room.png", mimeType: "image/png", size: 1024 });

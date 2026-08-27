@@ -58,7 +58,7 @@ export async function listActivity(
   const limit = ACTIVITY_PAGE_SIZE + 1;
 
   const sql = `
-    WITH events AS (
+    WITH core_events AS (
       SELECT
         'project:' || p.id AS event_id,
         'project' AS family,
@@ -126,6 +126,70 @@ export async function listActivity(
         mp.amount AS detail
       FROM mock_payments mp
       WHERE mp.user_id = ?1
+    ),
+    extended_events AS (
+      SELECT
+        'stage:' || sr.id || ':' || sr.status AS event_id,
+        'generation' AS family,
+        CASE
+          WHEN sr.status = 'confirmed' THEN 'stage_confirmed'
+          WHEN sr.status IN ('failed', 'expired') THEN 'stage_failed'
+          ELSE 'stage_started'
+        END AS type,
+        COALESCE(sr.confirmed_at, sr.updated_at) AS occurred_at,
+        COALESCE(sr.design_id, sr.id) AS reference_id,
+        rd.user_id AS actor_user_id,
+        rd.marker_id AS name,
+        sr.stage AS kind,
+        sr.status AS status,
+        sr.room_design_id AS detail
+      FROM floor_plan_stage_runs sr
+      JOIN room_designs rd ON rd.id = sr.room_design_id
+      WHERE rd.user_id = ?1
+
+      UNION ALL
+
+      SELECT
+        CASE WHEN ps.revoked_at IS NULL THEN 'share:' || ps.id ELSE 'share-revoke:' || ps.id END AS event_id,
+        'project' AS family,
+        CASE
+          WHEN ps.revoked_at IS NULL THEN 'project_share_created'
+          ELSE 'project_share_revoked'
+        END AS type,
+        COALESCE(ps.revoked_at, ps.created_at) AS occurred_at,
+        ps.project_id AS reference_id,
+        p.user_id AS actor_user_id,
+        p.name AS name,
+        'share' AS kind,
+        CASE WHEN ps.revoked_at IS NULL THEN 'active' ELSE 'revoked' END AS status,
+        ps.expires_at AS detail
+      FROM project_shares ps
+      JOIN projects p ON p.id = ps.project_id
+      WHERE p.user_id = ?1
+
+      UNION ALL
+
+      SELECT
+        'project-meta:' || p.id || ':' || p.updated_at AS event_id,
+        'project' AS family,
+        CASE
+          WHEN p.favorite = 1 THEN 'project_favorited'
+          ELSE 'project_visibility_changed'
+        END AS type,
+        p.updated_at AS occurred_at,
+        p.id AS reference_id,
+        p.user_id AS actor_user_id,
+        p.name AS name,
+        p.kind AS kind,
+        CASE WHEN p.favorite = 1 THEN 'favorite' ELSE p.visibility END AS status,
+        p.visibility AS detail
+      FROM projects p
+      WHERE p.user_id = ?1 AND (p.favorite = 1 OR p.visibility != 'private')
+    ),
+    events AS (
+      SELECT * FROM core_events
+      UNION ALL
+      SELECT * FROM extended_events
     )
     SELECT *
     FROM events

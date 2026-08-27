@@ -3,10 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "@/lib/auth/session-stub";
 import {
+  EMAIL_VERIFY_MESSAGE,
+  isEmailNotVerifiedError,
+  isInsufficientCreditsError,
+} from "@/lib/auth/verify-message";
+import {
   CLIENT_POLL_INTERVAL_MS,
   CLIENT_POLL_MAX_WAIT_MS,
 } from "@/lib/ai/types";
 import type { DesignPreset } from "@/lib/design/state";
+import { MockPaymentModal } from "@/components/payments/mock-payment-modal";
 import { DesignCatalogGalleries } from "./design-catalog-galleries";
 import { DesignForm } from "./design-form";
 import type { DesignFormHandle } from "./design-form";
@@ -57,6 +63,8 @@ export function DesignFlow({
   const [status, setStatus] = useState<string | null>(null);
   const [history, setHistory] = useState<GenerationRecord[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
   const formRef = useRef<DesignFormHandle | null>(null);
   const activeRef = useRef<{
     taskId: string;
@@ -177,6 +185,10 @@ export function DesignFlow({
       showToast("Sign in to generate designs.", "error");
       return;
     }
+    if (user.emailVerified === false) {
+      showToast(EMAIL_VERIFY_MESSAGE, "error");
+      return;
+    }
     if (!currentSourceAssetId) {
       showToast("Please upload a photo first.", "error");
       return;
@@ -201,6 +213,15 @@ export function DesignFlow({
 
     if (!res.ok || json.code !== 0 || !json.data?.id) {
       setStatus("error");
+      if (isInsufficientCreditsError(res.status, json.error)) {
+        setPaymentMessage(json.reason ?? "You need more Credits to generate.");
+        setPaymentOpen(true);
+        return;
+      }
+      if (isEmailNotVerifiedError(res.status, json.error)) {
+        showToast(EMAIL_VERIFY_MESSAGE, "error");
+        return;
+      }
       showToast(json.reason ?? json.error ?? `Generate failed (${res.status})`, "error");
       return;
     }
@@ -348,6 +369,13 @@ export function DesignFlow({
       </div>
 
       <DesignCatalogGalleries scene={scene} />
+
+      <MockPaymentModal
+        open={paymentOpen}
+        onClose={() => setPaymentOpen(false)}
+        message={paymentMessage}
+        onPurchased={() => window.location.reload()}
+      />
     </main>
   );
 }

@@ -315,6 +315,9 @@ describe("listActivity", () => {
 
 async function applyMigrations(db: D1Database) {
   const drops = [
+    "DROP TABLE IF EXISTS floor_plan_stage_runs",
+    "DROP TABLE IF EXISTS room_designs",
+    "DROP TABLE IF EXISTS project_shares",
     "DROP TABLE IF EXISTS project_assets",
     "DROP TABLE IF EXISTS designs",
     "DROP TABLE IF EXISTS projects",
@@ -409,6 +412,35 @@ async function applyMigrations(db: D1Database) {
         revoked_at INTEGER,
         created_at INTEGER NOT NULL,
         UNIQUE (token_digest)
+      )`
+    ),
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS room_designs (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        marker_id TEXT NOT NULL,
+        marker_x REAL NOT NULL,
+        marker_y REAL NOT NULL,
+        marker_locked INTEGER NOT NULL DEFAULT 0,
+        brief_confirmed_at INTEGER,
+        progress TEXT NOT NULL DEFAULT 'draft',
+        recognition_json TEXT,
+        proposal_json TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )`
+    ),
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS floor_plan_stage_runs (
+        id TEXT PRIMARY KEY,
+        room_design_id TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        design_id TEXT,
+        confirmed_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
       )`
     ),
     db.prepare(

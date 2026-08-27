@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { GoogleOneTapPrompt } from "@/components/auth/google-one-tap";
 import { Header, Footer } from "@/components/shell";
 import "./globals.css";
 
@@ -28,6 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="flex min-h-screen flex-col bg-paper text-ink antialiased">
+        <GoogleOneTapPrompt />
         <Header />
         <div className="flex-1">{children}</div>
         <Footer />

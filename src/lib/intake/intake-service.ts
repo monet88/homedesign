@@ -5,6 +5,7 @@
 
 import type { Env } from "@/lib/bindings";
 import type { AssetLifecycle } from "@/lib/fixtures/images";
+import { INTAKE_EXPIRY_MS } from "@/lib/intake/expiry";
 import { MAX_UPLOAD_BYTES, VALID_UPLOAD_MIMES } from "@/lib/fixtures/images";
 
 // --- Types ---
@@ -122,12 +123,13 @@ export async function createUploadIntent(
   const assetId = crypto.randomUUID();
   const key = `quarantine/${assetId}`;
   const now = Date.now();
+  const purgeAt = now + INTAKE_EXPIRY_MS;
 
   await env.DB.prepare(
-    `INSERT INTO assets (id, name, mime_type, size, lifecycle, storage_key, user_id, declared_size, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, 'pending-upload', ?5, ?6, ?7, ?8, ?8)`
+    `INSERT INTO assets (id, name, mime_type, size, lifecycle, storage_key, user_id, declared_size, created_at, updated_at, purge_at)
+     VALUES (?1, ?2, ?3, ?4, 'pending-upload', ?5, ?6, ?7, ?8, ?8, ?9)`
   )
-    .bind(assetId, input.name, input.mimeType, input.size, key, input.userId, input.size, now)
+    .bind(assetId, input.name, input.mimeType, input.size, key, input.userId, input.size, now, purgeAt)
     .run();
 
   return {
@@ -177,9 +179,10 @@ export async function finalizeUpload(
   // Atomic transition: pending-upload → quarantined
   const now = Date.now();
   const result = await env.DB.prepare(
-    `UPDATE assets SET lifecycle = 'quarantined', actual_size = ?2, updated_at = ?3 WHERE id = ?1 AND lifecycle = 'pending-upload'`
+    `UPDATE assets SET lifecycle = 'quarantined', actual_size = ?2, updated_at = ?3, purge_at = ?4
+     WHERE id = ?1 AND lifecycle = 'pending-upload'`
   )
-    .bind(assetId, obj.size, now)
+    .bind(assetId, obj.size, now, now + INTAKE_EXPIRY_MS)
     .run();
 
   if (result.meta.changes === 0) {

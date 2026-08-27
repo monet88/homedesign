@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { signOut } from "@/lib/auth/client";
 import { NAV_LINKS } from "@/lib/nav";
 import { useSession } from "@/lib/auth/session-stub";
 
@@ -88,6 +89,7 @@ export function Header() {
                   <button
                     type="button"
                     role="menuitem"
+                    onClick={() => void signOut()}
                     className="block w-full rounded-md px-3 py-2 text-left text-sm text-ink/90 hover:bg-ink/5"
                   >
                     Sign Out

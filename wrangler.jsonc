@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "homedesign",
-  "main": ".open-next/worker.js",
+  "main": "worker.ts",
   "compatibility_date": "2026-08-24",
   "compatibility_flags": [
     "nodejs_compat",
@@ -52,7 +52,22 @@
         "binding": "PROVIDER_NOTIFY",
         "queue": "homedesign-provider-notify"
       }
+    ],
+    "consumers": [
+      {
+        "queue": "homedesign-asset-validate",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5
+      },
+      {
+        "queue": "homedesign-provider-notify",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5
+      }
     ]
+  },
+  "triggers": {
+    "crons": ["*/15 * * * *"]
   },
   "vars": {
     "ENVIRONMENT": "local",
@@ -107,6 +122,10 @@
             "binding": "PROVIDER_NOTIFY",
             "queue": "hd-dev-provider-notify"
           }
+        ],
+        "consumers": [
+          { "queue": "hd-dev-asset-validate", "max_batch_size": 10, "max_batch_timeout": 5 },
+          { "queue": "hd-dev-provider-notify", "max_batch_size": 10, "max_batch_timeout": 5 }
         ]
       },
       "services": [
@@ -154,6 +173,10 @@
             "binding": "PROVIDER_NOTIFY",
             "queue": "hd-preview-provider-notify"
           }
+        ],
+        "consumers": [
+          { "queue": "hd-preview-asset-validate", "max_batch_size": 10, "max_batch_timeout": 5 },
+          { "queue": "hd-preview-provider-notify", "max_batch_size": 10, "max_batch_timeout": 5 }
         ]
       },
       "services": [
@@ -201,6 +224,10 @@
             "binding": "PROVIDER_NOTIFY",
             "queue": "hd-staging-provider-notify"
           }
+        ],
+        "consumers": [
+          { "queue": "hd-staging-asset-validate", "max_batch_size": 10, "max_batch_timeout": 5 },
+          { "queue": "hd-staging-provider-notify", "max_batch_size": 10, "max_batch_timeout": 5 }
         ]
       },
       "services": [
@@ -248,6 +275,10 @@
             "binding": "PROVIDER_NOTIFY",
             "queue": "hd-prod-provider-notify"
           }
+        ],
+        "consumers": [
+          { "queue": "hd-prod-asset-validate", "max_batch_size": 10, "max_batch_timeout": 5 },
+          { "queue": "hd-prod-provider-notify", "max_batch_size": 10, "max_batch_timeout": 5 }
         ]
       },
       "services": [

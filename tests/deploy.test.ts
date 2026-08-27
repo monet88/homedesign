@@ -43,6 +43,14 @@ describe("wrangler environment isolation (ADR 0006)", () => {
     expect(wrangler).toContain("R2_ACCESS_KEY_ID");
     expect(wrangler).not.toMatch(/sk_live_/);
   });
+
+  it("uses custom worker entry with queue consumers and scheduled reconciler", () => {
+    expect(wrangler).toMatch(/"main":\s*"worker\.ts"/);
+    expect(wrangler).toContain('"consumers"');
+    expect(wrangler).toContain("homedesign-asset-validate");
+    expect(wrangler).toContain("homedesign-provider-notify");
+    expect(wrangler).toMatch(/"crons"/);
+  });
 });
 
 describe("GitHub Actions workflows", () => {

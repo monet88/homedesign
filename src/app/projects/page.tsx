@@ -55,6 +55,120 @@ function buildQuery(filters: ReturnType<typeof useProjectFilters>, overrides: Re
   return params.toString();
 }
 
+function ShareControls({ project }: { project: ProjectItem }) {
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [expiryDays, setExpiryDays] = useState("");
+
+  const createShare = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const expiresAt =
+        expiryDays && Number(expiryDays) > 0
+          ? Date.now() + Number(expiryDays) * 24 * 3600 * 1000
+          : null;
+      const res = await fetch(`/api/projects/${project.id}/share`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ expiresAt }),
+      });
+      const json = (await res.json()) as {
+        code?: number;
+        data?: { token: string };
+        error?: string;
+      };
+      if (!res.ok || json.code !== 0 || !json.data?.token) {
+        throw new Error(json.error ?? `HTTP ${res.status}`);
+      }
+      const url = `${window.location.origin}/share/${json.data.token}`;
+      setShareUrl(url);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revokeShare = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/projects/${project.id}/share`, { method: "DELETE" });
+      if (!res.ok) {
+        const json = (await res.json()) as { error?: string };
+        throw new Error(json.error ?? `HTTP ${res.status}`);
+      }
+      setShareUrl(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyLink = async () => {
+    if (!shareUrl) return;
+    await navigator.clipboard.writeText(shareUrl);
+  };
+
+  return (
+    <div className="mt-3 space-y-2 border-t border-ink/10 pt-3">
+      <p className="text-xs font-medium text-ink/70">Share (unlisted read-only)</p>
+      {error && <p className="text-xs text-red-700">{error}</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="sr-only" htmlFor={`expiry-${project.id}`}>
+          Expiry days
+        </label>
+        <input
+          id={`expiry-${project.id}`}
+          type="number"
+          min={1}
+          placeholder="Expiry (days, optional)"
+          value={expiryDays}
+          onChange={(e) => setExpiryDays(e.target.value)}
+          className="w-36 rounded-card border border-ink/10 px-2 py-1 text-xs"
+        />
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void createShare()}
+          className="rounded-pill border border-ink/15 px-3 py-1 text-xs hover:bg-ink/5 disabled:opacity-50"
+        >
+          Create link
+        </button>
+        {(project.visibility === "unlisted" || shareUrl) && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void revokeShare()}
+            className="rounded-pill border border-ink/15 px-3 py-1 text-xs hover:bg-ink/5 disabled:opacity-50"
+          >
+            Revoke
+          </button>
+        )}
+      </div>
+      {shareUrl && (
+        <div className="flex items-center gap-2">
+          <input
+            readOnly
+            value={shareUrl}
+            className="min-w-0 flex-1 rounded-card border border-ink/10 px-2 py-1 text-xs"
+          />
+          <button
+            type="button"
+            onClick={() => void copyLink()}
+            className="rounded-pill bg-ink px-3 py-1 text-xs text-paper"
+          >
+            Copy
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProjectsPage() {
   const { user } = useSession();
   const router = useRouter();
@@ -288,6 +402,7 @@ function ProjectsPage() {
                   <span className="rounded-pill bg-ink/5 px-2 py-0.5 text-xs text-ink/80">favorite</span>
                 )}
               </div>
+              <ShareControls project={project} />
             </article>
           ))}
         </div>
