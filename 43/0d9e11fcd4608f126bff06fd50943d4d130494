@@ -1,0 +1,19 @@
+src/lib/ai/prompt.ts
+  s_0952115fffedc9::t_b3fdd1d132cfd3 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "430d9e11fcd4608f126bff06fd50943d4d130494",
+  "prompts": {},
+  "sessions": {
+    "s_0952115fffedc9": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2c80e090-30da-4507-8924-2e3a0c0101eb",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
