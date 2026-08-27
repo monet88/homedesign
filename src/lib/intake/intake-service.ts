@@ -66,6 +66,18 @@ const MAX_READY_BYTES = 1 * 1024 * 1024 * 1024; // 1 GiB
 type QuotaCheck = { ok: true } | { ok: false; reason: string };
 
 export async function checkQuota(env: Env, userId: string): Promise<QuotaCheck> {
+  // Admins are exempt from client intake throttling
+  try {
+    const user = await env.DB.prepare(
+      `SELECT role FROM user WHERE id = ?1`
+    ).bind(userId).first<{ role: string }>();
+    if (user?.role === "admin") {
+      return { ok: true };
+    }
+  } catch {
+    // If user table query fails (e.g. in minimal mock contexts), continue standard checks
+  }
+
   // Active intake count (pending-upload + quarantined)
   const active = await env.DB.prepare(
     `SELECT COUNT(*) AS cnt FROM assets WHERE user_id = ?1 AND lifecycle IN ('pending-upload', 'quarantined')`

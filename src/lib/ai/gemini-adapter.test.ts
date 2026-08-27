@@ -377,6 +377,23 @@ describe("GeminiFlashImageAdapter Adapter Lifecycle", () => {
     expect(output!.contentType).toBe("image/png");
     expect(Array.from(output!.bytes.slice(0, 8))).toEqual(Array.from(MAGIC.PNG));
   });
+
+  it("supports offline fallback mode when AI_API_KEY is missing/empty", async () => {
+    const adapter = new GeminiFlashImageAdapter({
+      apiKey: "",
+      environment: "production",
+      offlineFallback: true,
+    });
+
+    const submitRes = await adapter.submit(REQ);
+    expect(submitRes.ok).toBe(true);
+    if (!submitRes.ok) return;
+
+    const output = await adapter.fetchOutput(REQ, submitRes.providerTaskId);
+    expect(output).not.toBeNull();
+    expect(output!.contentType).toBe("image/png");
+    expect(Array.from(output!.bytes.slice(0, 8))).toEqual(Array.from(MAGIC.PNG));
+  });
 });
 
 describe("Provider Registry with GeminiFlashImageAdapter", () => {

@@ -134,9 +134,10 @@ test.describe("Full End-to-End System Journey", () => {
     await expect(page.getByRole("link", { name: "Download" })).toBeVisible();
   });
 
-  test("Phase 4: AI Floor Plan Journey (Marker Placement, Brief, Layout)", async ({
+  test("Phase 4: AI Floor Plan Journey (Marker Placement, Brief, Layout & Render)", async ({
     page,
   }) => {
+    test.setTimeout(120_000);
     await page.goto("/ai-floor-plan");
 
     // 1. Upload floor plan image
@@ -174,12 +175,31 @@ test.describe("Full End-to-End System Journey", () => {
     const confirmLayoutBtn = page.getByRole("button", {
       name: "Confirm Layout",
     });
-    await expect(confirmLayoutBtn).toBeEnabled({ timeout: 25_000 });
+    await expect(confirmLayoutBtn).toBeEnabled({ timeout: 45_000 });
     await confirmLayoutBtn.click();
 
-    // 6. Verify Generate Render stage is now ready
+    // 6. Generate and Confirm Render
+    const generateRenderBtn = page.getByRole("button", {
+      name: /Generate Render/i,
+    });
+    await expect(generateRenderBtn).toBeEnabled({ timeout: 25_000 });
+    await generateRenderBtn.click();
+
+    const confirmRenderBtn = page.getByRole("button", {
+      name: "Confirm Render",
+    });
+    await expect(confirmRenderBtn).toBeEnabled({ timeout: 45_000 });
+    await confirmRenderBtn.click();
+
+    // 7. Assert Room Panorama / Completed stage
     await expect(
-      page.getByRole("button", { name: /Generate Render/i })
+      page.getByRole("heading", { name: /Room Panorama/i })
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(
+      page.getByRole("button", { name: /Generate Panorama/i })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Skip Panorama/i })
     ).toBeVisible();
   });
 

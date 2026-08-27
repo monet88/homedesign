@@ -1,5 +1,9 @@
 import { requireAdminSession } from "@/lib/auth/server";
-import { getAvailableCredits } from "@/lib/credits/ledger";
+import {
+  getAvailableCredits,
+  recordAdminCreditAdjustment,
+} from "@/lib/credits/ledger";
+import type { Env } from "@/lib/bindings";
 
 export async function POST(request: Request) {
   const auth = await requireAdminSession(request);
@@ -37,19 +41,15 @@ export async function POST(request: Request) {
       return Response.json({ error: "USER_NOT_FOUND" }, { status: 404 });
     }
 
-    const id = crypto.randomUUID();
-    const now = Date.now();
-    const entryType = amount >= 0 ? "grant" : "usage";
-    const absAmount = Math.abs(amount);
+    await recordAdminCreditAdjustment(
+      auth.env as unknown as Env,
+      userId,
+      amount,
+      reason,
+      auth.user.id
+    );
 
-    await auth.env.DB.prepare(
-      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, 'admin_adjustment', ?6, NULL, ?7)`
-    )
-      .bind(id, userId, entryType, absAmount, reason, auth.user.id, now)
-      .run();
-
-    const updatedBalance = await getAvailableCredits(auth.env, userId);
+    const updatedBalance = await getAvailableCredits(auth.env as unknown as Env, userId);
 
     return Response.json({
       code: 0,

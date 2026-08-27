@@ -131,7 +131,56 @@ export async function ensureFreeCreditGrant(
   }
 }
 
-// ── Payment & usage primitives (for #5 / #7) ──────────────────────────────
+// ── Payment, admin & usage primitives (for #5 / #7 / #22) ─────────────────────────
+
+/**
+ * Record an administrative credit adjustment (grant or deduction).
+ * Positive amount is recorded as a 'grant', negative amount is recorded as 'usage'.
+ *
+ * @param env Cloudflare Env binding
+ * @param userId Target user ID
+ * @param amount Positive for credit addition, negative for credit deduction
+ * @param reason Audit reason for adjustment
+ * @param adminId Admin user ID performing the adjustment
+ * @returns The created CreditLedgerEntry
+ */
+export async function recordAdminCreditAdjustment(
+  env: Env,
+  userId: string,
+  amount: number,
+  reason: string,
+  adminId?: string
+): Promise<CreditLedgerEntry> {
+  const id = uid();
+  const now = Date.now();
+  const entryType: "grant" | "usage" = amount >= 0 ? "grant" : "usage";
+  const absAmount = Math.abs(amount);
+
+  await env.DB.prepare(
+    `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, 'admin_adjustment', ?6, NULL, ?7)`
+  ).bind(
+    id,
+    userId,
+    entryType,
+    absAmount,
+    reason,
+    adminId ?? null,
+    now
+  ).run();
+
+  return {
+    id,
+    user_id: userId,
+    entry_type: entryType,
+    amount: absAmount,
+    reason,
+    ref_type: "admin_adjustment",
+    ref_id: adminId ?? null,
+    grant_key: null,
+    created_at: now,
+  };
+}
 
 /**
  * Add credits (grant or successful Mock Payment). Callers MUST provide a

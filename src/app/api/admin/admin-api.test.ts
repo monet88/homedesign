@@ -95,6 +95,9 @@ function createMockDb() {
         },
         async first<T = any>(): Promise<T | null> {
           const q = query.trim().toUpperCase();
+          if (q.includes("COUNT(*)")) {
+            return { total: mockUsers.length } as unknown as T;
+          }
           if (q.includes("SELECT ID FROM USER WHERE ID = ?1")) {
             const u = mockUsers.find((user) => user.id === boundArgs[0]);
             return u ? ({ id: u.id } as unknown as T) : null;
@@ -120,7 +123,13 @@ function createMockDb() {
         async all<T = any>(): Promise<{ results: T[] }> {
           const q = query.trim().toUpperCase();
           if (q.includes("FROM USER U")) {
-            const results = mockUsers.map((u) => {
+            let userList = [...mockUsers];
+            if (boundArgs.length >= 2) {
+              const limit = boundArgs[0];
+              const offset = boundArgs[1];
+              userList = userList.slice(offset, offset + limit);
+            }
+            const results = userList.map((u) => {
               const grants = mockLedger
                 .filter(
                   (l) =>
@@ -320,7 +329,7 @@ describe("Admin Operations API Endpoints", () => {
       expect(json.error).toBe("FORBIDDEN");
     });
 
-    it("returns 200 with registered user list and credit balances for admin", async () => {
+    it("returns 200 with registered user list and credit balances with pagination for admin", async () => {
       mockSession = adminSession;
       const req = new Request("http://localhost:3000/api/admin/users");
       const res = await getUsers(req);
@@ -330,6 +339,12 @@ describe("Admin Operations API Endpoints", () => {
       expect(json.code).toBe(0);
       expect(Array.isArray(json.data.users)).toBe(true);
       expect(json.data.users.length).toBe(2);
+      expect(json.data.pagination).toEqual({
+        page: 1,
+        limit: 20,
+        total: 2,
+        totalPages: 1,
+      });
 
       const admin = json.data.users.find((u: any) => u.email === "minhthang421992@gmail.com");
       expect(admin).toBeDefined();
@@ -340,6 +355,23 @@ describe("Admin Operations API Endpoints", () => {
       expect(standard).toBeDefined();
       expect(standard.role).toBe("user");
       expect(standard.creditBalance).toBe(10);
+    });
+
+    it("respects page and limit search parameters", async () => {
+      mockSession = adminSession;
+      const req = new Request("http://localhost:3000/api/admin/users?page=1&limit=1");
+      const res = await getUsers(req);
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.code).toBe(0);
+      expect(json.data.users.length).toBe(1);
+      expect(json.data.pagination).toEqual({
+        page: 1,
+        limit: 1,
+        total: 2,
+        totalPages: 2,
+      });
     });
   });
 

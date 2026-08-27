@@ -37,11 +37,11 @@ export async function POST(request: Request) {
         try {
           console.log("[DEV-GEN] Starting generation for task:", result.id);
           const { runGeneration, completeGeneration } = await import("@/lib/ai/lifecycle");
-          const r = await runGeneration(auth.env as unknown as Env, result.id);
-          console.log("[DEV-GEN] runGeneration result:", r);
-          if (r.status === "quarantined") {
-            const cr = await completeGeneration(auth.env as unknown as Env, result.id);
-            console.log("[DEV-GEN] completeGeneration result:", cr);
+          const runResult = await runGeneration(auth.env as unknown as Env, result.id);
+          console.log("[DEV-GEN] runGeneration result:", runResult);
+          if (runResult.status === "quarantined") {
+            const completeResult = await completeGeneration(auth.env as unknown as Env, result.id);
+            console.log("[DEV-GEN] completeGeneration result:", completeResult);
           }
         } catch (e) {
           console.error("[DEV-GEN] error:", e);

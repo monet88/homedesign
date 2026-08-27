@@ -116,12 +116,21 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
       return { ok: false, error: failure, retryable: false };
     }
 
-    // 2. Production API key check
-    if (!this.apiKey && this.environment === "production") {
-      return { ok: false, error: "AI_API_KEY_MISSING", retryable: false };
-    }
-
     const providerTaskId = `gemini-${req.taskId}`;
+
+    // 2. API key check and offline fallback support
+    if (!this.apiKey) {
+      if (this.offlineFallback) {
+        this.pendingOutputs.set(providerTaskId, {
+          bytes: fixturePngBytes(),
+          contentType: "image/png",
+        });
+        return { ok: true, providerTaskId };
+      }
+      if (this.environment === "production") {
+        return { ok: false, error: "AI_API_KEY_MISSING", retryable: false };
+      }
+    }
 
     // 3. Multimodal content construction
     const contents: Array<

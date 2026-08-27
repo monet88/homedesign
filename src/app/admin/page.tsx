@@ -47,6 +47,12 @@ export default function AdminDashboardPage() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState("");
+  const [userPagination, setUserPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 1,
+  });
 
   // Tasks state
   const [tasks, setTasks] = useState<AdminTask[]>([]);
@@ -70,17 +76,20 @@ export default function AdminDashboardPage() {
   const [adjustingSuccess, setAdjustingSuccess] = useState<string | null>(null);
 
   // Fetch Users
-  const fetchUsers = useCallback(async () => {
+  const fetchUsers = useCallback(async (targetPage = 1) => {
     setUsersLoading(true);
     setUsersError(null);
     try {
-      const res = await fetch("/api/admin/users", { cache: "no-store" });
+      const res = await fetch(`/api/admin/users?page=${targetPage}&limit=20`, { cache: "no-store" });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error || `HTTP ${res.status}`);
       }
       const json = await res.json();
       setUsers(json?.data?.users ?? []);
+      if (json?.data?.pagination) {
+        setUserPagination(json.data.pagination);
+      }
     } catch (err) {
       setUsersError(err instanceof Error ? err.message : "Failed to load users");
     } finally {
@@ -515,6 +524,33 @@ export default function AdminDashboardPage() {
                 </tbody>
               </table>
             </div>
+            {userPagination.totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-ink/10 px-4 py-3 sm:px-6 bg-paper/50">
+                <div className="text-xs text-ink/70">
+                  Page <span className="font-semibold text-ink">{userPagination.page}</span> of{" "}
+                  <span className="font-semibold text-ink">{userPagination.totalPages}</span> (
+                  <span className="font-semibold text-ink">{userPagination.total}</span> total users)
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={userPagination.page <= 1 || usersLoading}
+                    onClick={() => fetchUsers(userPagination.page - 1)}
+                    className="rounded-pill border border-ink/15 bg-paper px-3 py-1 text-xs font-semibold text-ink disabled:opacity-40 hover:bg-black/5 transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={userPagination.page >= userPagination.totalPages || usersLoading}
+                    onClick={() => fetchUsers(userPagination.page + 1)}
+                    className="rounded-pill border border-ink/15 bg-paper px-3 py-1 text-xs font-semibold text-ink disabled:opacity-40 hover:bg-black/5 transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}
