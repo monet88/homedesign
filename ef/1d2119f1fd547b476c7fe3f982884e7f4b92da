@@ -1,0 +1,30 @@
+migrations/0002_auth.sql
+  h_17f2fa2b92da6a 64-65,70
+src/app/api/auth/test-outbox/outbox.test.ts
+  h_17f2fa2b92da6a 1-479
+src/app/api/auth/test-outbox/route.ts
+  h_17f2fa2b92da6a 2-6,8-33,35,37-40,43,45-63,65,67-70
+src/lib/ai/lifecycle.wtest.ts
+  h_17f2fa2b92da6a 610-611
+src/lib/auth/auth.wtest.ts
+  h_17f2fa2b92da6a 415-416
+src/lib/auth/outbox.wtest.ts
+  h_17f2fa2b92da6a 1-191
+src/lib/auth/server.ts
+  h_17f2fa2b92da6a 108-124,213-215,229,231-240,242-250,252-254,256-304,319-320,322,324-343,345-361,365-425,427-485
+src/lib/bindings.ts
+  h_17f2fa2b92da6a 42-45
+src/lib/library/library.wtest.ts
+  h_17f2fa2b92da6a 376-377
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "ef1d2119f1fd547b476c7fe3f982884e7f4b92da",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
