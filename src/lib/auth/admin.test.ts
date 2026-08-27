@@ -137,7 +137,7 @@ describe("getAdminSeedConfig", () => {
 });
 
 describe("seedAdminDatabase", () => {
-  it("generates idempotent SQL migration statements for admin provisioning", async () => {
+  it("generates idempotent, immutable SQL migration statements for admin provisioning", async () => {
     const config = {
       email: "minhthang421992@gmail.com",
       password: "test-admin-password-123!",
@@ -147,12 +147,28 @@ describe("seedAdminDatabase", () => {
     };
 
     const statements = await seedAdminDatabase.generateSqlStatements(config);
-    expect(statements.length).toBeGreaterThan(0);
+    expect(statements.length).toBe(3);
     const sqlCombined = statements.join("\n");
 
     expect(sqlCombined).toContain("minhthang421992@gmail.com");
     expect(sqlCombined).toContain("admin");
     expect(sqlCombined).toContain("99999");
     expect(sqlCombined).toContain("credit_ledger");
+    expect(sqlCombined).toContain("ON CONFLICT(user_id, grant_key) WHERE grant_key IS NOT NULL DO NOTHING;");
+    expect(sqlCombined).not.toContain("amount = 99999");
+    expect(sqlCombined).not.toContain("DO UPDATE SET\n  amount");
+  });
+
+  it("throws when password is not provided", async () => {
+    const config = {
+      email: "minhthang421992@gmail.com",
+      credits: 99999,
+      name: "Administrator",
+      role: "admin" as const,
+    };
+
+    await expect(seedAdminDatabase.generateSqlStatements(config)).rejects.toThrow(
+      /ADMIN_PASSWORD is required/
+    );
   });
 });

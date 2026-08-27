@@ -42,24 +42,11 @@ export const seedAdminDatabase = {
     }
     const hashedPassword = await hashPassword(config.password);
 
-    const userSql = `INSERT INTO user (id, name, email, emailVerified, role, createdAt, updatedAt)
-VALUES ('${userId}', '${config.name.replace(/'/g, "''")}', '${config.email}', 1, 'admin', ${now}, ${now})
-ON CONFLICT(email) DO UPDATE SET
-  role = 'admin',
-  emailVerified = 1,
-  updatedAt = ${now};`;
+    const userSql = `INSERT INTO user (id, name, email, emailVerified, role, createdAt, updatedAt) VALUES ('${userId}', '${config.name.replace(/'/g, "''")}', '${config.email}', 1, 'admin', ${now}, ${now}) ON CONFLICT(email) DO UPDATE SET role = 'admin', emailVerified = 1, updatedAt = ${now};`;
 
-    const accountSql = `INSERT INTO account (id, accountId, providerId, issuer, userId, password, createdAt, updatedAt)
-VALUES ('${accountId}', '${userId}', 'credential', 'local:credential', (SELECT id FROM user WHERE email = '${config.email}'), '${hashedPassword}', ${now}, ${now})
-ON CONFLICT(id) DO UPDATE SET
-  issuer = 'local:credential',
-  password = '${hashedPassword}',
-  updatedAt = ${now};`;
+    const accountSql = `INSERT INTO account (id, accountId, providerId, issuer, userId, password, createdAt, updatedAt) VALUES ('${accountId}', '${userId}', 'credential', 'local:credential', (SELECT id FROM user WHERE email = '${config.email}'), '${hashedPassword}', ${now}, ${now}) ON CONFLICT(id) DO UPDATE SET issuer = 'local:credential', password = '${hashedPassword}', updatedAt = ${now};`;
 
-    const ledgerSql = `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, grant_key, created_at)
-VALUES ('${ledgerId}', (SELECT id FROM user WHERE email = '${config.email}'), 'grant', ${config.credits}, 'Initial Admin Credit Grant', 'admin-initial-grant', ${now})
-ON CONFLICT(user_id, grant_key) WHERE grant_key IS NOT NULL DO UPDATE SET
-  amount = ${config.credits};`;
+    const ledgerSql = `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, grant_key, created_at) VALUES ('${ledgerId}', (SELECT id FROM user WHERE email = '${config.email}'), 'grant', ${config.credits}, 'Initial Admin Credit Grant', 'admin-initial-grant', ${now}) ON CONFLICT(user_id, grant_key) WHERE grant_key IS NOT NULL DO NOTHING;`;
 
     return [userSql, accountSql, ledgerSql];
   },
@@ -67,11 +54,34 @@ ON CONFLICT(user_id, grant_key) WHERE grant_key IS NOT NULL DO UPDATE SET
   async seedDirect(
     db: AuthEnv["DB"],
     config: AdminSeedConfig = getAdminSeedConfig()
-  ): Promise<void> {
+  ): Promise<{ status: "created" | "reconciled"; initialCredits: number }> {
+    if (!config.password) {
+      throw new Error("ADMIN_PASSWORD is required for admin database seeding.");
+    }
+
+    const existing = await db
+      .prepare(
+        `SELECT cl.amount, cl.created_at FROM credit_ledger cl
+         JOIN user u ON cl.user_id = u.id
+         WHERE u.email = ?1 AND cl.grant_key = 'admin-initial-grant'`
+      )
+      .bind(config.email)
+      .first<{ amount: number; created_at: number }>();
+
+    if (existing && existing.amount !== config.credits) {
+      throw new Error(
+        `Initial credit grant mismatch: existing grant is ${existing.amount} credits, but requested ${config.credits} credits. Credit ledger is immutable; use POST /api/admin/credits for adjustments.`
+      );
+    }
     const statements = await this.generateSqlStatements(config);
     for (const sql of statements) {
-      await db.exec(sql);
+      await db.prepare(sql).run();
     }
+
+    return {
+      status: existing ? "reconciled" : "created",
+      initialCredits: existing ? existing.amount : config.credits,
+    };
   },
 };
 
