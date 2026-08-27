@@ -482,4 +482,48 @@ export async function authorizeOutboxRequest(
   };
 }
 
+
+/**
+ * HTTP entry for the environment-local test outbox (Ticket #32).
+ * Lives in lib so Workers-runtime tests can exercise it with a real injected
+ * env, while the Next.js route stays on the framework-mandated signature.
+ */
+export async function handleOutboxRequest(env: AuthEnv, request: Request): Promise<Response> {
+  // Production responds as if outbox does not exist (404 semantics)
+  if (isProduction(env)) {
+    return Response.json(
+      { error: "not found" },
+      { status: 404, headers: { "cache-control": "no-store" } }
+    );
+  }
+
+  const currentEnv = env.ENVIRONMENT || "development";
+  const url = new URL(request.url);
+  const requestedEnv =
+    url.searchParams.get("environment") ?? request.headers.get("x-environment");
+
+  // Reject cross-environment reads
+  if (requestedEnv && requestedEnv.toLowerCase() !== currentEnv.toLowerCase()) {
+    return Response.json(
+      { error: "CROSS_ENVIRONMENT_FORBIDDEN" },
+      { status: 403, headers: { "cache-control": "no-store" } }
+    );
+  }
+
+  const auth = await authorizeOutboxRequest(env, request);
+  if (!auth.authorized) {
+    return Response.json(
+      { error: auth.error },
+      { status: auth.status, headers: { "cache-control": "no-store" } }
+    );
+  }
+
+  const email = url.searchParams.get("email") ?? undefined;
+  const result = await listOutbox(env, email, currentEnv);
+
+  return Response.json(
+    { messages: result.results },
+    { headers: { "cache-control": "no-store" } }
+  );
+}
 export { requireAdminSession, type AdminAuthResult } from "@/lib/auth/admin";

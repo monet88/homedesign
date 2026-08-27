@@ -3,7 +3,7 @@
 
 import { env } from "cloudflare:test";
 import { describe, expect, it, beforeEach } from "vitest";
-import { GET as getOutbox } from "@/app/api/auth/test-outbox/route";
+import { handleOutboxRequest } from "@/lib/auth/server";
 import {
   createAuth,
   deliverVerificationEmail,
@@ -39,7 +39,7 @@ describe("Workers runtime: Test outbox security & environment isolation (Ticket 
   it("anonymous read is denied with 401 and cache-control: no-store", async () => {
     const e = testEnv({ ENVIRONMENT: "development" });
     const req = new Request("http://localhost:3000/api/auth/test-outbox");
-    const res = await getOutbox(req, e);
+    const res = await handleOutboxRequest(e, req);
     expect(res.status).toBe(401);
     expect(res.headers.get("cache-control")).toBe("no-store");
   });
@@ -54,7 +54,7 @@ describe("Workers runtime: Test outbox security & environment isolation (Ticket 
         "x-outbox-secret": "wrong-secret",
       },
     });
-    const res = await getOutbox(req, e);
+    const res = await handleOutboxRequest(e, req);
     expect(res.status).toBe(401);
     expect(res.headers.get("cache-control")).toBe("no-store");
   });
@@ -71,7 +71,7 @@ describe("Workers runtime: Test outbox security & environment isolation (Ticket 
     const req = new Request("http://localhost:3000/api/auth/test-outbox", {
       headers: { Authorization: `Bearer ${AUTH.OUTBOX_ACCESS_SECRET}` },
     });
-    const res = await getOutbox(req, e);
+    const res = await handleOutboxRequest(e, req);
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
     const data = (await res.json()) as { messages: Array<{ to_email: string; verification_url: string }> };
@@ -84,7 +84,7 @@ describe("Workers runtime: Test outbox security & environment isolation (Ticket 
     const req = new Request("http://localhost:3000/api/auth/test-outbox?environment=staging", {
       headers: { Authorization: `Bearer ${AUTH.OUTBOX_ACCESS_SECRET}` },
     });
-    const res = await getOutbox(req, e);
+    const res = await handleOutboxRequest(e, req);
     expect(res.status).toBe(403);
     expect(res.headers.get("cache-control")).toBe("no-store");
     const data = (await res.json()) as { error: string };
@@ -111,7 +111,7 @@ describe("Workers runtime: Test outbox security & environment isolation (Ticket 
     const devReq = new Request("http://localhost:3000/api/auth/test-outbox", {
       headers: { Authorization: `Bearer ${AUTH.OUTBOX_ACCESS_SECRET}` },
     });
-    const devRes = await getOutbox(devReq, devEnv);
+    const devRes = await handleOutboxRequest(devEnv, devReq);
     expect(devRes.status).toBe(200);
     const devData = (await devRes.json()) as { messages: Array<{ to_email: string }> };
     expect(devData.messages).toHaveLength(1);
@@ -120,7 +120,7 @@ describe("Workers runtime: Test outbox security & environment isolation (Ticket 
     const stagingReq = new Request("https://staging.example.com/api/auth/test-outbox", {
       headers: { Authorization: `Bearer ${AUTH.OUTBOX_ACCESS_SECRET}` },
     });
-    const stagingRes = await getOutbox(stagingReq, stagingEnv);
+    const stagingRes = await handleOutboxRequest(stagingEnv, stagingReq);
     expect(stagingRes.status).toBe(200);
     const stagingData = (await stagingRes.json()) as { messages: Array<{ to_email: string }> };
     expect(stagingData.messages).toHaveLength(1);
@@ -132,7 +132,7 @@ describe("Workers runtime: Test outbox security & environment isolation (Ticket 
 
     // 1. Anonymous in production -> 404
     const anonReq = new Request("https://homedesign.com/api/auth/test-outbox");
-    const anonRes = await getOutbox(anonReq, prodEnv);
+    const anonRes = await handleOutboxRequest(prodEnv, anonReq);
     expect(anonRes.status).toBe(404);
     expect(anonRes.headers.get("cache-control")).toBe("no-store");
 
@@ -140,7 +140,7 @@ describe("Workers runtime: Test outbox security & environment isolation (Ticket 
     const secretReq = new Request("https://homedesign.com/api/auth/test-outbox", {
       headers: { Authorization: `Bearer ${AUTH.OUTBOX_ACCESS_SECRET}` },
     });
-    const secretRes = await getOutbox(secretReq, prodEnv);
+    const secretRes = await handleOutboxRequest(prodEnv, secretReq);
     expect(secretRes.status).toBe(404);
     expect(secretRes.headers.get("cache-control")).toBe("no-store");
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { GET as getOutbox } from "@/app/api/auth/test-outbox/route";
+import { handleOutboxRequest } from "@/lib/auth/server";
 import {
   deliverVerificationEmail,
   listOutbox,
@@ -166,7 +166,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
   describe("AC 1: Anonymous read denied", () => {
     it("rejects anonymous GET request in development with 401 UNAUTHORIZED", async () => {
       const req = new Request("http://localhost:3000/api/auth/test-outbox");
-      const res = await getOutbox(req, { ...baseEnv, DB: createMockDb() as unknown as AuthEnv["DB"] });
+      const res = await handleOutboxRequest({ ...baseEnv, DB: createMockDb() as unknown as AuthEnv["DB"] }, req);
       expect(res.status).toBe(401);
       expect(res.headers.get("cache-control")).toBe("no-store");
       const data = (await res.json()) as { error: string };
@@ -180,7 +180,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
         DB: createMockDb() as unknown as AuthEnv["DB"],
       };
       const req = new Request("https://preview.example.com/api/auth/test-outbox");
-      const res = await getOutbox(req, previewEnv);
+      const res = await handleOutboxRequest(previewEnv, req);
       expect(res.status).toBe(401);
       expect(res.headers.get("cache-control")).toBe("no-store");
     });
@@ -192,7 +192,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
         DB: createMockDb() as unknown as AuthEnv["DB"],
       };
       const req = new Request("https://staging.example.com/api/auth/test-outbox");
-      const res = await getOutbox(req, stagingEnv);
+      const res = await handleOutboxRequest(stagingEnv, req);
       expect(res.status).toBe(401);
       expect(res.headers.get("cache-control")).toBe("no-store");
     });
@@ -203,7 +203,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
       const req = new Request("http://localhost:3000/api/auth/test-outbox", {
         headers: { Authorization: "Bearer invalid-token" },
       });
-      const res = await getOutbox(req, { ...baseEnv, DB: createMockDb() as unknown as AuthEnv["DB"] });
+      const res = await handleOutboxRequest({ ...baseEnv, DB: createMockDb() as unknown as AuthEnv["DB"] }, req);
       expect(res.status).toBe(401);
       expect(res.headers.get("cache-control")).toBe("no-store");
     });
@@ -212,7 +212,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
       const req = new Request("http://localhost:3000/api/auth/test-outbox", {
         headers: { "x-outbox-secret": "wrong-secret" },
       });
-      const res = await getOutbox(req, { ...baseEnv, DB: createMockDb() as unknown as AuthEnv["DB"] });
+      const res = await handleOutboxRequest({ ...baseEnv, DB: createMockDb() as unknown as AuthEnv["DB"] }, req);
       expect(res.status).toBe(401);
     });
 
@@ -225,7 +225,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
           "x-forwarded-for": "127.0.0.1",
         },
       });
-      const res = await getOutbox(req, { ...baseEnv, DB: createMockDb() as unknown as AuthEnv["DB"] });
+      const res = await handleOutboxRequest({ ...baseEnv, DB: createMockDb() as unknown as AuthEnv["DB"] }, req);
       expect(res.status).toBe(401);
       expect(res.headers.get("cache-control")).toBe("no-store");
     });
@@ -257,7 +257,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
       const req = new Request("http://localhost:3000/api/auth/test-outbox", {
         headers: { Authorization: `Bearer ${baseEnv.OUTBOX_ACCESS_SECRET}` },
       });
-      const res = await getOutbox(req, env);
+      const res = await handleOutboxRequest(env, req);
       expect(res.status).toBe(200);
       expect(res.headers.get("cache-control")).toBe("no-store");
       const data = (await res.json()) as { messages: Array<{ to_email: string }> };
@@ -279,7 +279,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
       const req = new Request("http://localhost:3000/api/auth/test-outbox", {
         headers: { "x-outbox-secret": baseEnv.OUTBOX_ACCESS_SECRET! },
       });
-      const res = await getOutbox(req, env);
+      const res = await handleOutboxRequest(env, req);
       expect(res.status).toBe(200);
       const data = (await res.json()) as { messages: Array<{ to_email: string }> };
       expect(data.messages).toHaveLength(1);
@@ -300,7 +300,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
       const req = new Request("http://localhost:3000/api/auth/test-outbox", {
         headers: { Authorization: `Bearer ${baseEnv.BETTER_AUTH_SECRET}` },
       });
-      const res = await getOutbox(req, env);
+      const res = await handleOutboxRequest(env, req);
       expect(res.status).toBe(200);
       const data = (await res.json()) as { messages: Array<{ to_email: string }> };
       expect(data.messages).toHaveLength(1);
@@ -327,7 +327,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
       const req = new Request("http://localhost:3000/api/auth/test-outbox", {
         headers: { "x-outbox-secret": "local-outbox-secret" },
       });
-      const res = await getOutbox(req, localEnv);
+      const res = await handleOutboxRequest(localEnv, req);
       expect(res.status).toBe(200);
       expect(res.headers.get("cache-control")).toBe("no-store");
     });
@@ -339,7 +339,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
       const req = new Request("http://localhost:3000/api/auth/test-outbox?environment=staging", {
         headers: { Authorization: `Bearer ${baseEnv.OUTBOX_ACCESS_SECRET}` },
       });
-      const res = await getOutbox(req, env);
+      const res = await handleOutboxRequest(env, req);
       expect(res.status).toBe(403);
       expect(res.headers.get("cache-control")).toBe("no-store");
       const data = (await res.json()) as { error: string };
@@ -354,7 +354,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
           "x-environment": "production",
         },
       });
-      const res = await getOutbox(req, env);
+      const res = await handleOutboxRequest(env, req);
       expect(res.status).toBe(403);
       expect(res.headers.get("cache-control")).toBe("no-store");
     });
@@ -398,7 +398,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
 
     it("returns 404 for anonymous request in production", async () => {
       const req = new Request("https://homedesign.com/api/auth/test-outbox");
-      const res = await getOutbox(req, prodEnv);
+      const res = await handleOutboxRequest(prodEnv, req);
       expect(res.status).toBe(404);
       expect(res.headers.get("cache-control")).toBe("no-store");
       const data = (await res.json()) as { error: string };
@@ -409,7 +409,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
       const req = new Request("https://homedesign.com/api/auth/test-outbox", {
         headers: { Authorization: `Bearer ${baseEnv.OUTBOX_ACCESS_SECRET}` },
       });
-      const res = await getOutbox(req, prodEnv);
+      const res = await handleOutboxRequest(prodEnv, req);
       expect(res.status).toBe(404);
       expect(res.headers.get("cache-control")).toBe("no-store");
       const data = (await res.json()) as { error: string };
@@ -423,7 +423,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
           "x-outbox-secret": baseEnv.OUTBOX_ACCESS_SECRET!,
         },
       });
-      const res = await getOutbox(req, prodEnv);
+      const res = await handleOutboxRequest(prodEnv, req);
       expect(res.status).toBe(404);
       expect(res.headers.get("cache-control")).toBe("no-store");
     });
@@ -436,7 +436,7 @@ describe("Authentication test outbox security (Ticket #32)", () => {
           "cf-access-authenticated-user-email": "admin@example.com",
         },
       });
-      const res = await getOutbox(req, prodEnv);
+      const res = await handleOutboxRequest(prodEnv, req);
       expect(res.status).toBe(404);
       expect(res.headers.get("cache-control")).toBe("no-store");
     });
@@ -447,31 +447,28 @@ describe("Authentication test outbox security (Ticket #32)", () => {
       const env = { ...baseEnv, DB: createMockDb() as unknown as AuthEnv["DB"] };
 
       // 401
-      const res401 = await getOutbox(new Request("http://localhost:3000/api/auth/test-outbox"), env);
+      const res401 = await handleOutboxRequest(env, new Request("http://localhost:3000/api/auth/test-outbox"));
       expect(res401.headers.get("cache-control")).toBe("no-store");
-
-      // 403 cross-env
-      const res403 = await getOutbox(
+      const res403 = await handleOutboxRequest(
+        env,
         new Request("http://localhost:3000/api/auth/test-outbox?environment=staging", {
           headers: { Authorization: `Bearer ${baseEnv.OUTBOX_ACCESS_SECRET}` },
-        }),
-        env
+        })
       );
       expect(res403.headers.get("cache-control")).toBe("no-store");
 
       // 404 production
-      const res404 = await getOutbox(
-        new Request("http://localhost:3000/api/auth/test-outbox"),
-        { ...env, ENVIRONMENT: "production" }
+      const res404 = await handleOutboxRequest(
+        { ...env, ENVIRONMENT: "production" },
+        new Request("http://localhost:3000/api/auth/test-outbox")
       );
       expect(res404.headers.get("cache-control")).toBe("no-store");
 
-      // 200 success
-      const res200 = await getOutbox(
+      const res200 = await handleOutboxRequest(
+        env,
         new Request("http://localhost:3000/api/auth/test-outbox", {
           headers: { Authorization: `Bearer ${baseEnv.OUTBOX_ACCESS_SECRET}` },
-        }),
-        env
+        })
       );
       expect(res200.headers.get("cache-control")).toBe("no-store");
     });
