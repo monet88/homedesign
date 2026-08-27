@@ -76,11 +76,13 @@ export type AdminAuthResult =
       authorized: true;
       user: ResolvedSession["user"];
       session: ResolvedSession["session"];
+      env: AuthEnv;
     }
   | {
       authorized: false;
       status: 401 | 403;
       error: string;
+      env?: AuthEnv;
     };
 
 type SessionResolver = (
@@ -134,6 +136,7 @@ export async function requireAdminSession(
       authorized: false,
       status: 401,
       error: "UNAUTHORIZED",
+      env,
     };
   }
 
@@ -142,6 +145,7 @@ export async function requireAdminSession(
       authorized: false,
       status: 403,
       error: "FORBIDDEN",
+      env,
     };
   }
 
@@ -149,5 +153,6 @@ export async function requireAdminSession(
     authorized: true,
     user: session.user,
     session: session.session,
+    env: env!,
   };
 }

@@ -89,6 +89,16 @@ export function Header() {
                       <p className="text-sm font-semibold">{user.name || "Account"}</p>
                       <p className="text-xs text-foreground/60 truncate">{user.email}</p>
                     </div>
+                    {user.role === "admin" && (
+                      <Link
+                        role="menuitem"
+                        href="/admin"
+                        className="block rounded-md px-3 py-2 text-sm font-semibold text-brand-forest hover:bg-brand-forest/10"
+                        onClick={() => setUserDropdownOpen(false)}
+                      >
+                        Admin Dashboard
+                      </Link>
+                    )}
                     <Link
                       role="menuitem"
                       href="/assets"
@@ -173,6 +183,15 @@ export function Header() {
               <hr className="my-1 border-foreground/10" />
               {user ? (
                 <>
+                  {user.role === "admin" && (
+                    <Link
+                      href="/admin"
+                      className="text-sm font-semibold text-brand-forest hover:text-foreground"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      Admin Dashboard
+                    </Link>
+                  )}
                   <Link
                     href="/assets"
                     className="text-sm font-medium text-foreground/80 hover:text-foreground"
