@@ -67,3 +67,69 @@ function base64ToBytes(b64: string): Uint8Array {
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes;
 }
+
+/**
+ * Synthetic PNG stream generator: creates a valid PNG stream of arbitrary size
+ * (e.g. 50MB) without allocating the full object in memory.
+ * Emits valid PNG magic + IHDR in the head, dummy chunks in the middle, and IEND at the tail.
+ */
+export function createSyntheticPngStream(
+  totalSize = 50 * 1024 * 1024,
+  chunkSize = 64 * 1024
+): ReadableStream<Uint8Array> {
+  const IEND_BYTES = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]);
+
+  // Valid PNG magic + 100x100 RGB IHDR chunk
+  const header = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // PNG magic
+    0x00, 0x00, 0x00, 0x0d,                         // IHDR len 13
+    0x49, 0x48, 0x44, 0x52,                         // "IHDR"
+    0x00, 0x00, 0x00, 0x64,                         // width 100
+    0x00, 0x00, 0x00, 0x64,                         // height 100
+    0x08, 0x02, 0x00, 0x00, 0x00,                   // 8-bit RGB
+    0x59, 0x73, 0x22, 0x0b,                         // CRC
+  ]);
+
+  let bytesEmitted = 0;
+  const dummyChunk = new Uint8Array(chunkSize);
+
+  const rawStream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (bytesEmitted >= totalSize) {
+        controller.close();
+        return;
+      }
+
+      if (bytesEmitted === 0) {
+        const remaining = totalSize - bytesEmitted - IEND_BYTES.length;
+        const firstChunkLen = Math.min(chunkSize, remaining + header.length);
+        const chunk = new Uint8Array(firstChunkLen);
+        chunk.set(header, 0);
+        bytesEmitted += firstChunkLen;
+        controller.enqueue(chunk);
+        return;
+      }
+
+      const remainingBeforeIend = totalSize - IEND_BYTES.length - bytesEmitted;
+      if (remainingBeforeIend > 0) {
+        const len = Math.min(chunkSize, remainingBeforeIend);
+        const chunk = dummyChunk.subarray(0, len);
+        bytesEmitted += len;
+        controller.enqueue(chunk);
+        return;
+      }
+
+      if (bytesEmitted < totalSize) {
+        bytesEmitted += IEND_BYTES.length;
+        controller.enqueue(IEND_BYTES);
+        controller.close();
+      }
+    },
+  });
+
+  // Wrap in FixedLengthStream if available in Workers runtime
+  if (typeof FixedLengthStream !== "undefined") {
+    return rawStream.pipeThrough(new FixedLengthStream(totalSize));
+  }
+  return rawStream;
+}
