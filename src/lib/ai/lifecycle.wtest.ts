@@ -228,16 +228,16 @@ describe("AC2: createDesign rejections", () => {
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 
-  it("rejects floor-plan with SCENE_NOT_IMPLEMENTED", async () => {
+  it("rejects floor-plan layout/render/panorama with SCENE_NOT_IMPLEMENTED", async () => {
     const userId = await seedUser();
     const assetId = await seedReadyAsset(userId);
     await expect(
       createDesign(
         env,
         userId,
-        interiorPayload(assetId, "idem-floor-plan", {
+        interiorPayload(assetId, "idem-floor-layout", {
           scene: "floor-plan",
-          intent: { stage: "brief", marker: { x: 50, y: 50 } },
+          intent: { stage: "layout", marker: { x: 50, y: 50 } },
         })
       )
     ).rejects.toMatchObject({ code: "SCENE_NOT_IMPLEMENTED", status: 501 });
@@ -549,6 +549,8 @@ async function applyMigrations(db: D1Database) {
   // Drop existing tables so each test starts with the full #7 schema even if a
   // prior test file created an older version of these tables.
   const drops = [
+    "DROP TABLE IF EXISTS floor_plan_stage_runs",
+    "DROP TABLE IF EXISTS room_designs",
     "DROP TABLE IF EXISTS project_assets",
     "DROP TABLE IF EXISTS designs",
     "DROP TABLE IF EXISTS projects",
@@ -642,6 +644,26 @@ async function applyMigrations(db: D1Database) {
         prompt TEXT NOT NULL, config_json TEXT NOT NULL, source_asset_id TEXT NOT NULL,
         output_asset_id TEXT, cost_credits INTEGER NOT NULL, idempotency_key TEXT NOT NULL,
         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, completed_at INTEGER
+      )`
+    ),
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS room_designs (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL, user_id TEXT NOT NULL,
+        marker_id TEXT NOT NULL, marker_x REAL NOT NULL, marker_y REAL NOT NULL,
+        marker_locked INTEGER NOT NULL DEFAULT 0, brief_confirmed_at INTEGER,
+        progress TEXT NOT NULL DEFAULT 'draft',
+        recognition_json TEXT, proposal_json TEXT,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+        UNIQUE (project_id, marker_id)
+      )`
+    ),
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS floor_plan_stage_runs (
+        id TEXT PRIMARY KEY, room_design_id TEXT NOT NULL,
+        stage TEXT NOT NULL CHECK (stage IN ('brief','layout','render','panorama')),
+        status TEXT NOT NULL DEFAULT 'draft',
+        design_id TEXT, confirmed_at INTEGER,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       )`
     ),
     db.prepare(
