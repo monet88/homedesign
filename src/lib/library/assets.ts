@@ -1,6 +1,7 @@
 // Ticket 08 — Asset library queries and delete-with-warn.
 
 import { deleteAsset } from "@/lib/intake/intake-service";
+import { clearShareSelectedForAsset } from "@/lib/library/share";
 import type { Env } from "@/lib/bindings";
 import { decodeCursor, nextCursor } from "@/lib/library/cursor";
 import type { AssetFilters, AssetListItem, ListResult } from "@/lib/library/types";
@@ -145,6 +146,7 @@ export async function deleteOwnerAsset(
   if (row.user_id !== userId) throw new Error("FORBIDDEN");
 
   const refCount = await countAssetProjectRefs(env, assetId);
+  await clearShareSelectedForAsset(env, assetId);
   const deleted = await deleteAsset(env, assetId);
   if (deleted === null) {
     // Already deleted or not found after ownership check.

@@ -401,6 +401,17 @@ async function applyMigrations(db: D1Database) {
       )`
     ),
     db.prepare(
+      `CREATE TABLE IF NOT EXISTS project_shares (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        token_digest TEXT NOT NULL,
+        expires_at INTEGER,
+        revoked_at INTEGER,
+        created_at INTEGER NOT NULL,
+        UNIQUE (token_digest)
+      )`
+    ),
+    db.prepare(
       `CREATE TABLE IF NOT EXISTS designs (
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL, project_id TEXT NOT NULL,
         scene TEXT NOT NULL CHECK (scene IN ('interior','exterior','floor-plan')),
