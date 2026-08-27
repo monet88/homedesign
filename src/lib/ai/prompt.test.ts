@@ -8,7 +8,14 @@
 // behavior, not claimed verbatim).
 import { describe, expect, it } from "vitest";
 import { buildPrompt } from "@/lib/ai/lifecycle";
-import { buildExteriorPrompt, buildInteriorPrompt } from "@/lib/ai/prompt";
+import {
+  buildExteriorPrompt,
+  buildInteriorPrompt,
+  getSystemPrompt,
+  getNegativeConstraints,
+  ARCHITECTURAL_SYSTEM_INSTRUCTION,
+  DEFAULT_NEGATIVE_CONSTRAINTS,
+} from "@/lib/ai/prompt";
 import {
   DesignError,
   type DesignConfig,
@@ -206,3 +213,64 @@ describe("buildPrompt dispatch by scene", () => {
     expect(panoramaPrompt).toContain("4096×2048");
   });
 });
+
+describe("System Prompt Engine (Ticket #26)", () => {
+  it("defines master architectural visualizer role and core optics/lighting invariants", () => {
+    expect(ARCHITECTURAL_SYSTEM_INSTRUCTION).toContain("master architectural visualizer");
+    expect(ARCHITECTURAL_SYSTEM_INSTRUCTION).toContain("24-35mm architectural lens");
+    expect(ARCHITECTURAL_SYSTEM_INSTRUCTION).toContain("two-point perspective");
+    expect(ARCHITECTURAL_SYSTEM_INSTRUCTION).toContain("straight vertical lines");
+    expect(ARCHITECTURAL_SYSTEM_INSTRUCTION).toContain("daylighting");
+    expect(ARCHITECTURAL_SYSTEM_INSTRUCTION).toContain("global illumination");
+    expect(ARCHITECTURAL_SYSTEM_INSTRUCTION).toContain("PBR");
+    expect(ARCHITECTURAL_SYSTEM_INSTRUCTION).toContain("Structural Preservation Invariants");
+  });
+
+  it("returns base instruction for default and generic scenes", () => {
+    expect(getSystemPrompt()).toBe(ARCHITECTURAL_SYSTEM_INSTRUCTION);
+    expect(getSystemPrompt("image-to-image")).toBe(ARCHITECTURAL_SYSTEM_INSTRUCTION);
+  });
+
+  it("customizes system prompt for interior scene", () => {
+    const prompt = getSystemPrompt("interior");
+    expect(prompt).toContain(ARCHITECTURAL_SYSTEM_INSTRUCTION);
+    expect(prompt).toContain("interior renderings");
+    expect(prompt).toContain("room enclosure");
+  });
+
+  it("customizes system prompt for exterior scene", () => {
+    const prompt = getSystemPrompt("exterior");
+    expect(prompt).toContain(ARCHITECTURAL_SYSTEM_INSTRUCTION);
+    expect(prompt).toContain("exterior renderings");
+    expect(prompt).toContain("building footprint");
+  });
+
+  it("customizes system prompt for floor plan stages", () => {
+    const floorPlanPrompt = getSystemPrompt("floor-plan");
+    expect(floorPlanPrompt).toContain("floor plan visualization");
+    expect(floorPlanPrompt).toContain("orthogonal room boundaries");
+
+    const roomDesignPrompt = getSystemPrompt("room-design-layout");
+    expect(roomDesignPrompt).toContain("floor plan visualization");
+  });
+});
+
+describe("Negative Constraints Engine (Ticket #26)", () => {
+  it("defines comprehensive anti-distortion, anti-CGI, and unwanted element constraints", () => {
+    const negative = getNegativeConstraints();
+    expect(negative).toBe(DEFAULT_NEGATIVE_CONSTRAINTS);
+    expect(negative).toContain("warped structural lines");
+    expect(negative).toContain("crooked walls");
+    expect(negative).toContain("impossible geometry");
+    expect(negative).toContain("3D CGI plastic look");
+    expect(negative).toContain("duplicate openings");
+    expect(negative).toContain("people");
+    expect(negative).toContain("animals");
+    expect(negative).toContain("clutter");
+    expect(negative).toContain("text");
+    expect(negative).toContain("logos");
+    expect(negative).toContain("watermarks");
+    expect(negative).toContain("frame borders");
+  });
+});
+
