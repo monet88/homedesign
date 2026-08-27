@@ -1,0 +1,116 @@
+src/app/ai-floor-plan/page.tsx
+  s_51a11c3e0253f0::t_c35558871ef5ea 1-5,8-12
+  s_9105ebef1f26e8::t_f899f2407bbf1b 6-7
+src/app/api/floor-plan/room-designs/[id]/confirm-brief/route.ts
+  s_51a11c3e0253f0::t_6e63cd58b5b153 1-21
+src/lib/floor-plan/errors.ts
+  s_9105ebef1f26e8::t_eaae5b503e5b47 3,6
+  s_9105ebef1f26e8::t_bd6a4d0a032b39 2,9-10
+  s_51a11c3e0253f0::t_b695dc9f67501a 1,4-5,7-8,11-24
+src/lib/floor-plan/rows.ts
+  s_51a11c3e0253f0::t_a5252af6f75c44 1-41
+src/lib/floor-plan/brief.ts
+  s_51a11c3e0253f0::t_c4933d4a162db8 5
+  s_51a11c3e0253f0::t_8ea2b42184aa04 167-212
+  s_51a11c3e0253f0::t_1d94892c85a96c 1-4,6-166
+src/app/api/floor-plan/room-designs/route.ts
+  s_51a11c3e0253f0::t_bbe8d611fd631d 1-28
+src/lib/ai/lifecycle.wtest.ts
+  s_51a11c3e0253f0::t_24dca3ecda1a60 552-553
+  s_51a11c3e0253f0::t_60f32b09d9925e 650-668
+  s_51a11c3e0253f0::t_a0098023e1ee90 231,238,240,649
+src/lib/floor-plan/recognition.ts
+  s_51a11c3e0253f0::t_8d6bbb1d254469 3-4,11-12,16-18,21,30,33,35,37-38,44-45,64,71
+  s_9105ebef1f26e8::t_417cacaac3910b 1-2,5-10,13-15,19-20,22-29,31-32,34,36,39-43,46-63,65-70
+src/app/api/floor-plan/projects/[projectId]/room-designs/route.ts
+  s_9105ebef1f26e8::t_32c7807a8c00ca 1-37
+src/app/api/floor-plan/room-designs/[roomDesignId]/marker/route.ts
+  s_9105ebef1f26e8::t_f8e440ec2c15d8 1-37
+src/app/api/floor-plan/room-designs/[id]/marker/route.ts
+  s_51a11c3e0253f0::t_df55562c4d6745 1-28
+src/app/api/floor-plan/projects/route.ts
+  s_9105ebef1f26e8::t_b451f708d0719e 1-3,6-14,27
+  s_51a11c3e0253f0::t_79b6932bd2712d 4-5,15-26,28-38
+src/app/api/floor-plan/room-designs/[roomDesignId]/confirm-brief/route.ts
+  s_9105ebef1f26e8::t_ee85e61c790ed8 1-31
+src/lib/floor-plan/markers.ts
+  s_9105ebef1f26e8::t_1b5c66f10b336f 109-144
+  s_51a11c3e0253f0::t_e28408c6ed8440 1-108
+src/lib/ai/prompt.ts
+  s_51a11c3e0253f0::t_226c2d14131222 11,103-105
+  s_9105ebef1f26e8::t_224357bbcb5a8a 77-102
+src/app/api/floor-plan/room-designs/[roomDesignId]/recognize/route.ts
+  s_9105ebef1f26e8::t_06445a488345a3 1-39
+src/app/api/floor-plan/room-designs/[id]/recognize/route.ts
+  s_51a11c3e0253f0::t_c4022a1b959881 1
+  s_51a11c3e0253f0::t_76ffbceee7a982 2-31
+src/lib/ai/prompt.test.ts
+  s_51a11c3e0253f0::t_d73362f21898fb 141-142,147,150-153
+  s_51a11c3e0253f0::t_cf4ae3d41e913d 175-183
+  s_51a11c3e0253f0::t_657d27598a4afd 185-190
+src/lib/ai/lifecycle.ts
+  s_51a11c3e0253f0::t_dc69f08a5327b5 595-598
+  s_51a11c3e0253f0::t_5aeb4182a4ca3a 156
+  s_51a11c3e0253f0::t_403cb4f3f3ceae 110-116
+  s_51a11c3e0253f0::t_44e66980359b11 313-315
+  s_51a11c3e0253f0::t_3880d084158d08 270-273
+  s_51a11c3e0253f0::t_f3e810f59ee5e9 28,36,42
+  s_51a11c3e0253f0::t_68ac8a55dd2540 241-247
+  s_51a11c3e0253f0::t_01a8438d9c549c 41
+  s_9105ebef1f26e8::t_df0e46104a83b4 803-816
+  s_9105ebef1f26e8::t_da99427ef16c9c 590
+  s_51a11c3e0253f0::t_b29cecd49c0907 143-146,148-155,157-159
+src/lib/floor-plan/types.ts
+  s_51a11c3e0253f0::t_d9bffb23984e48 3-6,17-19,23-24,33-34,37,44-45,47-48,52,55
+  s_9105ebef1f26e8::t_95a824028a4550 1,38-39,41-42
+  s_9105ebef1f26e8::t_0ec557d1e7725d 2,7-16,20-22,25-32,35-36,40,43,46,49-51,53-54
+src/lib/floor-plan/project.ts
+  s_51a11c3e0253f0::t_96588294b2e068 1-2,4-10,20-23,27-30,32-34,41-46,48-51,55
+  s_9105ebef1f26e8::t_0479af00f93f8f 3,26,31,35-40,54
+  s_9105ebef1f26e8::t_65679d22f90c8d 11-19,24-25,47,52-53
+src/lib/floor-plan/floor-plan.wtest.ts
+  s_51a11c3e0253f0::t_577a269c27a82f 161-166
+  s_51a11c3e0253f0::t_4b67af56b8ccc9 1-160,167-381
+src/lib/ai/http.ts
+  s_51a11c3e0253f0::t_b7cc3670e7ed03 4
+  s_51a11c3e0253f0::t_c8bb317d78c292 65-75
+src/components/floor-plan/floor-plan-flow.tsx
+  s_9105ebef1f26e8::t_973365838948b3 196-197,199-201
+  s_9105ebef1f26e8::t_bb8573f7840506 17-18,72,84,151,160-163,185-186,190-195,202,204-206,210-211,217,219-220,222-223,225,227-239,243-247,251-255,259-262,264-266,275
+  s_51a11c3e0253f0::t_5a6b4368dbd4b5 5-6,16,20-21,28,31,35-38,42,44-47,49-55,57-69,71,73-81,86-100,105-106,109-150,152-159,164-177,184,198,203,207-209,212,214-216,218,221,224,226,240-242,248-250,256-258,263,267-274,276-277,279,281
+  s_51a11c3e0253f0::t_2fc0ef7df84a27 1-4,7-15,19,22-27,29-30,32-34,39-41,43,48,56,70,82-83,85,101-104,107-108,178-183,187-189,213,278,280,282-284
+src/lib/floor-plan/index.ts
+  s_51a11c3e0253f0::t_021d8398e910ad 28-29
+  s_9105ebef1f26e8::t_449aaa1c84a864 2,4-10,12-14,16-21,23-27
+  s_51a11c3e0253f0::t_d4fda3972702da 3,22,30
+  s_9105ebef1f26e8::t_09da62a51c3133 1,11
+  s_51a11c3e0253f0::t_f6665dba4e6a8a 15
+migrations/0007_floor_plan.sql
+  s_9105ebef1f26e8::t_b6cd5eb0e63667 7,10,12,14,16-17,27-28
+  s_51a11c3e0253f0::t_1659e7acb07005 2-6,8-9,11,13,15,18-20,22-26,29-33
+  s_9105ebef1f26e8::t_470019306f2871 1,21,34-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "8b922c2bc291999c5b0509bdcf91cde93b2ba17c",
+  "prompts": {},
+  "sessions": {
+    "s_51a11c3e0253f0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "306aba5e-8da3-45c3-99b8-8cfdcabafa91",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_9105ebef1f26e8": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "05592a42-ad43-45dd-8657-60a056e77368",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
