@@ -1,0 +1,19 @@
+src/lib/ai/prompt.test.ts
+  s_0952115fffedc9::t_26144f5bfc92dc 14-17,28,30,34-36,41-43,46-47,61-63,79,115-116,126,134,220-337
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "ca78e950bfdeef59fe7383046d7c4a384bdc5543",
+  "prompts": {},
+  "sessions": {
+    "s_0952115fffedc9": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2c80e090-30da-4507-8924-2e3a0c0101eb",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
