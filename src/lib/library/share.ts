@@ -2,6 +2,7 @@
 
 import type { Env } from "@/lib/bindings";
 import { presignGetUrl, type PresignCredentials } from "@/lib/intake/presign";
+import { getActiveConfirmedStageRun, isStageRunStale } from "@/lib/floor-plan/stages";
 
 const PRIVATE_BUCKET = "homedesign-private";
 const SHARE_DELIVERY_TTL_SEC = 600;
@@ -42,10 +43,10 @@ export async function digestShareToken(token: string): Promise<string> {
 
 async function requireOwnedProject(env: Env, userId: string, projectId: string) {
   const row = await env.DB.prepare(
-    `SELECT id, user_id, status FROM projects WHERE id = ?1`
+    `SELECT id, user_id, status, kind FROM projects WHERE id = ?1`
   )
     .bind(projectId)
-    .first<{ id: string; user_id: string; status: string }>();
+    .first<{ id: string; user_id: string; status: string; kind: string }>();
   if (!row) throw new Error("NOT_FOUND");
   if (row.user_id !== userId) throw new Error("FORBIDDEN");
   return row;
@@ -123,17 +124,81 @@ export async function setProjectVisibility(
     .run();
 }
 
+export async function isFloorPlanAssetActive(
+  env: Env,
+  projectId: string,
+  assetId: string
+): Promise<boolean> {
+  const design = await env.DB.prepare(
+    `SELECT d.id AS design_id, d.stage AS design_stage,
+            sr.id AS stage_run_id, sr.room_design_id, sr.stage AS run_stage,
+            sr.status AS run_status
+     FROM designs d
+     LEFT JOIN floor_plan_stage_runs sr ON (sr.design_id = d.id OR sr.id = d.id)
+     WHERE d.project_id = ?1 AND d.output_asset_id = ?2`
+  )
+    .bind(projectId, assetId)
+    .first<{
+      design_id: string;
+      design_stage: string | null;
+      stage_run_id: string | null;
+      room_design_id: string | null;
+      run_stage: string | null;
+      run_status: string | null;
+    }>();
+
+  if (!design || !design.stage_run_id || !design.room_design_id) {
+    return false;
+  }
+
+  const roomDesign = await env.DB.prepare(
+    `SELECT id, project_id, brief_confirmed_at FROM room_designs WHERE id = ?1`
+  )
+    .bind(design.room_design_id)
+    .first<{ id: string; project_id: string; brief_confirmed_at: number | null }>();
+
+  if (!roomDesign || roomDesign.project_id !== projectId || !roomDesign.brief_confirmed_at) {
+    return false;
+  }
+
+  const stage = design.run_stage ?? design.design_stage;
+
+  if (stage === "layout") {
+    if (design.run_status !== "confirmed") return false;
+    const activeLayout = await getActiveConfirmedStageRun(env, design.room_design_id, "layout");
+    return activeLayout !== null && activeLayout.id === design.stage_run_id;
+  }
+
+  if (stage === "render") {
+    if (design.run_status !== "confirmed") return false;
+    const activeRender = await getActiveConfirmedStageRun(env, design.room_design_id, "render");
+    if (!activeRender || activeRender.id !== design.stage_run_id) return false;
+    const stale = await isStageRunStale(env, design.stage_run_id);
+    return !stale;
+  }
+
+  if (stage === "panorama") {
+    if (design.run_status !== "success" && design.run_status !== "confirmed") return false;
+    const stale = await isStageRunStale(env, design.stage_run_id);
+    return !stale;
+  }
+
+  return false;
+}
+
 export async function setShareSelectedAssets(
   env: Env,
   userId: string,
   projectId: string,
   assetIds: string[]
 ): Promise<void> {
-  await requireOwnedProject(env, userId, projectId);
+  const project = await requireOwnedProject(env, userId, projectId);
 
-  for (const assetId of assetIds) {
+  const uniqueAssetIds = Array.from(new Set(assetIds));
+
+  for (const assetId of uniqueAssetIds) {
     const asset = await env.DB.prepare(
-      `SELECT a.id, a.lifecycle, a.user_id,
+      `SELECT a.id, a.lifecycle, a.user_id, a.storage_key,
               EXISTS (
                 SELECT 1 FROM project_assets pa
                 WHERE pa.project_id = ?2 AND pa.asset_id = a.id AND pa.role = 'generated'
@@ -141,10 +206,19 @@ export async function setShareSelectedAssets(
        FROM assets a WHERE a.id = ?1`
     )
       .bind(assetId, projectId)
-      .first<{ id: string; lifecycle: string; user_id: string | null; is_generated: number }>();
+      .first<{ id: string; lifecycle: string; user_id: string | null; storage_key: string | null; is_generated: number }>();
 
     if (!asset || asset.user_id !== userId) throw new Error("FORBIDDEN");
-    if (asset.lifecycle !== "ready" || !asset.is_generated) throw new Error("ASSET_NOT_SHAREABLE");
+    if (asset.lifecycle !== "ready" || !asset.storage_key || !asset.is_generated) {
+      throw new Error("ASSET_NOT_SHAREABLE");
+    }
+
+    if (project.kind === "floor-plan") {
+      const active = await isFloorPlanAssetActive(env, projectId, assetId);
+      if (!active) {
+        throw new Error("ASSET_NOT_SHAREABLE");
+      }
+    }
   }
 
   const now = Date.now();
@@ -154,7 +228,7 @@ export async function setShareSelectedAssets(
     .bind(projectId)
     .run();
 
-  for (const assetId of assetIds) {
+  for (const assetId of uniqueAssetIds) {
     await env.DB.prepare(
       `INSERT INTO project_assets (project_id, asset_id, role, created_at)
        VALUES (?1, ?2, 'share-selected', ?3)`
@@ -280,14 +354,25 @@ export async function getShareViewByToken(env: Env, token: string): Promise<Shar
     .bind(share.projectId)
     .all<{ id: string; mime_type: string }>();
 
+  const rawAssets = assetsResult.results ?? [];
+  const validAssets: ShareViewAsset[] = [];
+
+  for (const row of rawAssets) {
+    if (share.projectKind === "floor-plan") {
+      const active = await isFloorPlanAssetActive(env, share.projectId, row.id);
+      if (!active) continue;
+    }
+    validAssets.push({
+      id: row.id,
+      mimeType: row.mime_type,
+    });
+  }
+
   return {
     name: share.projectName,
     kind: share.projectKind,
     updatedAt: share.projectUpdatedAt,
-    assets: (assetsResult.results ?? []).map((row) => ({
-      id: row.id,
-      mimeType: row.mime_type,
-    })),
+    assets: validAssets,
   };
 }
 
@@ -317,6 +402,12 @@ export async function authorizeShareAssetDelivery(
     .first<{ storage_key: string; mime_type: string }>();
 
   if (!row?.storage_key) return null;
+
+  if (share.projectKind === "floor-plan") {
+    const active = await isFloorPlanAssetActive(env, share.projectId, assetId);
+    if (!active) return null;
+  }
+
   return { storageKey: row.storage_key, mimeType: row.mime_type };
 }
 
@@ -333,8 +424,13 @@ export async function deliverShareAsset(
     accessKeyId: env.R2_ACCESS_KEY_ID ?? "",
     secretAccessKey: env.R2_SECRET_ACCESS_KEY ?? "",
   };
-
-  if (creds.accountId && creds.accessKeyId && creds.secretAccessKey) {
+  if (
+    env.ENVIRONMENT !== "local" &&
+    env.R2_ACCOUNT_ID !== "local-dev-account" &&
+    creds.accountId &&
+    creds.accessKeyId &&
+    creds.secretAccessKey
+  ) {
     const signed = await presignGetUrl(creds, {
       bucket: PRIVATE_BUCKET,
       key: authorized.storageKey,
