@@ -14,7 +14,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "wrangler:test": "vitest run --config vitest.workers.config.ts",
-    "test:e2e": "playwright test",
+    "test:e2e": "wrangler d1 migrations apply homedesign --local && playwright test",
     "test:e2e:update": "playwright test --update-snapshots",
     "lint": "next lint"
   },
