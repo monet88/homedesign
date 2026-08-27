@@ -1,0 +1,30 @@
+src/lib/ai/gemini-adapter.test.ts
+  h_17f2fa2b92da6a 240,258,297,343,367,408-409,414-420,430
+src/lib/ai/gemini-adapter.ts
+  h_17f2fa2b92da6a 15,122,130
+src/lib/ai/lifecycle.ts
+  h_17f2fa2b92da6a 448
+src/lib/ai/lifecycle.wtest.ts
+  h_17f2fa2b92da6a 18,43-48,105-140,589-807
+src/lib/ai/provider-adapter.test.ts
+  h_17f2fa2b92da6a 8,85,91-175,178
+src/lib/ai/provider-adapter.ts
+  h_17f2fa2b92da6a 20-21,101-103,107-108,113-123,125-134,136-192,194-210
+src/lib/bindings.ts
+  h_17f2fa2b92da6a 26
+src/lib/env/policy.test.ts
+  h_17f2fa2b92da6a 11-13,89-118
+src/lib/env/policy.ts
+  h_17f2fa2b92da6a 52-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "b03b494f18b22c31f5193ddac55eed5ab7961966",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
