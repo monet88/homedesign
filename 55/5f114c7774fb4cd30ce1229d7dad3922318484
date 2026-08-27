@@ -1,0 +1,25 @@
+migrations/0008_floor_plan.sql
+  s_7e581065af39eb::t_7a0064773bb766 1
+src/lib/ai/lifecycle.wtest.ts
+  s_7e581065af39eb::t_024a7aa48d294a 671-680
+  s_7e581065af39eb::t_f5e4194b2ea07e 554,670
+src/lib/floor-plan/floor-plan.wtest.ts
+  s_7e581065af39eb::t_e7b41e822186fe 241,324
+  s_7e581065af39eb::t_143285209a4647 325-334
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "555f114c7774fb4cd30ce1229d7dad3922318484",
+  "prompts": {},
+  "sessions": {
+    "s_7e581065af39eb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1660f1f0-2a79-4768-b3ff-8c3a29396ca1",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
