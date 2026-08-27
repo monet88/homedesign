@@ -1,0 +1,22 @@
+scripts/seed-admin.mjs
+  h_17f2fa2b92da6a 3,6-7,24-41,51-54,80,83,87,89-120,123-128,137-141,156-161
+src/lib/auth/admin-seed.wtest.ts
+  h_17f2fa2b92da6a 1-294
+src/lib/auth/admin.test.ts
+  h_17f2fa2b92da6a 140,150,157-172
+src/lib/auth/admin.ts
+  h_17f2fa2b92da6a 45,47,49,57-75,78,80-84
+tests/admin-seed.test.ts
+  h_17f2fa2b92da6a 1-207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "7cf2186e1b66a29d7db2924e362c02925e345768",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
