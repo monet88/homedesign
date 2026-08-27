@@ -1,0 +1,76 @@
+src/components/floor-plan/panorama-viewer.tsx
+  s_d14cadddd9bd32::t_05bc4894d2eee0 1-109
+src/lib/ai/prompt.ts
+  s_d14cadddd9bd32::t_8e6831faa6a0cf 153-178
+src/lib/floor-plan/index.ts
+  s_d14cadddd9bd32::t_9ce08f32304794 21,23
+  s_d14cadddd9bd32::t_62519aa9f90da7 59
+src/lib/ai/types.ts
+  s_d14cadddd9bd32::t_99f268a014c8de 89-90
+  s_d14cadddd9bd32::t_4b78644852a734 133
+  s_d14cadddd9bd32::t_6af65b3f7d2021 104-107,110-122
+src/components/floor-plan/panorama-viewer.test.tsx
+  s_d14cadddd9bd32::t_f1e7182cf4f7e0 1-41
+src/lib/ai/lifecycle.wtest.ts
+  s_d14cadddd9bd32::t_a730176cad065e 231
+  s_d14cadddd9bd32::t_8ed17826e6941f 243
+src/components/floor-plan/floor-plan-flow.tsx
+  s_d14cadddd9bd32::t_a6fd9daae72a29 16,18
+  s_d14cadddd9bd32::t_11bd5be81e9c35 287-292
+  s_d14cadddd9bd32::t_3074ca02782c20 263
+  s_d14cadddd9bd32::t_1c67ae8709936d 379-387
+  s_d14cadddd9bd32::t_f181ef93a70e41 597-632
+  s_d14cadddd9bd32::t_fb7a80088b7e53 124-130
+  s_d14cadddd9bd32::t_9bdfb7db331a15 638
+src/lib/floor-plan/stages.ts
+  s_d14cadddd9bd32::t_2edc9fd3e241ce 125,132,134-138,142,144-147
+  s_d14cadddd9bd32::t_732ee0e45850a1 207-251
+src/lib/floor-plan/floor-plan.wtest.ts
+  s_d14cadddd9bd32::t_0c9d5ec4dbe45e 246,278-286,288-296
+  s_d14cadddd9bd32::t_dd194e30bb2161 466-467
+  s_d14cadddd9bd32::t_a012e9dcb41173 476-477,482,486,497
+  s_d14cadddd9bd32::t_7aa2eb9b86c382 504
+  s_d14cadddd9bd32::t_f6c20b3fe96f65 427-465,468,471,473-475,478-481,483-485,487-496,498-503,505-523
+src/types/pannellum.d.ts
+  s_d14cadddd9bd32::t_b7f213aa44b2ac 1
+src/lib/floor-plan/errors.ts
+  s_d14cadddd9bd32::t_a52a15e0431728 11
+src/lib/floor-plan/types.ts
+  s_d14cadddd9bd32::t_51fecf510685e8 59-64,70-72
+src/lib/floor-plan/overview.ts
+  s_d14cadddd9bd32::t_8b253eae933e66 63-95,101-102
+  s_d14cadddd9bd32::t_d20f93207237bd 13,18
+src/lib/ai/prompt.test.ts
+  s_d14cadddd9bd32::t_82f598946e07ed 183,192-198,200-206
+src/lib/ai/lifecycle.ts
+  s_d14cadddd9bd32::t_d5888c335e2420 127-128
+  s_d14cadddd9bd32::t_48838f6c3e0124 46
+  s_d14cadddd9bd32::t_f7c6f16957dad5 34
+  s_d14cadddd9bd32::t_9632b8adc37a1a 686-689,691-700
+  s_d14cadddd9bd32::t_49d750ec12f257 358-360
+  s_d14cadddd9bd32::t_5ff7a673e3abab 28
+  s_d14cadddd9bd32::t_eea40c89a540f8 922
+  s_d14cadddd9bd32::t_a526038228aac6 212-240,244
+  s_d14cadddd9bd32::t_f48d57ebd40b0a 158
+  s_d14cadddd9bd32::t_c4c57b5c291e3a 51
+package-lock.json
+  s_d14cadddd9bd32::t_f6428322eab5ef 15,8348-8353
+package.json
+  s_d14cadddd9bd32::t_616aa6c24978da 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "1f7d10dac06248672a1108f10843d76838142014",
+  "prompts": {},
+  "sessions": {
+    "s_d14cadddd9bd32": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2adb130b-9238-4e11-81f0-cff5291c7081",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
