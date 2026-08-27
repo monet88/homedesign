@@ -143,10 +143,13 @@ export async function isStageRunStale(env: Env, stageRunId: string): Promise<boo
 
   const upstreamStage = run.stage === "render" ? "layout" : "render";
   const activeUpstream = await getActiveConfirmedStageRun(env, run.room_design_id, upstreamStage);
-  if (!activeUpstream) return false;
-  return activeUpstream.id !== upstreamRunId;
+  if (!activeUpstream) return true;
+  if (activeUpstream.id !== upstreamRunId) return true;
+  if (run.stage === "panorama") {
+    return await isStageRunStale(env, upstreamRunId);
+  }
+  return false;
 }
-
 export async function assertRenderStageAllowed(
   env: Env,
   userId: string,
