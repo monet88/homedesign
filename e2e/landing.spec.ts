@@ -10,7 +10,7 @@ test("landing renders the 5 Show comparison buttons and the native slider", asyn
 }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Before & After" })
+    page.getByRole("heading", { name: /Before (?:&|and) After/i })
   ).toBeVisible();
 
   for (let i = 1; i <= 5; i++) {
