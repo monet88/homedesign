@@ -105,18 +105,24 @@ export async function resolveSession(
     const user = await ensureLocalBypassUser(env);
     return bypassSession(user);
   }
-  const auth = createAuth(env);
-  const rawSession = (await auth.api.getSession({ headers: request.headers })) as any;
-  if (!rawSession?.user) return null;
-  return {
-    session: rawSession.session,
-    user: {
-      ...rawSession.user,
-      role: (rawSession.user.role as UserRole) || "user",
-    },
-  };
+  try {
+    const auth = createAuth(env);
+    const rawSession = (await auth.api.getSession({ headers: request.headers })) as {
+      session: ResolvedSession["session"];
+      user: ResolvedSession["user"];
+    } | null;
+    if (!rawSession?.user) return null;
+    return {
+      session: rawSession.session,
+      user: {
+        ...rawSession.user,
+        role: (rawSession.user.role as UserRole) || "user",
+      },
+    };
+  } catch {
+    return null;
+  }
 }
-
 export function requireVerifiedUser(session: { user: { emailVerified: boolean } } | null): void {
   // Shared gate for later tickets (Generate, billable actions). ADR 0001:
   // unverified users may log in and browse, but the App Worker blocks all
@@ -204,9 +210,9 @@ export async function handleAuthRequest(env: AuthEnv, request: Request): Promise
  * TTL = verification token TTL (1 hour). The outbox is only readable through
  * the protected endpoint; nothing is written to logs.
  *
- * Rate limiting: 1 resend/minute and 5/hour/user. Duplicate requests inside
- * the window return the existing result without sending another message
- * (idempotent — enforced by the caller via fingerprint upsert).
+ * Rate limiting: 1 resend/minute and 5/hour/user per environment namespace.
+ * Duplicate requests inside the window return the existing result without
+ * sending another message.
  */
 export async function deliverVerificationEmail(
   env: AuthEnv,
@@ -220,44 +226,82 @@ export async function deliverVerificationEmail(
   }
   const now = Date.now();
   const emailLower = email.toLowerCase();
+  const currentEnv = env.ENVIRONMENT ?? "development";
 
-  // Rate limit: 1 resend/min per email. Duplicate within window returns stable result.
-  const recent = await env.DB.prepare(
-    `SELECT COUNT(*) AS cnt FROM email_outbox WHERE to_email = ?1 AND created_at > ?2`
-  )
-    .bind(emailLower, now - RESEND_WINDOW_MS)
-    .first();
-  if (recent && Number(recent.cnt) > 0) {
-    // Stable result — no additional send.
-    return;
-  }
-
-  // Hourly cap: 5 sends/hour per email.
-  const hourly = await env.DB.prepare(
-    `SELECT COUNT(*) AS cnt FROM email_outbox WHERE to_email = ?1 AND created_at > ?2`
-  )
-    .bind(emailLower, now - RESEND_HOURLY_WINDOW_MS)
-    .first();
-  if (hourly && Number(hourly.cnt) >= RESEND_HOURLY_LIMIT) {
-    // Hourly limit reached — stable result, no additional send.
-    return;
-  }
-
-  await env.DB.prepare(
-    `INSERT INTO email_outbox (to_email, subject, body, verification_url, token_fingerprint, created_at, expires_at, user_id)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
-  )
-    .bind(
-      emailLower,
-      "Verify your HomeDesign email",
-      `Verify your email to start generating: ${url}`,
-      url,
-      fingerprint(token),
-      now,
-      now + VERIFICATION_TTL_SECONDS * 1000,
-      null
+  try {
+    // Rate limit: 1 resend/min per email in this environment.
+    const recent = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM email_outbox WHERE to_email = ?1 AND (environment = ?2 OR environment IS NULL OR environment = '') AND created_at > ?3`
     )
-    .run();
+      .bind(emailLower, currentEnv, now - RESEND_WINDOW_MS)
+      .first<{ cnt: number | string }>();
+    if (recent && Number(recent.cnt) > 0) {
+      return;
+    }
+
+    // Hourly cap: 5 sends/hour per email.
+    const hourly = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM email_outbox WHERE to_email = ?1 AND (environment = ?2 OR environment IS NULL OR environment = '') AND created_at > ?3`
+    )
+      .bind(emailLower, currentEnv, now - RESEND_HOURLY_WINDOW_MS)
+      .first<{ cnt: number | string }>();
+    if (hourly && Number(hourly.cnt) >= RESEND_HOURLY_LIMIT) {
+      return;
+    }
+
+    await env.DB.prepare(
+      `INSERT INTO email_outbox (to_email, subject, body, verification_url, token_fingerprint, created_at, expires_at, user_id, environment)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
+    )
+      .bind(
+        emailLower,
+        "Verify your HomeDesign email",
+        `Verify your email to start generating: ${url}`,
+        url,
+        fingerprint(token),
+        now,
+        now + VERIFICATION_TTL_SECONDS * 1000,
+        null,
+        currentEnv
+      )
+      .run();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.includes("no such column: environment")) {
+      // Fallback for older schema without environment column
+      const recent = await env.DB.prepare(
+        `SELECT COUNT(*) AS cnt FROM email_outbox WHERE to_email = ?1 AND created_at > ?2`
+      )
+        .bind(emailLower, now - RESEND_WINDOW_MS)
+        .first<{ cnt: number | string }>();
+      if (recent && Number(recent.cnt) > 0) return;
+
+      const hourly = await env.DB.prepare(
+        `SELECT COUNT(*) AS cnt FROM email_outbox WHERE to_email = ?1 AND created_at > ?2`
+      )
+        .bind(emailLower, now - RESEND_HOURLY_WINDOW_MS)
+        .first<{ cnt: number | string }>();
+      if (hourly && Number(hourly.cnt) >= RESEND_HOURLY_LIMIT) return;
+
+      await env.DB.prepare(
+        `INSERT INTO email_outbox (to_email, subject, body, verification_url, token_fingerprint, created_at, expires_at, user_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+      )
+        .bind(
+          emailLower,
+          "Verify your HomeDesign email",
+          `Verify your email to start generating: ${url}`,
+          url,
+          fingerprint(token),
+          now,
+          now + VERIFICATION_TTL_SECONDS * 1000,
+          null
+        )
+        .run();
+      return;
+    }
+    throw err;
+  }
 }
 
 /** Stable non-reversible fingerprint for tokens (so the outbox never stores raw tokens). */
@@ -272,23 +316,170 @@ export function fingerprint(value: string): string {
 }
 
 /**
- * Reads outbox messages for an email (Access-protected usage: local tooling or
- * Cloudflare Access only). Rows are pruned when older than their TTL.
+ * Reads outbox messages for an email, scoped to the environment namespace.
+ * Rows are pruned when older than their TTL.
  */
-export async function listOutbox(env: AuthEnv, email?: string) {
+export async function listOutbox(env: AuthEnv, email?: string, environment?: string) {
   await env.DB.prepare(`DELETE FROM email_outbox WHERE expires_at < ?1`).bind(Date.now()).run();
-  if (email) {
-    return env.DB.prepare(
-      `SELECT id, to_email, subject, body, verification_url, token_fingerprint, created_at, expires_at
-       FROM email_outbox WHERE to_email = ?1 ORDER BY created_at DESC`)
-      .bind(email.toLowerCase())
+  const currentEnv = environment ?? env.ENVIRONMENT ?? "development";
+
+  try {
+    if (email) {
+      return await env.DB.prepare(
+        `SELECT id, to_email, subject, body, verification_url, token_fingerprint, created_at, expires_at, environment
+         FROM email_outbox
+         WHERE to_email = ?1 AND (environment = ?2 OR environment IS NULL OR environment = '')
+         ORDER BY created_at DESC`
+      )
+        .bind(email.toLowerCase(), currentEnv)
+        .all();
+    }
+    return await env.DB.prepare(
+      `SELECT id, to_email, subject, body, verification_url, created_at, expires_at, environment
+       FROM email_outbox
+       WHERE (environment = ?1 OR environment IS NULL OR environment = '')
+       ORDER BY created_at DESC`
+    )
+      .bind(currentEnv)
       .all();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.includes("no such column: environment")) {
+      if (email) {
+        return env.DB.prepare(
+          `SELECT id, to_email, subject, body, verification_url, token_fingerprint, created_at, expires_at
+           FROM email_outbox WHERE to_email = ?1 ORDER BY created_at DESC`
+        )
+          .bind(email.toLowerCase())
+          .all();
+      }
+      return env.DB.prepare(
+        `SELECT id, to_email, subject, body, verification_url, created_at, expires_at
+         FROM email_outbox ORDER BY created_at DESC`
+      ).all();
+    }
+    throw err;
   }
-  return env.DB.prepare(
-    `SELECT id, to_email, subject, body, verification_url, created_at, expires_at
-     FROM email_outbox ORDER BY created_at DESC`
-  ).all();
+}
+
+export type OutboxAuthResult =
+  | {
+      authorized: true;
+      user?: ResolvedSession["user"];
+      session?: ResolvedSession["session"];
+      env: AuthEnv;
+      authMethod: "admin-session" | "capability-secret" | "local-bypass";
+    }
+  | {
+      authorized: false;
+      status: 401 | 403 | 404;
+      error: string;
+      env: AuthEnv;
+    };
+
+/**
+ * Enforces authorized access to the non-production test outbox (Ticket #32 / ADR 0001).
+ *
+ * 1. Production: 404 not found (hides surface entirely).
+ * 2. Capability / Secret: Authorized if matching OUTBOX_ACCESS_SECRET or BETTER_AUTH_SECRET,
+ *    or local dev secret when running in a local environment.
+ * 3. Session Principal: Authorized if admin role, or local bypass session in local environment.
+ * 4. Anonymous / Spoofed / Standard user: 401 UNAUTHORIZED or 403 FORBIDDEN.
+ */
+export async function authorizeOutboxRequest(
+  env: AuthEnv,
+  request: Request,
+  customResolver?: (env: AuthEnv, request: Request) => Promise<ResolvedSession | null>
+): Promise<OutboxAuthResult> {
+  if (isProduction(env) || env.ENVIRONMENT === "production") {
+    return {
+      authorized: false,
+      status: 404,
+      error: "not found",
+      env,
+    };
+  }
+
+  // 1. Check explicit capability / secret in headers
+  const authHeader = request.headers.get("authorization");
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : undefined;
+  const customSecret =
+    request.headers.get("x-outbox-secret") ||
+    request.headers.get("x-outbox-token") ||
+    request.headers.get("x-outbox-key") ||
+    request.headers.get("x-admin-key");
+  const providedToken = bearerToken || customSecret;
+
+  const isLocal =
+    env.ENVIRONMENT === "local" ||
+    !env.ENVIRONMENT ||
+    env.ALLOW_LOCAL_OUTBOX_ACCESS === "1" ||
+    (typeof process !== "undefined" && process.env?.NODE_ENV === "development");
+
+  if (providedToken) {
+    const validSecret =
+      (Boolean(env.OUTBOX_ACCESS_SECRET) && providedToken === env.OUTBOX_ACCESS_SECRET) ||
+      (Boolean(env.BETTER_AUTH_SECRET) && providedToken === env.BETTER_AUTH_SECRET) ||
+      (isLocal &&
+        (providedToken === "dev-only-insecure-secret-for-local-e2e" ||
+          providedToken === "local-outbox-secret"));
+
+    if (validSecret) {
+      return {
+        authorized: true,
+        env,
+        authMethod: "capability-secret",
+      };
+    }
+
+    return {
+      authorized: false,
+      status: 401,
+      error: "UNAUTHORIZED",
+      env,
+    };
+  }
+
+  // 2. Check Session Principal
+  const resolve = customResolver ?? resolveSession;
+  const session = await resolve(env, request);
+
+  if (session) {
+    if (session.user.role === "admin") {
+      return {
+        authorized: true,
+        user: session.user,
+        session: session.session,
+        env,
+        authMethod: "admin-session",
+      };
+    }
+
+    if (isLocal && isAuthBypassEnabled(env)) {
+      return {
+        authorized: true,
+        user: session.user,
+        session: session.session,
+        env,
+        authMethod: "local-bypass",
+      };
+    }
+
+    return {
+      authorized: false,
+      status: 403,
+      error: "FORBIDDEN",
+      env,
+    };
+  }
+
+  // 3. Anonymous request
+  return {
+    authorized: false,
+    status: 401,
+    error: "UNAUTHORIZED",
+    env,
+  };
 }
 
 export { requireAdminSession, type AdminAuthResult } from "@/lib/auth/admin";
-

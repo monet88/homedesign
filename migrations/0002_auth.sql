@@ -61,8 +61,10 @@ CREATE TABLE IF NOT EXISTS email_outbox (
   token_fingerprint TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL,
-  user_id TEXT
+  user_id TEXT,
+  environment TEXT NOT NULL DEFAULT 'development'
 );
 
 CREATE INDEX IF NOT EXISTS idx_email_outbox_expires_at ON email_outbox(expires_at);
 CREATE INDEX IF NOT EXISTS idx_email_outbox_user_id ON email_outbox(user_id);
+CREATE INDEX IF NOT EXISTS idx_email_outbox_environment ON email_outbox(environment);
