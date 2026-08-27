@@ -1,4 +1,4 @@
--- Ticket 10: Floor Plan project specialization — Room Designs + stage runs.
+-- Ticket 10: Floor Plan project specialization — Room Designs + stage runs (0008; 0007 is project_shares).
 
 CREATE TABLE IF NOT EXISTS room_designs (
   id TEXT PRIMARY KEY,

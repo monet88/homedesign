@@ -551,6 +551,7 @@ async function applyMigrations(db: D1Database) {
   const drops = [
     "DROP TABLE IF EXISTS floor_plan_stage_runs",
     "DROP TABLE IF EXISTS room_designs",
+    "DROP TABLE IF EXISTS project_shares",
     "DROP TABLE IF EXISTS project_assets",
     "DROP TABLE IF EXISTS designs",
     "DROP TABLE IF EXISTS projects",
@@ -664,6 +665,17 @@ async function applyMigrations(db: D1Database) {
         status TEXT NOT NULL DEFAULT 'draft',
         design_id TEXT, confirmed_at INTEGER,
         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      )`
+    ),
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS project_shares (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        token_digest TEXT NOT NULL,
+        expires_at INTEGER,
+        revoked_at INTEGER,
+        created_at INTEGER NOT NULL,
+        UNIQUE (token_digest)
       )`
     ),
     db.prepare(
