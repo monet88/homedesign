@@ -15,7 +15,7 @@ const AUTH = {
   BETTER_AUTH_SECRET: "test-secret-that-is-long-enough-32-chars",
   BETTER_AUTH_URL: "http://localhost:3000",
   EMAIL_DELIVERY_MODE: "test-outbox",
-  OUTBOX_ACCESS_SECRET: "secret-outbox-token-workers-test",
+  OUTBOX_ACCESS_SECRET: "workers-test-outbox-access-value",
 } as const;
 
 function testEnv(overrides?: Partial<AuthEnv>): AuthEnv {
