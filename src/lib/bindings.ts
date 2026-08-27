@@ -32,6 +32,8 @@ export interface Env {
   BETTER_AUTH_SECRET: string;
   EMAIL_DELIVERY_MODE?: string;
   GOOGLE_CLIENT_ID?: string;
+  /** Local-only: skip login for UI testing. Ignored when ENVIRONMENT=production. */
+  AUTH_BYPASS?: string;
   // OpenNext requires this self-reference service binding.
   WORKER_SELF_REFERENCE: Fetcher;
   ASSETS: Fetcher;

@@ -36,6 +36,8 @@ describe("wrangler environment isolation (ADR 0006)", () => {
   it("production sets ENVIRONMENT=production and non-test email mode", () => {
     expect(wrangler).toMatch(/"ENVIRONMENT":\s*"production"/);
     expect(wrangler).toMatch(/"EMAIL_DELIVERY_MODE":\s*"production"/);
+    const prodBlock = wrangler.split('"production"')[1] ?? "";
+    expect(prodBlock).not.toMatch(/AUTH_BYPASS["\s:]*[1t]/i);
   });
 
   it("documents required secret names in wrangler comments (no values committed)", () => {

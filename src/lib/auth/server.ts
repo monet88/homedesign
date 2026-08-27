@@ -1,7 +1,8 @@
 import { betterAuth } from "better-auth";
 import { oneTap } from "better-auth/plugins";
 import type { Env } from "@/lib/bindings";
-import { assertEmailSignUpAllowed } from "@/lib/env/policy";
+import { assertEmailSignUpAllowed, isAuthBypassEnabled } from "@/lib/env/policy";
+import { ensureFreeCreditGrant } from "@/lib/credits/ledger";
 
 // Ticket 03 (ADR 0001): BetterAuth server instance.
 //
@@ -31,6 +32,76 @@ function isProduction(env: AuthEnv): boolean {
 function isTestOutbox(env: AuthEnv): boolean {
   const mode = env.EMAIL_DELIVERY_MODE?.toLowerCase() ?? "test-outbox";
   return mode === "test-outbox" || mode === "local" || mode === "dev";
+}
+
+export const LOCAL_BYPASS_USER_ID = "local-bypass-user";
+export const LOCAL_BYPASS_EMAIL = "local@homedesign.dev";
+
+export type ResolvedSession = {
+  session: {
+    id: string;
+    userId: string;
+    expiresAt: Date;
+    createdAt: Date;
+    updatedAt: Date;
+    token?: string;
+  };
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    emailVerified: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+};
+
+async function ensureLocalBypassUser(env: AuthEnv): Promise<ResolvedSession["user"]> {
+  const now = Date.now();
+  await env.DB.prepare(
+    `INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt)
+     VALUES (?1, 'Local tester', ?2, 1, ?3, ?3)
+     ON CONFLICT(id) DO UPDATE SET emailVerified = 1, name = excluded.name`
+  )
+    .bind(LOCAL_BYPASS_USER_ID, LOCAL_BYPASS_EMAIL, now)
+    .run();
+  await ensureFreeCreditGrant(env, LOCAL_BYPASS_USER_ID);
+  const created = new Date(now);
+  return {
+    id: LOCAL_BYPASS_USER_ID,
+    name: "Local tester",
+    email: LOCAL_BYPASS_EMAIL,
+    emailVerified: true,
+    createdAt: created,
+    updatedAt: created,
+  };
+}
+
+function bypassSession(user: ResolvedSession["user"]): ResolvedSession {
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  return {
+    session: {
+      id: "local-bypass-session",
+      userId: user.id,
+      expiresAt,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    },
+    user,
+  };
+}
+
+/** Real BetterAuth session, or a verified local guest when AUTH_BYPASS is on. */
+export async function resolveSession(
+  env: AuthEnv,
+  request: Request
+): Promise<ResolvedSession | null> {
+  if (isAuthBypassEnabled(env)) {
+    const user = await ensureLocalBypassUser(env);
+    return bypassSession(user);
+  }
+  const auth = createAuth(env);
+  return (await auth.api.getSession({ headers: request.headers })) as ResolvedSession | null;
 }
 
 export function requireVerifiedUser(session: { user: { emailVerified: boolean } } | null): void {

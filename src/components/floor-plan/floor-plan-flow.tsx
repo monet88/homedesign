@@ -479,9 +479,10 @@ export function FloorPlanFlow() {
       ) : null}
 
       <Uploader
+        scene="floor-plan"
         sceneLabel="floor plan"
         disabled={!user || busy}
-        onReady={handleUploadReady}
+        onReady={(assetId, file) => void handleUploadReady(assetId, file)}
         onError={(message) => showToast(message, "error")}
       />
 

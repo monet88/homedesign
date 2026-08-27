@@ -1,5 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createAuth, requireVerifiedUser, type AuthEnv } from "@/lib/auth/server";
+import { authorizeVerified } from "@/lib/ai/http";
 import { finalizeUpload } from "@/lib/intake/intake-service";
 
 // `POST /api/assets/finalize` (ADR 0003 / Ticket 06 AC2).
@@ -12,19 +11,9 @@ import { finalizeUpload } from "@/lib/intake/intake-service";
 //            { code:1, error } on failure
 
 export async function POST(request: Request) {
-  const cf = await getCloudflareContext({ async: true });
-  const env = cf.env as unknown as AuthEnv;
-  const auth = createAuth(env);
-
-  const session = await auth.api.getSession({ headers: request.headers });
-  try {
-    requireVerifiedUser(session);
-  } catch (err) {
-    return Response.json(
-      { error: "EMAIL_NOT_VERIFIED" },
-      { status: (err as { status?: number }).status ?? 403 }
-    );
-  }
+  const auth = await authorizeVerified(request);
+  if (auth instanceof Response) return auth;
+  const env = auth.env;
 
   let body: { assetId?: string };
   try {
@@ -46,7 +35,7 @@ export async function POST(request: Request) {
   if (!owner) {
     return Response.json({ error: "NOT_FOUND" }, { status: 404 });
   }
-  if (owner.user_id !== session!.user.id) {
+  if (owner.user_id !== auth.userId) {
     return Response.json({ error: "FORBIDDEN" }, { status: 403 });
   }
 

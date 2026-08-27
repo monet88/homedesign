@@ -1,5 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createAuth, requireVerifiedUser, type AuthEnv } from "@/lib/auth/server";
+import { authorizeVerified } from "@/lib/ai/http";
 
 // Contract endpoint for ticket #7 (Generate): proves the unverified gate.
 //
@@ -13,22 +12,11 @@ import { createAuth, requireVerifiedUser, type AuthEnv } from "@/lib/auth/server
 // Response (unverified): 403 { "error": "EMAIL_NOT_VERIFIED" }
 // Response (verified):    200 { "user": { id, email, emailVerified } }
 export async function POST(request: Request) {
-  const cf = await getCloudflareContext({ async: true });
-  const env = cf.env as unknown as AuthEnv;
-  const auth = createAuth(env);
+  const auth = await authorizeVerified(request);
+  if (auth instanceof Response) return auth;
 
-  const session = await auth.api.getSession({ headers: request.headers });
-
-  try {
-    requireVerifiedUser(session);
-  } catch (err) {
-    const status = (err as { status?: number }).status ?? 403;
-    return Response.json({ error: "EMAIL_NOT_VERIFIED" }, { status });
-  }
-
-  const verified = session as NonNullable<typeof session>;
   return Response.json(
-    { user: { id: verified.user.id, email: verified.user.email, emailVerified: verified.user.emailVerified } },
+    { user: { id: auth.userId, emailVerified: true } },
     { headers: { "cache-control": "no-store" } }
   );
 }

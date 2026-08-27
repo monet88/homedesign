@@ -3,9 +3,9 @@ import { DesignFlow } from "@/components/design";
 import { parseDesignSearchParams } from "@/lib/design/state";
 
 export const metadata: Metadata = {
-  title: "AI Exterior Design — HomeDesign Clone",
+  title: "AI Exterior Design - Home Exterior Design from a Photo | HomeDesign",
   description:
-    "Upload a home facade photo, choose an exterior style and palette, and visualize a new look.",
+    "Upload a house photo and let HomeDesign AI generate realistic exterior design concepts for facades, porches, and outdoor spaces.",
 };
 
 function toSearchParams(
@@ -35,8 +35,8 @@ export default async function ExteriorDesignPage({
     <DesignFlow
       scene="exterior"
       title="AI Exterior Design"
-      description="Upload a facade or exterior photo, choose a style and palette, and see your curb appeal transformed."
-      sceneLabel="home"
+      description="Upload a photo of your house, choose an exterior area and architectural style, and preview a new direction before you renovate."
+      sceneLabel="exterior"
       initialPreset={preset}
     />
   );

@@ -7,6 +7,7 @@ import {
   assertMockPaymentAllowed,
   isFreeGrantAllowed,
   isGenerationAllowed,
+  isAuthBypassEnabled,
   isProduction,
   isTestingEconomyAllowed,
 } from "@/lib/env/policy";
@@ -64,5 +65,22 @@ describe("environment policy matrix (ticket #18)", () => {
   it("email sign-up banned in production", () => {
     expect(() => assertEmailSignUpAllowed(prod)).toThrow("EMAIL_SIGNUP_BANNED_IN_PRODUCTION");
     expect(() => assertEmailSignUpAllowed(staging)).not.toThrow();
+  });
+
+  it("AUTH_BYPASS is ignored in production and off unless explicitly set", () => {
+    expect(isAuthBypassEnabled(prod)).toBe(false);
+    expect(isAuthBypassEnabled({ ...prod, AUTH_BYPASS: "1" })).toBe(false);
+    expect(isAuthBypassEnabled(local)).toBe(false);
+    // Vitest always sets VITEST, so the flag cannot activate inside unit tests.
+    expect(isAuthBypassEnabled({ ...local, AUTH_BYPASS: "1" })).toBe(false);
+
+    const prev = process.env.VITEST;
+    delete process.env.VITEST;
+    try {
+      expect(isAuthBypassEnabled({ ...local, AUTH_BYPASS: "1" })).toBe(true);
+      expect(isAuthBypassEnabled({ ...prod, AUTH_BYPASS: "1" })).toBe(false);
+    } finally {
+      process.env.VITEST = prev;
+    }
   });
 });

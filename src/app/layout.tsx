@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { GoogleOneTapPrompt } from "@/components/auth/google-one-tap";
-import { Header, Footer } from "@/components/shell";
+import { ShellWrapper } from "@/components/shell";
 import "./globals.css";
 
-// DESIGN.md: inter (400-700) + jetbrains_mono, loaded via next/font.
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
@@ -18,9 +17,14 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HomeDesign Clone",
+  title: "AI Home Design: Interior, Exterior & Floor Plan | HomeDesign",
   description:
-    "Explore interior, exterior, and floor-plan ideas with AI. Free-first HomeDesign clone (spec #13).",
+    "Design your home with AI in one place. Redesign interiors from a photo, visualize exteriors before renovation, and turn floor plans into 2D layouts, 3D renders, and 360° walkthroughs.",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon-96x96.png",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({
@@ -28,12 +32,11 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
-      <body className="flex min-h-screen flex-col bg-paper text-ink antialiased">
+      <body className="min-h-dvh bg-paper text-ink antialiased">
         <GoogleOneTapPrompt />
-        <Header />
-        <div className="flex-1">{children}</div>
-        <Footer />
+        <ShellWrapper>{children}</ShellWrapper>
       </body>
     </html>
   );
 }
+

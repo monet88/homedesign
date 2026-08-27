@@ -1,5 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createAuth, requireVerifiedUser, type AuthEnv } from "@/lib/auth/server";
+import { authorizeVerified } from "@/lib/ai/http";
 import { presignGetUrl, type PresignCredentials } from "@/lib/intake/presign";
 
 // `GET /api/assets/[id]/download` (ticket #14 AC5).
@@ -14,22 +13,12 @@ const PRIVATE_BUCKET = "homedesign-private";
 const SIGNED_TTL_SEC = 600;
 
 export async function GET(request: Request, ctx: { params: Promise<{ id: string }> }) {
-  const cf = await getCloudflareContext({ async: true });
-  const env = cf.env as unknown as AuthEnv;
-  const auth = createAuth(env);
-
-  const session = await auth.api.getSession({ headers: request.headers });
-  try {
-    requireVerifiedUser(session);
-  } catch (err) {
-    return Response.json(
-      { error: "EMAIL_NOT_VERIFIED" },
-      { status: (err as { status?: number }).status ?? 403 }
-    );
-  }
+  const auth = await authorizeVerified(request);
+  if (auth instanceof Response) return auth;
+  const env = auth.env;
 
   const { id } = await ctx.params;
-  const userId = session!.user.id;
+  const userId = auth.userId;
 
   const row = await env.DB.prepare(
     `SELECT id, storage_key, mime_type, lifecycle, user_id FROM assets WHERE id = ?1`

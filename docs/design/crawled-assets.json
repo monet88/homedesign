@@ -1,0 +1,450 @@
+[
+  {
+    "url": "https://cdn.homedesigns.app/landing/hero-room-light.webp",
+    "local": "/landing/hero-room-light.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/before-after/empty-living-room-after.webp",
+    "local": "/ai-interior-design/before-after/empty-living-room-after.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/before-after/empty-living-room-before.webp",
+    "local": "/ai-interior-design/before-after/empty-living-room-before.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/ai-interior-design-poster.webp",
+    "local": "/landing/ai-interior-design-poster.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/ai-exterior-design-poster.webp",
+    "local": "/landing/ai-exterior-design-poster.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/ai-floor-plan-poster.webp",
+    "local": "/landing/ai-floor-plan-poster.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/cta-room.webp",
+    "local": "/landing/cta-room.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/showcase-modern-living-room.webp",
+    "local": "/landing/showcase-modern-living-room.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/showcase-scandinavian-bedroom.webp",
+    "local": "/landing/showcase-scandinavian-bedroom.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/showcase-luxury-kitchen.webp",
+    "local": "/landing/showcase-luxury-kitchen.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/showcase-home-office.webp",
+    "local": "/landing/showcase-home-office.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/hero-floating-room-model.webp",
+    "local": "/ai-interior-design/hero-floating-room-model.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/how-to-use/upload-room-photo.webp",
+    "local": "/ai-interior-design/how-to-use/upload-room-photo.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/feature-style-options.webp",
+    "local": "/landing/feature-style-options.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/how-to-use/generated-room-preview.webp",
+    "local": "/ai-interior-design/how-to-use/generated-room-preview.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/styles/modern-warm.webp",
+    "local": "/ai-interior-design/styles/modern-warm.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/styles/japandi.webp",
+    "local": "/ai-interior-design/styles/japandi.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/styles/scandinavian.webp",
+    "local": "/ai-interior-design/styles/scandinavian.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/styles/minimal.webp",
+    "local": "/ai-interior-design/styles/minimal.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/styles/classic-warm.webp",
+    "local": "/ai-interior-design/styles/classic-warm.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/styles/industrial-loft.webp",
+    "local": "/ai-interior-design/styles/industrial-loft.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/styles/organic-modern.webp",
+    "local": "/ai-interior-design/styles/organic-modern.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/styles/wabi-sabi.webp",
+    "local": "/ai-interior-design/styles/wabi-sabi.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/styles/mediterranean.webp",
+    "local": "/ai-interior-design/styles/mediterranean.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/styles/mid-century.webp",
+    "local": "/ai-interior-design/styles/mid-century.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/styles/french-vintage.webp",
+    "local": "/ai-interior-design/styles/french-vintage.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/styles/luxury-wood.webp",
+    "local": "/ai-interior-design/styles/luxury-wood.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/rooms/living-room.webp",
+    "local": "/ai-interior-design/rooms/living-room.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/rooms/kitchen.webp",
+    "local": "/ai-interior-design/rooms/kitchen.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/rooms/home-office.webp",
+    "local": "/ai-interior-design/rooms/home-office.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/rooms/dining-room.webp",
+    "local": "/ai-interior-design/rooms/dining-room.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/rooms/bathroom.webp",
+    "local": "/ai-interior-design/rooms/bathroom.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/rooms/kids-room.webp",
+    "local": "/ai-interior-design/rooms/kids-room.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/rooms/nursery.webp",
+    "local": "/ai-interior-design/rooms/nursery.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/rooms/entryway.webp",
+    "local": "/ai-interior-design/rooms/entryway.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/rooms/balcony.webp",
+    "local": "/ai-interior-design/rooms/balcony.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/before-after/empty-bedroom-before.webp",
+    "local": "/ai-interior-design/before-after/empty-bedroom-before.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/before-after/empty-bedroom-after.webp",
+    "local": "/ai-interior-design/before-after/empty-bedroom-after.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/before-after/empty-kitchen-corner-before.webp",
+    "local": "/ai-interior-design/before-after/empty-kitchen-corner-before.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/before-after/empty-kitchen-corner-after.webp",
+    "local": "/ai-interior-design/before-after/empty-kitchen-corner-after.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/before-after/empty-home-office-before.webp",
+    "local": "/ai-interior-design/before-after/empty-home-office-before.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/before-after/empty-home-office-after.webp",
+    "local": "/ai-interior-design/before-after/empty-home-office-after.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/before-after/bare-balcony-before.webp",
+    "local": "/ai-interior-design/before-after/bare-balcony-before.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/before-after/bare-balcony-after.webp",
+    "local": "/ai-interior-design/before-after/bare-balcony-after.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/examples/modern-facade.webp",
+    "local": "/ai-exterior-design/examples/modern-facade.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/examples/farmhouse-facade.webp",
+    "local": "/ai-exterior-design/examples/farmhouse-facade.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/examples/mediterranean-house.webp",
+    "local": "/ai-exterior-design/examples/mediterranean-house.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/examples/craftsman-porch.webp",
+    "local": "/ai-exterior-design/examples/craftsman-porch.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/hero-floating-house-model.webp?v=large-20260709",
+    "local": "/ai-exterior-design/hero-floating-house-model.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/how-to-use/upload-home-photo.webp",
+    "local": "/ai-exterior-design/how-to-use/upload-home-photo.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/how-to-use/exterior-style-options.webp",
+    "local": "/ai-exterior-design/how-to-use/exterior-style-options.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/how-to-use/generated-exterior-preview.webp",
+    "local": "/ai-exterior-design/how-to-use/generated-exterior-preview.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/capabilities/redesign-edit-modes.webp",
+    "local": "/ai-exterior-design/capabilities/redesign-edit-modes.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/capabilities/structure-aware.webp",
+    "local": "/ai-exterior-design/capabilities/structure-aware.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/capabilities/area-specific.webp",
+    "local": "/ai-exterior-design/capabilities/area-specific.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/capabilities/model-selection.webp",
+    "local": "/ai-exterior-design/capabilities/model-selection.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/capabilities/aspect-ratios.webp",
+    "local": "/ai-exterior-design/capabilities/aspect-ratios.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/capabilities/custom-requirements.webp",
+    "local": "/ai-exterior-design/capabilities/custom-requirements.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/styles/modern.webp",
+    "local": "/ai-exterior-design/styles/modern.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/styles/modern-farmhouse.webp",
+    "local": "/ai-exterior-design/styles/modern-farmhouse.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/styles/contemporary.webp",
+    "local": "/ai-exterior-design/styles/contemporary.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/styles/mediterranean.webp",
+    "local": "/ai-exterior-design/styles/mediterranean.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/styles/colonial.webp",
+    "local": "/ai-exterior-design/styles/colonial.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/styles/craftsman.webp",
+    "local": "/ai-exterior-design/styles/craftsman.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/styles/ranch.webp",
+    "local": "/ai-exterior-design/styles/ranch.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/styles/scandinavian.webp",
+    "local": "/ai-exterior-design/styles/scandinavian.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/styles/mid-century.webp",
+    "local": "/ai-exterior-design/styles/mid-century.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/styles/coastal.webp",
+    "local": "/ai-exterior-design/styles/coastal.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/styles/cottage.webp",
+    "local": "/ai-exterior-design/styles/cottage.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/styles/tudor.webp",
+    "local": "/ai-exterior-design/styles/tudor.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/areas/house-facade.webp",
+    "local": "/ai-exterior-design/areas/house-facade.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/areas/front-entrance.webp",
+    "local": "/ai-exterior-design/areas/front-entrance.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/areas/front-porch.webp",
+    "local": "/ai-exterior-design/areas/front-porch.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/areas/front-yard.webp",
+    "local": "/ai-exterior-design/areas/front-yard.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/areas/backyard.webp",
+    "local": "/ai-exterior-design/areas/backyard.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/areas/patio.webp",
+    "local": "/ai-exterior-design/areas/patio.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/areas/deck.webp",
+    "local": "/ai-exterior-design/areas/deck.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/areas/garage.webp",
+    "local": "/ai-exterior-design/areas/garage.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/areas/driveway.webp",
+    "local": "/ai-exterior-design/areas/driveway.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/areas/garden.webp",
+    "local": "/ai-exterior-design/areas/garden.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/before-after/dated-facade-before.webp",
+    "local": "/ai-exterior-design/before-after/dated-facade-before.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/before-after/dated-facade-after.webp",
+    "local": "/ai-exterior-design/before-after/dated-facade-after.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/before-after/brick-contemporary-before.webp",
+    "local": "/ai-exterior-design/before-after/brick-contemporary-before.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/before-after/brick-contemporary-after.webp",
+    "local": "/ai-exterior-design/before-after/brick-contemporary-after.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/before-after/craftsman-porch-before.webp",
+    "local": "/ai-exterior-design/before-after/craftsman-porch-before.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/before-after/craftsman-porch-after.webp",
+    "local": "/ai-exterior-design/before-after/craftsman-porch-after.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/before-after/front-yard-before.webp",
+    "local": "/ai-exterior-design/before-after/front-yard-before.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/before-after/front-yard-after.webp",
+    "local": "/ai-exterior-design/before-after/front-yard-after.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/before-after/backyard-patio-before.webp",
+    "local": "/ai-exterior-design/before-after/backyard-patio-before.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/before-after/backyard-patio-after.webp",
+    "local": "/ai-exterior-design/before-after/backyard-patio-after.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-exterior-design/cta-exterior.webp",
+    "local": "/ai-exterior-design/cta-exterior.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/feature-render.webp",
+    "local": "/landing/feature-render.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/ai-interior-design.mp4",
+    "local": "/landing/ai-interior-design.mp4"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/ai-exterior-design.mp4",
+    "local": "/landing/ai-exterior-design.mp4"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/feature-floor-plan.webp",
+    "local": "/landing/feature-floor-plan.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/ai-floor-plan.mp4",
+    "local": "/landing/ai-floor-plan.mp4"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/feature-room-plans.webp",
+    "local": "/landing/feature-room-plans.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/feature-room-edit.webp",
+    "local": "/landing/feature-room-edit.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/feature-panorama.webp",
+    "local": "/landing/feature-panorama.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/homedesign-demo-video-poster.webp",
+    "local": "/landing/homedesign-demo-video-poster.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/homedesign-demo-video.mp4",
+    "local": "/landing/homedesign-demo-video.mp4"
+  },
+  {
+    "url": "https://homedesigns.app/favicon.ico",
+    "local": "/favicon.ico"
+  },
+  {
+    "url": "https://homedesigns.app/favicon-96x96.png",
+    "local": "/favicon-96x96.png"
+  },
+  {
+    "url": "https://homedesigns.app/apple-touch-icon.png",
+    "local": "/apple-touch-icon.png"
+  },
+  {
+    "url": "https://homedesigns.app/logo.png\\",
+    "local": "/logo.png/"
+  },
+  {
+    "url": "https://homedesigns.app/logo-footer.png\\",
+    "local": "/logo-footer.png/"
+  },
+  {
+    "url": "https://homedesigns.app/favicon.ico\\",
+    "local": "/favicon.ico/"
+  },
+  {
+    "url": "https://homedesigns.app/favicon-96x96.png\\",
+    "local": "/favicon-96x96.png/"
+  },
+  {
+    "url": "https://homedesigns.app/apple-touch-icon.png\\",
+    "local": "/apple-touch-icon.png/"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/ai-interior-design/rooms/bedroom.webp",
+    "local": "/ai-interior-design/rooms/bedroom.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/pricing-leaves-complete.webp",
+    "local": "/landing/pricing-leaves-complete.webp"
+  },
+  {
+    "url": "https://cdn.homedesigns.app/landing/pricing-faq-drafting-cutout.webp",
+    "local": "/landing/pricing-faq-drafting-cutout.webp"
+  }
+]

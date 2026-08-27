@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { useSession } from "@/lib/auth/session-stub";
 import {
   EMAIL_VERIFY_MESSAGE,
@@ -13,12 +14,18 @@ import {
 } from "@/lib/ai/types";
 import type { DesignPreset } from "@/lib/design/state";
 import { MockPaymentModal } from "@/components/payments/mock-payment-modal";
-import { DesignCatalogGalleries } from "./design-catalog-galleries";
 import { DesignForm } from "./design-form";
 import type { DesignFormHandle } from "./design-form";
 import { ResultSlider } from "./result-slider";
 import { Toast } from "./toast";
 import { Uploader } from "./uploader";
+import { DesignHistory } from "./design-history";
+import { ToolMarketingSections } from "./tool-marketing-sections";
+import {
+  IconSparkles,
+  IconCheck,
+  IconImagePlus,
+} from "@/components/shell/icons";
 
 interface DesignFlowProps {
   scene: "interior" | "exterior";
@@ -53,11 +60,13 @@ export function DesignFlow({
   title,
   description,
   sceneLabel,
-  initialPreset,
+  initialPreset: initialPresetProp,
 }: DesignFlowProps) {
   const { user } = useSession();
   const [sourceAssetId, setSourceAssetId] = useState<string | null>(null);
+  const [sourcePreviewUrl, setSourcePreviewUrl] = useState<string | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [currentPreset, setCurrentPreset] = useState<DesignPreset | undefined>(initialPresetProp);
   const [toast, setToast] = useState<{ message: string; variant?: "error" } | null>(null);
   const [polling, setPolling] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -65,6 +74,7 @@ export function DesignFlow({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
+
   const formRef = useRef<DesignFormHandle | null>(null);
   const activeRef = useRef<{
     taskId: string;
@@ -75,13 +85,13 @@ export function DesignFlow({
 
   function showToast(message: string, variant?: "error") {
     setToast({ message, variant });
-    // Auto-dismiss after 6s.
     setTimeout(() => setToast(null), 6_000);
   }
 
-  function handleUploadReady(assetId: string, file: File) {
+  function handleUploadReady(assetId: string, file: File, previewUrl: string) {
     setSourceAssetId(assetId);
     setUploadedFile(file);
+    setSourcePreviewUrl(previewUrl);
   }
 
   const stopPolling = useCallback(() => {
@@ -112,63 +122,78 @@ export function DesignFlow({
       });
       setActiveId(view.id);
     },
-  []);
+    []
+  );
 
   const pollTask = useCallback(
     async (taskId: string, sourceAssetId: string) => {
-      const start = Date.now();
+      stopPolling();
+      setPolling(true);
+      setStatus("queued");
 
-      const tick = async () => {
+      const startTime = Date.now();
+
+      const poll = async () => {
+        if (Date.now() - startTime > CLIENT_POLL_MAX_WAIT_MS) {
+          stopPolling();
+          setStatus("timeout");
+          showToast(
+            "Task is taking longer than expected. Check back in your Library soon."
+          );
+          return;
+        }
+
         try {
           const res = await fetch(`/api/designs/${taskId}`, {
+            headers: { Accept: "application/json" },
             credentials: "same-origin",
-            cache: "no-store",
           });
 
           if (!res.ok) {
-            const err = (await res.json().catch(() => ({}))) as { error?: string };
             stopPolling();
             setStatus("error");
-            showToast(err.error ?? `Poll failed (${res.status})`, "error");
+            showToast(`Status check failed (${res.status})`, "error");
             return;
           }
 
-          const json = (await res.json()) as { code: number; data: StatusView };
-          const view = json.data;
-          setStatus(view.status);
+          const json = (await res.json()) as {
+            code: number;
+            data?: StatusView;
+            error?: string;
+          };
 
-          if (view.status === "success") {
+          if (json.code !== 0 || !json.data) {
             stopPolling();
-            appendResult(view, sourceAssetId);
-            showToast("Design ready!");
+            setStatus("error");
+            showToast(json.error ?? "Status check failed", "error");
             return;
           }
 
-          if (view.status === "failed") {
-            stopPolling();
-            appendResult(view, sourceAssetId);
-            showToast(view.errorCode ?? "Design failed.", "error");
-            return;
-          }
+          const data = json.data;
+          setStatus(data.internalStatus);
 
-          if (Date.now() - start >= CLIENT_POLL_MAX_WAIT_MS) {
+          if (data.status === "success") {
             stopPolling();
+            appendResult(data, sourceAssetId);
+          } else if (data.status === "failed") {
+            stopPolling();
+            appendResult(data, sourceAssetId);
             showToast(
-              "Still processing on the server. You can leave this page and check your projects later.",
+              `Generation failed: ${data.errorCode ?? "unknown error"}`,
               "error"
             );
           }
         } catch {
-          // Network hiccup — keep polling until deadline.
+          // Retry on transient network errors
         }
       };
 
-      activeRef.current = { taskId, sourceAssetId, start, timer: null };
-      await tick();
-      activeRef.current.timer = setInterval(tick, CLIENT_POLL_INTERVAL_MS);
-      setPolling(true);
+      await poll();
+      if (activeRef.current) {
+        activeRef.current.timer = setInterval(poll, CLIENT_POLL_INTERVAL_MS);
+      }
     },
-    [stopPolling, appendResult]
+    [appendResult, stopPolling]
   );
 
   useEffect(() => {
@@ -181,25 +206,16 @@ export function DesignFlow({
     body: Record<string, unknown>,
     currentSourceAssetId: string
   ) {
-    if (!user) {
-      showToast("Sign in to generate designs.", "error");
-      return;
-    }
-    if (user.emailVerified === false) {
-      showToast(EMAIL_VERIFY_MESSAGE, "error");
-      return;
-    }
-    if (!currentSourceAssetId) {
-      showToast("Please upload a photo first.", "error");
-      return;
-    }
-    stopPolling();
-    setStatus("processing");
-    setActiveId(null);
+    if (polling) return;
+
+    setStatus("submitting");
 
     const res = await fetch("/api/designs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
       credentials: "same-origin",
       body: JSON.stringify(body),
     });
@@ -214,7 +230,9 @@ export function DesignFlow({
     if (!res.ok || json.code !== 0 || !json.data?.id) {
       setStatus("error");
       if (isInsufficientCreditsError(res.status, json.error)) {
-        setPaymentMessage(json.reason ?? "You need more Credits to generate.");
+        setPaymentMessage(
+          json.reason ?? "You need more Credits to generate."
+        );
         setPaymentOpen(true);
         return;
       }
@@ -222,7 +240,10 @@ export function DesignFlow({
         showToast(EMAIL_VERIFY_MESSAGE, "error");
         return;
       }
-      showToast(json.reason ?? json.error ?? `Generate failed (${res.status})`, "error");
+      showToast(
+        json.reason ?? json.error ?? `Generate failed (${res.status})`,
+        "error"
+      );
       return;
     }
 
@@ -236,139 +257,213 @@ export function DesignFlow({
     }
     formRef.current?.generate();
   }
+
   const activeRecord = history.find((r) => r.id === activeId) ?? history.at(-1);
 
+  const heroFloatingImg =
+    scene === "exterior"
+      ? "/ai-exterior-design/hero-floating-house-model.webp"
+      : "/ai-interior-design/hero-floating-room-model.webp";
+
+  const heroPromptCaption =
+    scene === "exterior"
+      ? "Modern farmhouse facade, board-and-batten siding, black-framed windows, warm porch lighting, fresh landscaping"
+      : "Modern organic living room, warm neutrals, natural light, olive green accents, wooden textures";
+
+  const scrollToGenerator = () => {
+    const el = document.getElementById("generator-card");
+    if (el) el.scrollIntoView({ behavior: "smooth" });
+  };
+
   return (
-    <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
-      <div className="text-center">
-        <h1 className="text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-          {title}
-        </h1>
-        <p className="mx-auto mt-4 max-w-xl text-ink/70">{description}</p>
-      </div>
+    <div className="flex flex-col">
+      <Toast
+        message={toast?.message ?? null}
+        variant={toast?.variant}
+        onClose={() => setToast(null)}
+      />
 
-      <div className="mt-10 grid gap-8 lg:grid-cols-[1fr_360px]">
-        {/* Left: result + history */}
-        <div className="space-y-6">
-          {polling && (
-            <div className="rounded-card border border-ink/10 bg-paper p-4 text-sm text-ink/80">
-              Processing… {status}
+      {/* 1. Top Hero Section Matching Origin 1:1 */}
+      <section className="mx-auto w-full max-w-6xl px-4 pt-12 pb-8 sm:px-6 lg:px-8">
+        <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
+          {/* Left Hero Text */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <IconSparkles className="size-4 text-brand-copper" />
+              <span className="text-xs font-bold tracking-[0.2em] uppercase text-brand-copper">
+                {scene === "exterior" ? "AI EXTERIOR DESIGN" : "AI INTERIOR DESIGN"}
+              </span>
             </div>
-          )}
 
-          {activeRecord?.status === "success" && activeRecord.outputAssetId && (
-            <section className="rounded-card border border-ink/10 bg-paper p-4 shadow-sm">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="font-semibold text-ink">Result</h2>
-                <div className="flex items-center gap-2">
-                  <a
-                    href={`/api/assets/${activeRecord.outputAssetId}/download`}
-                    className="rounded-pill border border-ink/20 px-4 py-2 text-xs font-medium text-ink transition-colors hover:border-ink/50"
-                  >
-                    Download
-                  </a>
-                  <button
-                    type="button"
-                    onClick={handleRegenerate}
-                    className="rounded-pill bg-ink px-4 py-2 text-xs font-medium text-paper transition-opacity hover:opacity-80"
-                  >
-                    Regenerate
-                  </button>
-                </div>
+            <h1 className="text-5xl sm:text-6xl font-bold tracking-tight text-foreground leading-[1.08]">
+              {scene === "exterior" ? (
+                <>
+                  AI<br />Exterior<br />Design
+                </>
+              ) : (
+                <>
+                  AI<br />Interior<br />Design
+                </>
+              )}
+            </h1>
+
+            <p className="mt-6 text-base sm:text-lg leading-relaxed text-foreground/75 max-w-lg">
+              {scene === "exterior"
+                ? "Upload a photo of your house and instantly generate realistic AI exterior design ideas for your facade, yard, porch, or driveway."
+                : "Upload a photo of any room and instantly generate warm, realistic AI interior design ideas tailored to your space."}
+            </p>
+
+            {/* Checklist */}
+            <div className="mt-6 flex flex-wrap gap-4 text-xs font-semibold text-foreground/80">
+              <div className="flex items-center gap-1.5">
+                <span className="flex size-4 items-center justify-center rounded-full bg-brand-primary text-white">
+                  <IconCheck className="size-2.5" />
+                </span>
+                <span>{scene === "exterior" ? "Instant Curb Appeal" : "Instant AI Results"}</span>
               </div>
-              <ResultSlider
-                beforeSrc={
-                  uploadedFile
-                    ? URL.createObjectURL(uploadedFile)
-                    : `/api/assets/${activeRecord.sourceAssetId}/download`
-                }
-                afterSrc={`/api/assets/${activeRecord.outputAssetId}/download`}
-              />
-            </section>
-          )}
+              <div className="flex items-center gap-1.5">
+                <span className="flex size-4 items-center justify-center rounded-full bg-brand-primary text-white">
+                  <IconCheck className="size-2.5" />
+                </span>
+                <span>{scene === "exterior" ? "Any Style, Any Facade" : "Any Style, Any Room"}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="flex size-4 items-center justify-center rounded-full bg-brand-primary text-white">
+                  <IconCheck className="size-2.5" />
+                </span>
+                <span>{scene === "exterior" ? "Renovate with Confidence" : "Your Space, Your Rules"}</span>
+              </div>
+            </div>
 
-          {activeRecord?.status === "failed" && (
-            <div className="rounded-card border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-              Generation failed: {activeRecord.errorCode ?? "unknown error"}
+            {/* CTA Button */}
+            <div className="mt-8">
               <button
                 type="button"
-                onClick={handleRegenerate}
-                className="ml-4 rounded-pill bg-ink px-4 py-2 text-xs font-medium text-paper transition-opacity hover:opacity-80"
+                onClick={scrollToGenerator}
+                className="inline-flex h-12 items-center gap-2 rounded-xl bg-brand-primary px-6 text-sm font-semibold text-white shadow-md transition-all hover:bg-brand-accent active:translate-y-px"
               >
-                Try again
+                <IconImagePlus className="size-4" />
+                <span>{scene === "exterior" ? "Design My Exterior Now" : "Upload Your Room Photo"}</span>
               </button>
             </div>
-          )}
+          </div>
 
-          {history.length > 0 && (
-            <section>
-              <h2 className="font-semibold text-ink">History</h2>
-              <ul className="mt-3 space-y-2">
-                {history.map((record) => (
-                  <li
-                    key={record.id}
-                    className={
-                      "flex items-center justify-between rounded-card border p-3 text-sm" +
-                      (record.id === activeId
-                        ? " border-ink bg-ink/5"
-                        : " border-ink/10 bg-paper")
-                    }
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setActiveId(record.id)}
-                      className="text-left text-ink hover:underline"
-                    >
-                      {new Date(record.createdAt).toLocaleString()}
-                    </button>
-                    <span className="text-xs text-ink/60">
-                      {record.status} · {record.cost} Credits
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </div>
-
-        {/* Right: upload + controls */}
-        <aside className="space-y-6">
-          <Toast
-            message={toast?.message ?? null}
-            variant={toast?.variant}
-            onClose={() => setToast(null)}
-          />
-
-          <section className="rounded-card border border-ink/10 bg-paper p-5 shadow-sm">
-            <h2 className="font-semibold text-ink">Upload</h2>
-            <div className="mt-4">
-              <Uploader
-                sceneLabel={sceneLabel}
-                disabled={polling}
-                onReady={handleUploadReady}
-                onError={(msg) => showToast(msg, "error")}
+          {/* Right Hero 3D Floating Model + Caption */}
+          <div className="flex flex-col items-center">
+            <div className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl">
+              <Image
+                src={heroFloatingImg}
+                alt="3D room model"
+                fill
+                priority
+                className="object-contain transition-transform duration-500 hover:scale-105"
               />
             </div>
-          </section>
+            <div className="mt-3 rounded-full border border-border/80 bg-card/90 px-4 py-2 text-center text-xs text-foreground/75 shadow-xs backdrop-blur-xs max-w-md">
+              <strong className="font-semibold text-foreground">Prompt:</strong> {heroPromptCaption}
+            </div>
+          </div>
+        </div>
+      </section>
 
-          <section className="rounded-card border border-ink/10 bg-paper p-5 shadow-sm">
-            <h2 className="font-semibold text-ink">Design</h2>
-            <div className="mt-4">
+      {/* 2. Main Tool Generator Card Container Matching Image 1 Exactly */}
+      <section
+        id="generator-card"
+        className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8"
+      >
+        <div className="rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-sm">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_380px] items-start">
+            {/* Left Column: Upload & History */}
+            <div className="flex min-w-0 flex-col">
+              <h2 className="text-xl font-bold tracking-tight text-foreground mb-4">
+                {title}
+              </h2>
+
+              {polling && (
+                <div className="mb-4 flex items-center gap-3 rounded-2xl border border-border bg-[#fbf9f5] p-5 shadow-xs animate-pulse">
+                  <div className="size-4 animate-spin rounded-full border-2 border-brand-primary border-t-transparent" />
+                  <span className="text-sm font-semibold text-foreground">
+                    AI is generating your design ({status})…
+                  </span>
+                </div>
+              )}
+
+              {activeRecord?.status === "success" && activeRecord.outputAssetId ? (
+                <div className="rounded-2xl border border-border bg-[#fbf9f5] p-5 shadow-xs">
+                  <div className="mb-4 flex items-center justify-between">
+                    <span className="text-sm font-bold text-foreground">
+                      Generated Result
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={`/api/assets/${activeRecord.outputAssetId}/download`}
+                        className="rounded-full border border-border bg-card px-4 py-1.5 text-xs font-semibold text-foreground hover:bg-black/5"
+                      >
+                        Download
+                      </a>
+                      <button
+                        type="button"
+                        onClick={handleRegenerate}
+                        className="rounded-full bg-brand-primary px-4 py-1.5 text-xs font-semibold text-white hover:bg-brand-accent shadow-xs"
+                      >
+                        Regenerate
+                      </button>
+                    </div>
+                  </div>
+
+                  <ResultSlider
+                    beforeSrc={
+                      uploadedFile
+                        ? URL.createObjectURL(uploadedFile)
+                        : `/api/assets/${activeRecord.sourceAssetId}/download`
+                    }
+                    afterSrc={`/api/assets/${activeRecord.outputAssetId}/download`}
+                  />
+                </div>
+              ) : (
+                <Uploader
+                  scene={scene}
+                  sceneLabel={sceneLabel}
+                  disabled={polling}
+                  onReady={handleUploadReady}
+                  onError={(msg) => showToast(msg, "error")}
+                />
+              )}
+
+              {/* History Box (4 cards) */}
+              <DesignHistory
+                scene={scene}
+                history={history}
+                activeId={activeId}
+                onSelect={setActiveId}
+              />
+            </div>
+
+            {/* Right Column: Form Controls Form */}
+            <div className="rounded-2xl border border-border/80 bg-[#fbf9f5] p-5">
               <DesignForm
                 scene={scene}
                 sourceAssetId={sourceAssetId}
-                initialPreset={initialPreset}
+                sourcePreviewUrl={sourcePreviewUrl}
+                initialPreset={currentPreset}
                 disabled={polling}
                 onGenerate={handleGenerate}
                 onToast={showToast}
                 ref={formRef}
               />
             </div>
-          </section>
-        </aside>
-      </div>
+          </div>
+        </div>
+      </section>
 
-      <DesignCatalogGalleries scene={scene} />
+      {/* 3. Marketing Showcase Sections Below Generator */}
+      <ToolMarketingSections
+        scene={scene}
+        onSelectPreset={(p) => {
+          setCurrentPreset(p);
+          scrollToGenerator();
+        }}
+      />
 
       <MockPaymentModal
         open={paymentOpen}
@@ -376,6 +471,6 @@ export function DesignFlow({
         message={paymentMessage}
         onPurchased={() => window.location.reload()}
       />
-    </main>
+    </div>
   );
 }

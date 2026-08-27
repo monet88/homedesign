@@ -1,5 +1,5 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createAuth, requireVerifiedUser, type AuthEnv } from "@/lib/auth/server";
+import { requireVerifiedUser, resolveSession, type AuthEnv } from "@/lib/auth/server";
 import { DesignError } from "@/lib/ai/types";
 import { FloorPlanError } from "@/lib/floor-plan/errors";
 
@@ -17,9 +17,8 @@ export async function authorizeVerified(
 ): Promise<RouteSession | Response> {
   const cf = await getCloudflareContext({ async: true });
   const env = cf.env as unknown as AuthEnv;
-  const auth = createAuth(env);
 
-  const session = await auth.api.getSession({ headers: request.headers });
+  const session = await resolveSession(env, request);
   if (!session) {
     return Response.json({ error: "UNAUTHENTICATED" }, { status: 401 });
   }

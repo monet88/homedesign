@@ -1,5 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createAuth, requireVerifiedUser, type AuthEnv } from "@/lib/auth/server";
+import { authorizeVerified } from "@/lib/ai/http";
 import { mockPurchase, MOCK_PACKS, type MockPack } from "@/lib/payments/core";
 
 // `POST /api/payments/mock` (ADR 0002, spec US 14–15, 18): Mock Payment.
@@ -17,21 +16,9 @@ import { mockPurchase, MOCK_PACKS, type MockPack } from "@/lib/payments/core";
 // The label is always "Mock purchase — no charge" per ADR 0002.
 
 export async function POST(request: Request) {
-  const cf = await getCloudflareContext({ async: true });
-  const env = cf.env as unknown as AuthEnv;
-  const auth = createAuth(env);
-
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (!session) {
-    return Response.json({ error: "UNAUTHENTICATED" }, { status: 401 });
-  }
-
-  try {
-    requireVerifiedUser(session);
-  } catch (err) {
-    const status = (err as { status?: number }).status ?? 403;
-    return Response.json({ error: "EMAIL_NOT_VERIFIED" }, { status });
-  }
+  const auth = await authorizeVerified(request);
+  if (auth instanceof Response) return auth;
+  const env = auth.env;
 
   let body: { pack?: unknown; idempotencyKey?: unknown };
   try {
@@ -51,7 +38,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await mockPurchase(env, session.user.id, pack, idempotencyKey);
+    const result = await mockPurchase(env, auth.userId, pack, idempotencyKey);
     return Response.json(
       { code: 0, data: result },
       { headers: { "cache-control": "no-store" } }

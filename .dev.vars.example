@@ -6,5 +6,7 @@ BETTER_AUTH_SECRET=change-me-min-32-chars
 BETTER_AUTH_URL=http://localhost:3000
 # EmailDelivery adapter mode: test-outbox (local/dev/preview/staging) only.
 EMAIL_DELIVERY_MODE=test-outbox
+# Temporary UI testing: skip Sign In (never honored in production).
+AUTH_BYPASS=1
 # Google One Tap (day-1, ADR 0001): per-environment client id, never committed.
 # GOOGLE_CLIENT_ID=

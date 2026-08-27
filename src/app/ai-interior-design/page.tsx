@@ -3,9 +3,9 @@ import { DesignFlow } from "@/components/design";
 import { parseDesignSearchParams } from "@/lib/design/state";
 
 export const metadata: Metadata = {
-  title: "AI Interior Design — HomeDesign Clone",
+  title: "AI Interior Design - Redesign Your Room from a Photo | HomeDesign",
   description:
-    "Upload a room photo, choose a style and palette, and let AI redesign your interior.",
+    "Upload a room photo and let HomeDesign AI generate warm, realistic interior design ideas in seconds.",
 };
 
 function toSearchParams(
@@ -35,7 +35,7 @@ export default async function InteriorDesignPage({
     <DesignFlow
       scene="interior"
       title="AI Interior Design"
-      description="Upload a room photo, pick a style and palette, and see your space redesigned in seconds."
+      description="Upload a room photo and let HomeDesign AI generate warm, realistic interior design ideas in seconds."
       sceneLabel="room"
       initialPreset={preset}
     />

@@ -1,5 +1,5 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createAuth, type AuthEnv } from "@/lib/auth/server";
+import { resolveSession, type AuthEnv } from "@/lib/auth/server";
 
 // `GET /api/auth/get-session` (ADR 0001 + spec: JSON must never contain the
 // session token). The httpOnly cookie remains the only browser session
@@ -7,9 +7,7 @@ import { createAuth, type AuthEnv } from "@/lib/auth/server";
 export async function GET(request: Request) {
   const cf = await getCloudflareContext({ async: true });
   const env = cf.env as unknown as AuthEnv;
-  const auth = createAuth(env);
-
-  const session = await auth.api.getSession({ headers: request.headers });
+  const session = await resolveSession(env, request);
 
   if (!session) {
     return Response.json(null, {

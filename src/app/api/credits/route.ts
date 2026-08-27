@@ -1,5 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createAuth, requireVerifiedUser, type AuthEnv } from "@/lib/auth/server";
+import { authorizeVerified } from "@/lib/ai/http";
 import {
   ensureFreeCreditGrant,
   getLedgerSummary,
@@ -16,29 +15,11 @@ import {
 //   401 { error: "UNAUTHENTICATED" }
 //   403 { error: "EMAIL_NOT_VERIFIED" }
 export async function GET(request: Request) {
-  const cf = await getCloudflareContext({ async: true });
-  const env = cf.env as unknown as AuthEnv;
-  const auth = createAuth(env);
+  const auth = await authorizeVerified(request);
+  if (auth instanceof Response) return auth;
 
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (!session) {
-    return Response.json({ error: "UNAUTHENTICATED" }, { status: 401 });
-  }
-
-  try {
-    requireVerifiedUser(session);
-  } catch (err) {
-    const status = (err as { status?: number }).status ?? 403;
-    return Response.json({ error: "EMAIL_NOT_VERIFIED" }, { status });
-  }
-
-  const userId = session.user.id;
-
-  // Ensure the one-time free grant on this verified path. Idempotent — if a
-  // concurrent email-verify/Google-login already granted, this is a no-op.
-  await ensureFreeCreditGrant(env, userId);
-
-  const summary = await getLedgerSummary(env, userId);
+  await ensureFreeCreditGrant(auth.env, auth.userId);
+  const summary = await getLedgerSummary(auth.env, auth.userId);
 
   return Response.json(
     {

@@ -18,6 +18,17 @@ export function isProduction(env: Pick<Env, "ENVIRONMENT">): boolean {
   return env.ENVIRONMENT === PRODUCTION;
 }
 
+/** Local UI testing: skip login. Never honored in production. */
+export function isAuthBypassEnabled(
+  env: Pick<Env, "ENVIRONMENT"> & { AUTH_BYPASS?: string }
+): boolean {
+  if (isProduction(env)) return false;
+  // Wrangler tests load `.dev.vars`; never treat the test harness as a guest.
+  if (process.env.VITEST) return false;
+  const value = env.AUTH_BYPASS?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
 /** Free Grant + Mock Payment + test-outbox are allowed outside production. */
 export function isTestingEconomyAllowed(env: Pick<Env, "ENVIRONMENT">): boolean {
   return !isProduction(env);

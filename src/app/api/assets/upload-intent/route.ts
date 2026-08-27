@@ -1,5 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createAuth, requireVerifiedUser, type AuthEnv } from "@/lib/auth/server";
+import { authorizeVerified } from "@/lib/ai/http";
 import { createUploadIntent } from "@/lib/intake/intake-service";
 import { presignPutUrl, type PresignCredentials } from "@/lib/intake/presign";
 
@@ -12,20 +11,10 @@ import { presignPutUrl, type PresignCredentials } from "@/lib/intake/presign";
 // Response: { code:0, data:{ assetId, presignedUrl, expiresInSec } }
 
 export async function POST(request: Request) {
-  const cf = await getCloudflareContext({ async: true });
-  const env = cf.env as unknown as AuthEnv;
-  const auth = createAuth(env);
-
-  const session = await auth.api.getSession({ headers: request.headers });
-  try {
-    requireVerifiedUser(session);
-  } catch (err) {
-    return Response.json(
-      { error: "EMAIL_NOT_VERIFIED" },
-      { status: (err as { status?: number }).status ?? 403 }
-    );
-  }
-  const userId = session!.user.id;
+  const auth = await authorizeVerified(request);
+  if (auth instanceof Response) return auth;
+  const env = auth.env;
+  const userId = auth.userId;
 
   let body: { name?: string; mimeType?: string; size?: number };
   try {
