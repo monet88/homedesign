@@ -617,7 +617,10 @@ describe("authorized share asset delivery security (AC 3)", () => {
     // Non-selected asset
     expect(await deliverShareAsset(env, token, asset2)).toBeNull();
     // Invalid token
-    expect(await deliverShareAsset(env, "invalid-token", asset1)).toBeNull();
+    expect(await deliverShareAsset(env, "test-invalid-token", asset1)).toBeNull();
+    // ShareTokenAssetRef object cluster invocation
+    expect(await deliverShareAsset(env, { token: "test-invalid-token", assetId: asset1 })).toBeNull();
+    expect(await authorizeShareAssetDelivery(env, { token: "test-invalid-token", assetId: asset1 })).toBeNull();
   });
 });
 

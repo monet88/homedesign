@@ -18,6 +18,15 @@ export interface ShareView {
   updatedAt: number;
   assets: ShareViewAsset[];
 }
+export interface ShareAssetRef {
+  projectId: string;
+  assetId: string;
+}
+
+export interface ShareTokenAssetRef {
+  token: string;
+  assetId: string;
+}
 
 export interface CreateShareResult {
   shareId: string;
@@ -126,9 +135,11 @@ export async function setProjectVisibility(
 
 export async function isFloorPlanAssetActive(
   env: Env,
-  projectId: string,
-  assetId: string
+  target: ShareAssetRef | string,
+  maybeAssetId?: string
 ): Promise<boolean> {
+  const { projectId, assetId } =
+    typeof target === "string" ? { projectId: target, assetId: maybeAssetId! } : target;
   const design = await env.DB.prepare(
     `SELECT d.id AS design_id, d.stage AS design_stage,
             sr.id AS stage_run_id, sr.room_design_id, sr.stage AS run_stage,
@@ -214,7 +225,7 @@ export async function setShareSelectedAssets(
     }
 
     if (project.kind === "floor-plan") {
-      const active = await isFloorPlanAssetActive(env, projectId, assetId);
+      const active = await isFloorPlanAssetActive(env, { projectId, assetId });
       if (!active) {
         throw new Error("ASSET_NOT_SHAREABLE");
       }
@@ -359,7 +370,7 @@ export async function getShareViewByToken(env: Env, token: string): Promise<Shar
 
   for (const row of rawAssets) {
     if (share.projectKind === "floor-plan") {
-      const active = await isFloorPlanAssetActive(env, share.projectId, row.id);
+      const active = await isFloorPlanAssetActive(env, { projectId: share.projectId, assetId: row.id });
       if (!active) continue;
     }
     validAssets.push({
@@ -378,9 +389,11 @@ export async function getShareViewByToken(env: Env, token: string): Promise<Shar
 
 export async function authorizeShareAssetDelivery(
   env: Env,
-  token: string,
-  assetId: string
+  target: ShareTokenAssetRef | string,
+  maybeAssetId?: string
 ): Promise<{ storageKey: string; mimeType: string } | null> {
+  const { token, assetId } =
+    typeof target === "string" ? { token: target, assetId: maybeAssetId! } : target;
   const share = await resolveActiveShare(env, token);
   if (!share) return null;
 
@@ -404,7 +417,7 @@ export async function authorizeShareAssetDelivery(
   if (!row?.storage_key) return null;
 
   if (share.projectKind === "floor-plan") {
-    const active = await isFloorPlanAssetActive(env, share.projectId, assetId);
+    const active = await isFloorPlanAssetActive(env, { projectId: share.projectId, assetId });
     if (!active) return null;
   }
 
@@ -413,10 +426,12 @@ export async function authorizeShareAssetDelivery(
 
 export async function deliverShareAsset(
   env: Env,
-  token: string,
-  assetId: string
+  target: ShareTokenAssetRef | string,
+  maybeAssetId?: string
 ): Promise<Response | null> {
-  const authorized = await authorizeShareAssetDelivery(env, token, assetId);
+  const { token, assetId } =
+    typeof target === "string" ? { token: target, assetId: maybeAssetId! } : target;
+  const authorized = await authorizeShareAssetDelivery(env, { token, assetId });
   if (!authorized) return null;
 
   const creds: PresignCredentials = {

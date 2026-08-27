@@ -1,8 +1,5 @@
 import { requireAdminSession } from "@/lib/auth/server";
-import {
-  DEFAULT_AI_API_BASE_URL,
-  FALLBACK_AI_API_KEY,
-} from "@/lib/ai/gemini-adapter";
+import { DEFAULT_AI_API_BASE_URL } from "@/lib/ai/gemini-adapter";
 
 async function checkHealth(request: Request) {
   const auth = await requireAdminSession(request);
@@ -56,9 +53,6 @@ async function checkHealth(request: Request) {
           .map((m) => m.id || m.name)
           .filter((id): id is string => typeof id === "string" && id.length > 0);
       }
-      if (models.length === 0) {
-        models = ["gemini-3.1-flash-image", "gemini-2.5-flash-image"];
-      }
     } else {
       status = "unhealthy";
     }
@@ -79,10 +73,6 @@ async function checkHealth(request: Request) {
     },
     { headers: { "cache-control": "no-store" } }
   );
-}
-
-export async function GET(request: Request) {
-  return checkHealth(request);
 }
 
 export async function POST(request: Request) {

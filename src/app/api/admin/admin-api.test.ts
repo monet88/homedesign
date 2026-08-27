@@ -2,10 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { GET as getUsers } from "@/app/api/admin/users/route";
 import { POST as adjustCredits } from "@/app/api/admin/credits/route";
 import { GET as getTasks } from "@/app/api/admin/tasks/route";
-import {
-  GET as getHealth,
-  POST as postHealth,
-} from "@/app/api/admin/health/route";
+import { POST as postHealth } from "@/app/api/admin/health/route";
 import type { ResolvedSession, AuthEnv } from "@/lib/auth/server";
 import type {
   AdminApiResponse,
@@ -520,19 +517,19 @@ describe("Admin Operations API Endpoints", () => {
     });
   });
 
-  // 4. GET & POST /api/admin/health
-  describe("GET & POST /api/admin/health", () => {
+  // 4. POST /api/admin/health
+  describe("POST /api/admin/health", () => {
     it("returns 401 when unauthenticated", async () => {
       mockSession = null;
-      const req = new Request("http://localhost:3000/api/admin/health");
-      const res = await getHealth(req);
+      const req = new Request("http://localhost:3000/api/admin/health", { method: "POST" });
+      const res = await postHealth(req);
       expect(res.status).toBe(401);
     });
 
     it("returns 403 when session user role is 'user'", async () => {
       mockSession = standardUserSession;
-      const req = new Request("http://localhost:3000/api/admin/health");
-      const res = await getHealth(req);
+      const req = new Request("http://localhost:3000/api/admin/health", { method: "POST" });
+      const res = await postHealth(req);
       expect(res.status).toBe(403);
     });
 
@@ -560,9 +557,31 @@ describe("Admin Operations API Endpoints", () => {
       expect(json.code).toBe(0);
       expect(json.data.status).toBe("healthy");
       expect(json.data.latencyMs).toBeGreaterThan(0);
-      expect(json.data.models).toContain("gemini-3.1-flash-image");
-      expect(json.data.models).toContain("gemini-2.5-flash-image");
+      expect(json.data.models).toEqual(["gemini-3.1-flash-image", "gemini-2.5-flash-image"]);
       expect(json.data.endpoint).toContain("/models");
+    });
+
+    it("returns empty model list honestly when upstream returns empty data without hardcoded fallbacks", async () => {
+      mockSession = adminSession;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [],
+          }),
+        })
+      );
+
+      const req = new Request("http://localhost:3000/api/admin/health", { method: "POST" });
+      const res = await postHealth(req);
+
+      expect(res.status).toBe(200);
+      const json = await readJson<AdminApiResponse<HealthCheckResult>>(res);
+      expect(json.code).toBe(0);
+      expect(json.data.status).toBe("healthy");
+      expect(json.data.models).toEqual([]);
     });
 
     it("returns unhealthy status when upstream AI endpoint fails or throws", async () => {
@@ -572,8 +591,8 @@ describe("Admin Operations API Endpoints", () => {
         vi.fn().mockRejectedValue(new Error("ECONNREFUSED"))
       );
 
-      const req = new Request("http://localhost:3000/api/admin/health", { method: "GET" });
-      const res = await getHealth(req);
+      const req = new Request("http://localhost:3000/api/admin/health", { method: "POST" });
+      const res = await postHealth(req);
 
       expect(res.status).toBe(200);
       const json = await readJson<AdminApiResponse<HealthCheckResult>>(res);
