@@ -373,7 +373,8 @@ async function applyMigrations(db: D1Database) {
       `CREATE TABLE IF NOT EXISTS email_outbox (
         id INTEGER PRIMARY KEY AUTOINCREMENT, to_email TEXT NOT NULL, subject TEXT NOT NULL,
         body TEXT NOT NULL, verification_url TEXT NOT NULL, token_fingerprint TEXT NOT NULL,
-        created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, user_id TEXT
+        created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, user_id TEXT,
+        environment TEXT NOT NULL DEFAULT 'development'
       )`
     ),
     db.prepare(

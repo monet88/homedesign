@@ -39,6 +39,10 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;
   /** Local-only: skip login for UI testing. Ignored when ENVIRONMENT=production. */
   AUTH_BYPASS?: string;
+  /** Capability secret for authorized outbox access in non-production environments. */
+  OUTBOX_ACCESS_SECRET?: string;
+  /** Explicit flag to allow local tooling outbox access. */
+  ALLOW_LOCAL_OUTBOX_ACCESS?: string;
   // OpenNext requires this self-reference service binding.
   WORKER_SELF_REFERENCE: Fetcher;
   ASSETS: Fetcher;
