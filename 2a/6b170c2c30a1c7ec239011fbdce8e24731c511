@@ -1,0 +1,28 @@
+docs/specs/0001-real-ai-provider-admin-system-e2e.md
+  h_17f2fa2b92da6a 55,58-63,67
+src/app/admin/page.tsx
+  h_17f2fa2b92da6a 18,21
+src/app/api/admin/admin-api.test.ts
+  h_17f2fa2b92da6a 108-110,174-180,662-682
+src/app/api/admin/tasks/route.ts
+  h_17f2fa2b92da6a 10-25,40-54,79-84
+src/lib/admin/types.ts
+  h_17f2fa2b92da6a 39
+src/lib/ai/gemini-adapter.ts
+  h_17f2fa2b92da6a 282-289
+src/lib/auth/server.ts
+  h_17f2fa2b92da6a 102,110-114
+src/lib/validation/schemas.ts
+  h_17f2fa2b92da6a 358-370,373,381,389
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "2a6b170c2c30a1c7ec239011fbdce8e24731c511",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
