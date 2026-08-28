@@ -99,7 +99,7 @@ function bypassSession(user: ResolvedSession["user"]): ResolvedSession {
 /** Real BetterAuth session, or a verified local guest when AUTH_BYPASS is on. */
 export async function resolveSession(
   env: AuthEnv,
-  request: Request
+  requestOrHeaders: Request | Headers
 ): Promise<ResolvedSession | null> {
   if (isAuthBypassEnabled(env)) {
     const user = await ensureLocalBypassUser(env);
@@ -107,7 +107,11 @@ export async function resolveSession(
   }
   try {
     const auth = createAuth(env);
-    const rawSession = (await auth.api.getSession({ headers: request.headers })) as {
+    const headers =
+      "headers" in requestOrHeaders
+        ? requestOrHeaders.headers
+        : requestOrHeaders;
+    const rawSession = (await auth.api.getSession({ headers })) as {
       session: ResolvedSession["session"];
       user: ResolvedSession["user"];
     } | null;

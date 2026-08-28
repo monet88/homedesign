@@ -52,18 +52,19 @@ The HomeDesign application currently has a 1:1 pixel-perfect frontend clone of `
 ### 2. Administrator Provisioning & RBAC
 - Add `role` column (`TEXT NOT NULL DEFAULT 'user'`) to user records and session stubs.
 - Seeding mechanism: `scripts/seed-admin.mjs` executes D1 SQL statements to insert or update the admin record for `minhthang421992@gmail.com`, setting `role = 'admin'` and appending a 99,999 credit grant to `credit_ledger`.
-- Route protection: implement server-side middleware / helper `requireAdminSession(request)` returning 401 if unauthenticated and 403 if `user.role !== 'admin'`.
+- Route protection: implement server-side middleware / helper `requireAdminSession(request)` returning 401 if unauthenticated and 403 if `user.role !== 'admin'`. For the `/admin` page, enforce Server Component authorization boundary via `resolveSession(env, headers)` rendering `<AdminUnauthorized status={401|403} />` without dashboard markup leakage.
 - Build the `/admin` page using the design system (`#f6f0e4` paper, `#faf7f2` card, `#0f382c` forest green, `#c26e38` copper) with tabs for Users, Credits, Task Logs, and Health Check.
 
-### 3. API Endpoints for Administration
-- `GET /api/admin/users`: returns paginated user list with email, role, created timestamp, and credit balance.
-- `POST /api/admin/credits`: accepts `{ userId, amount, reason }` and records an immutable grant/adjustment in `credit_ledger`.
-- `GET /api/admin/tasks`: returns recent AI Task records with prompt, execution time, cost, status, and error details.
-- `POST /api/admin/health`: dispatches a ping request to `https://cliproxy.monet.uno/v1/models` and returns latency and model status.
+### 3. API Endpoints for Administration & Mutation Validation
+- `GET /api/admin/users`: returns paginated user list (`page`, `limit`, `total`, `totalPages`) with email, role, created timestamp, and credit balance.
+- `POST /api/admin/credits`: accepts `{ userId, amount, reason }` validated with Zod and overdraft checks, recording an immutable grant/adjustment in `credit_ledger`.
+- `GET /api/admin/tasks`: returns paginated AI Task records (`page`, `limit`, `total`, `totalPages`, default 50) with prompt, execution time, cost, status, and error details.
+- `POST /api/admin/health`: dispatches a ping request to `https://cliproxy.monet.uno/v1/models` via `ProviderAdapter.healthCheck()` and returns latency and model status.
+- Unified Mutation Validation: all Server Actions and route handlers (`/api/designs`, `/api/ai/generate`, `/api/assets/*`, `/api/payments/mock`, `/api/floor-plan/room-designs/*`) strictly validate payloads with shared Zod schemas (`src/lib/validation/schemas.ts`).
 
 ### 4. Playwright E2E Test Suite
 - Configure `playwright.config.ts` with local web server autostart (`npm run dev`) and standard 1440x900 viewport.
-- Author `tests/e2e/full-journey.spec.ts` covering:
+- Author `e2e/full-journey.spec.ts` and `e2e/admin-journey.spec.ts` covering:
   - Phase 1: Admin provisioning verification & `/admin` dashboard test.
   - Phase 2: AI Interior Design generation flow with sample living room image.
   - Phase 3: AI Exterior Design generation flow with sample house facade.

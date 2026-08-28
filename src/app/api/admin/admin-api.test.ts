@@ -105,6 +105,9 @@ function createMockDb() {
         async first<T = any>(): Promise<T | null> {
           const q = query.trim().toUpperCase();
           if (q.includes("COUNT(*)")) {
+            if (q.includes("AI_TASKS")) {
+              return { total: mockTasks.length } as unknown as T;
+            }
             return { total: mockUsers.length } as unknown as T;
           }
           if (q.includes("SELECT ID FROM USER WHERE ID = ?1")) {
@@ -168,7 +171,13 @@ function createMockDb() {
             return { results: results as unknown as T[] };
           }
           if (q.includes("FROM AI_TASKS")) {
-            return { results: [...mockTasks] as unknown as T[] };
+            let taskList = [...mockTasks];
+            if (boundArgs.length >= 2) {
+              const limit = boundArgs[0];
+              const offset = boundArgs[1];
+              taskList = taskList.slice(offset, offset + limit);
+            }
+            return { results: taskList as unknown as T[] };
           }
           return { results: [] };
         },
@@ -650,6 +659,27 @@ describe("Admin Operations API Endpoints", () => {
       expect(task2.id).toBe("task-002");
       expect(task2.status).toBe("failed");
       expect(task2.error_code).toBe("PROVIDER_RATE_LIMIT");
+
+      expect(json.data.pagination).toBeDefined();
+      expect(json.data.pagination?.page).toBe(1);
+      expect(json.data.pagination?.limit).toBe(50);
+      expect(json.data.pagination?.total).toBe(2);
+      expect(json.data.pagination?.totalPages).toBe(1);
+    });
+
+    it("supports pagination params page and limit for tasks", async () => {
+      mockSession = adminSession;
+      const req = new Request("http://localhost:3000/api/admin/tasks?page=1&limit=1");
+      const res = await getTasks(req);
+
+      expect(res.status).toBe(200);
+      const json = await readJson<AdminApiResponse<AdminTasksData>>(res);
+      expect(json.code).toBe(0);
+      expect(json.data.tasks.length).toBe(1);
+      expect(json.data.pagination?.page).toBe(1);
+      expect(json.data.pagination?.limit).toBe(1);
+      expect(json.data.pagination?.total).toBe(2);
+      expect(json.data.pagination?.totalPages).toBe(2);
     });
   });
 

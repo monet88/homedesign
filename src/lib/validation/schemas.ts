@@ -355,54 +355,40 @@ export const FloorPlanIntentSchema = z
 
 export type FloorPlanIntentInput = z.infer<typeof FloorPlanIntentSchema>;
 
+const BaseGenerationFields = {
+  sourceAssetId: safeText.refine((v) => v.length > 0, {
+    message: "sourceAssetId is required",
+  }),
+  mediaType: z.literal("image").optional(),
+  options: DesignOptionsSchema.optional(),
+  idempotencyKey: safeText.refine((v) => v.length > 0, {
+    message: "idempotencyKey is required",
+  }),
+  provider: safeText.optional(),
+  model: safeText.optional(),
+};
+
 const InteriorGenerationSchema = z
   .object({
-    sourceAssetId: safeText.refine((v) => v.length > 0, {
-      message: "sourceAssetId is required",
-    }),
-    mediaType: z.literal("image").optional(),
+    ...BaseGenerationFields,
     scene: z.literal("interior"),
     intent: InteriorIntentSchema,
-    options: DesignOptionsSchema.optional(),
-    idempotencyKey: safeText.refine((v) => v.length > 0, {
-      message: "idempotencyKey is required",
-    }),
-    provider: safeText.optional(),
-    model: safeText.optional(),
   })
   .strict();
 
 const ExteriorGenerationSchema = z
   .object({
-    sourceAssetId: safeText.refine((v) => v.length > 0, {
-      message: "sourceAssetId is required",
-    }),
-    mediaType: z.literal("image").optional(),
+    ...BaseGenerationFields,
     scene: z.literal("exterior"),
     intent: ExteriorIntentSchema,
-    options: DesignOptionsSchema.optional(),
-    idempotencyKey: safeText.refine((v) => v.length > 0, {
-      message: "idempotencyKey is required",
-    }),
-    provider: safeText.optional(),
-    model: safeText.optional(),
   })
   .strict();
 
 const FloorPlanGenerationSchema = z
   .object({
-    sourceAssetId: safeText.refine((v) => v.length > 0, {
-      message: "sourceAssetId is required",
-    }),
-    mediaType: z.literal("image").optional(),
+    ...BaseGenerationFields,
     scene: z.literal("floor-plan"),
     intent: FloorPlanIntentSchema,
-    options: DesignOptionsSchema.optional(),
-    idempotencyKey: safeText.refine((v) => v.length > 0, {
-      message: "idempotencyKey is required",
-    }),
-    provider: safeText.optional(),
-    model: safeText.optional(),
   })
   .strict();
 

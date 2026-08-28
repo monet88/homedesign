@@ -15,14 +15,10 @@ export default async function AdminPage() {
   const cf = await getCloudflareContext({ async: true });
   const env = cf.env as unknown as AuthEnv;
 
-  // Read the incoming request headers (cookies, auth) so resolveSession
+  // Read incoming request headers (cookies, auth) so resolveSession
   // can check the BetterAuth session cookie server-side.
   const hdrs = await headers();
-  const request = new Request("https://localhost/admin", {
-    headers: hdrs,
-  });
-
-  const session = await resolveSession(env, request);
+  const session = await resolveSession(env, hdrs);
 
   // 401 — anonymous visitor
   if (!session) {

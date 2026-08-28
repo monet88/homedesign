@@ -279,16 +279,14 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
       }
 
       const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      let models: string[] = [];
-      if (Array.isArray(json?.data)) {
-        models = (json.data as Array<{ id?: string; name?: string }>)
-          .map((m) => m.id || m.name)
-          .filter((id): id is string => typeof id === "string" && id.length > 0);
-      } else if (Array.isArray(json?.models)) {
-        models = (json.models as Array<{ id?: string; name?: string }>)
-          .map((m) => m.id || m.name)
-          .filter((id): id is string => typeof id === "string" && id.length > 0);
-      }
+      const rawList = Array.isArray(json?.data)
+        ? json.data
+        : Array.isArray(json?.models)
+          ? json.models
+          : [];
+      const models = (rawList as Array<{ id?: string; name?: string }>)
+        .map((m) => m.id || m.name)
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
 
       return { status: "healthy", latencyMs, models, endpoint };
     } catch (err) {

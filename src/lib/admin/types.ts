@@ -36,6 +36,7 @@ export interface AdminTask {
 
 export interface AdminTasksData {
   tasks: AdminTask[];
+  pagination?: AdminPagination;
 }
 
 export interface HealthCheckResult {
