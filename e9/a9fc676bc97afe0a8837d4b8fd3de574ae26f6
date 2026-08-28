@@ -1,0 +1,16 @@
+scripts/create-e2e-fixtures.mjs
+  h_17f2fa2b92da6a 3,9-70,72-73,75-119,122-124
+src/lib/intake/validator.ts
+  h_17f2fa2b92da6a 88-92,106-107,196-199,202-230
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "e9a9fc676bc97afe0a8837d4b8fd3de574ae26f6",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
