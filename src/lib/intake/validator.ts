@@ -85,7 +85,11 @@ export async function validateAsset(
   }
 
   // 2+3. Bounded header parse (ranged reads: head + PNG tail).
-  const head = await env.HD_PRIVATE.get(key, { range: { offset: 0, length: HEAD_BYTES } });
+  // Clamp the range length to the object size: ranged reads that exceed the
+  // object length return empty bytes on some R2 emulations (and real R2
+  // tolerates them, but clamping keeps behavior uniform for small objects).
+  const headLen = Math.min(HEAD_BYTES, obj.size);
+  const head = await env.HD_PRIVATE.get(key, { range: { offset: 0, length: headLen } });
   if (!head) {
     return { ok: false, error: `object unreadable: ${key}` };
   }
@@ -99,7 +103,8 @@ export async function validateAsset(
 
   // PNG: verify IEND at the tail (bounded truncation check).
   if (parsed.format === "png") {
-    const tail = await env.HD_PRIVATE.get(key, { range: { offset: Math.max(0, obj.size - TAIL_BYTES), length: TAIL_BYTES } });
+    const tailLen = Math.min(TAIL_BYTES, obj.size);
+    const tail = await env.HD_PRIVATE.get(key, { range: { offset: Math.max(0, obj.size - tailLen), length: tailLen } });
     const tailBytes = new Uint8Array(tail ? await tail.arrayBuffer() : new ArrayBuffer(0));
     if (!hasPngIend(tailBytes)) {
       await reject(env, assetId, key, "truncated PNG (missing IEND)");
@@ -187,18 +192,47 @@ async function copyObject(
     throw new Error(`copy failed: missing source object ${srcKey}`);
   }
 
-  let bodyStream: ReadableStream<Uint8Array> = srcObj.body;
   if (options?.transform) {
-    const transformed = options.transform(bodyStream);
-    bodyStream = typeof FixedLengthStream !== "undefined"
+    // Transform callers need stream errors to propagate (truncation must fail
+    // closed), so no buffered fallback on this path.
+    const transformed = options.transform(srcObj.body);
+    const bodyStream = typeof FixedLengthStream !== "undefined"
       ? transformed.pipeThrough(new FixedLengthStream(size))
       : transformed;
+    await env.HD_PRIVATE.put(destKey, bodyStream, {
+      httpMetadata: { contentType },
+      customMetadata: srcObj.customMetadata,
+    });
+    return;
   }
-
-  await env.HD_PRIVATE.put(destKey, bodyStream, {
-    httpMetadata: { contentType },
-    customMetadata: srcObj.customMetadata,
-  });
+  // Local/dev R2 emulations silently accept streaming puts without persisting
+  // the body, so local mode buffers instead (objects are already capped at
+  // MAX_UPLOAD_BYTES = 50MB). Real R2 (staging/production) takes the stream.
+  if (env.ENVIRONMENT === "local" || !env.ENVIRONMENT) {
+    const bytes = await srcObj.arrayBuffer();
+    await env.HD_PRIVATE.put(destKey, bytes, {
+      httpMetadata: { contentType },
+      customMetadata: srcObj.customMetadata,
+    });
+    return;
+  }
+  try {
+    await env.HD_PRIVATE.put(destKey, srcObj.body, {
+      httpMetadata: { contentType },
+      customMetadata: srcObj.customMetadata,
+    });
+  } catch (copyErr) {
+    // The failed put may have partially consumed srcObj's one-shot body, so
+    // re-fetch the source object before buffering a retry.
+    console.error("[validator] streaming put failed, retrying buffered copy:", copyErr);
+    const retry = await env.HD_PRIVATE.get(srcKey);
+    if (!retry) throw copyErr;
+    const bytes = await retry.arrayBuffer();
+    await env.HD_PRIVATE.put(destKey, bytes, {
+      httpMetadata: { contentType },
+      customMetadata: retry.customMetadata,
+    });
+  }
 }
 
 async function reject(env: Env, assetId: string, key: string, reason: string): Promise<void> {
