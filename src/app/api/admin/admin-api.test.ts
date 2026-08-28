@@ -474,6 +474,142 @@ describe("Admin Operations API Endpoints", () => {
       expect(json.data.userId).toBe("user-standard");
       expect(json.data.creditBalance).toBe(5); // 10 - 5
     });
+
+    // ── Ticket #40: Zod validation rejects malformed inputs ───────────
+    it("rejects fractional amount", async () => {
+      mockSession = adminSession;
+      const req = new Request("http://localhost:3000/api/admin/credits", {
+        method: "POST",
+        body: JSON.stringify({ userId: "user-standard", amount: 1.5 }),
+      });
+      const res = await adjustCredits(req);
+      expect(res.status).toBe(400);
+      const json = await readJson<{ error: string; details: Record<string, string[]> }>(res);
+      expect(json.error).toBe("INVALID_INPUT");
+      expect(json.details.amount).toBeDefined();
+    });
+
+    it("rejects NaN amount", async () => {
+      mockSession = adminSession;
+      const req = new Request("http://localhost:3000/api/admin/credits", {
+        method: "POST",
+        body: JSON.stringify({ userId: "user-standard", amount: "not-a-number" }),
+      });
+      const res = await adjustCredits(req);
+      expect(res.status).toBe(400);
+      const json = await readJson<{ error: string }>(res);
+      expect(json.error).toBe("INVALID_INPUT");
+    });
+
+    it("rejects zero amount", async () => {
+      mockSession = adminSession;
+      const req = new Request("http://localhost:3000/api/admin/credits", {
+        method: "POST",
+        body: JSON.stringify({ userId: "user-standard", amount: 0 }),
+      });
+      const res = await adjustCredits(req);
+      expect(res.status).toBe(400);
+      const json = await readJson<{ error: string; details: Record<string, string[]> }>(res);
+      expect(json.error).toBe("INVALID_INPUT");
+      expect(json.details.amount).toBeDefined();
+    });
+
+    it("rejects Infinity amount", async () => {
+      mockSession = adminSession;
+      // JSON.stringify converts Infinity to null, so send as raw JSON
+      const req = new Request("http://localhost:3000/api/admin/credits", {
+        method: "POST",
+        body: JSON.stringify({ userId: "user-standard", amount: null }),
+      });
+      const res = await adjustCredits(req);
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects missing userId", async () => {
+      mockSession = adminSession;
+      const req = new Request("http://localhost:3000/api/admin/credits", {
+        method: "POST",
+        body: JSON.stringify({ amount: 10 }),
+      });
+      const res = await adjustCredits(req);
+      expect(res.status).toBe(400);
+      const json = await readJson<{ error: string }>(res);
+      expect(json.error).toBe("INVALID_INPUT");
+    });
+
+    it("rejects empty string userId", async () => {
+      mockSession = adminSession;
+      const req = new Request("http://localhost:3000/api/admin/credits", {
+        method: "POST",
+        body: JSON.stringify({ userId: "  ", amount: 10 }),
+      });
+      const res = await adjustCredits(req);
+      expect(res.status).toBe(400);
+      const json = await readJson<{ error: string }>(res);
+      expect(json.error).toBe("INVALID_INPUT");
+    });
+
+    it("strips unknown fields and succeeds", async () => {
+      mockSession = adminSession;
+      const req = new Request("http://localhost:3000/api/admin/credits", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: "user-standard",
+          amount: 1,
+          reason: "test",
+          extraField: "should-be-stripped",
+          another: 42,
+        }),
+      });
+      const res = await adjustCredits(req);
+      expect(res.status).toBe(200);
+      const json = await readJson<AdminApiResponse<AdminCreditAdjustmentData>>(res);
+      expect(json.code).toBe(0);
+    });
+
+    // ── Ticket #40: Overdraft protection ──────────────────────────────
+    it("rejects deduction larger than available credits with 409", async () => {
+      mockSession = adminSession;
+      // user-standard has 10 credits from the initial grant
+      const req = new Request("http://localhost:3000/api/admin/credits", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: "user-standard",
+          amount: -100,
+          reason: "Should fail — overdraft",
+        }),
+      });
+      const res = await adjustCredits(req);
+      expect(res.status).toBe(409);
+      const json = await readJson<{ error: string; available: number; requested: number }>(res);
+      expect(json.error).toBe("INSUFFICIENT_CREDITS");
+      expect(json.available).toBe(10);
+      expect(json.requested).toBe(100);
+    });
+
+    it("applies default grant reason when reason is omitted", async () => {
+      mockSession = adminSession;
+      const req = new Request("http://localhost:3000/api/admin/credits", {
+        method: "POST",
+        body: JSON.stringify({ userId: "user-standard", amount: 5 }),
+      });
+      const res = await adjustCredits(req);
+      expect(res.status).toBe(200);
+      const json = await readJson<AdminApiResponse<AdminCreditAdjustmentData>>(res);
+      expect(json.data.reason).toBe("Admin credit grant");
+    });
+
+    it("applies default deduction reason when reason is omitted", async () => {
+      mockSession = adminSession;
+      const req = new Request("http://localhost:3000/api/admin/credits", {
+        method: "POST",
+        body: JSON.stringify({ userId: "user-standard", amount: -1 }),
+      });
+      const res = await adjustCredits(req);
+      expect(res.status).toBe(200);
+      const json = await readJson<AdminApiResponse<AdminCreditAdjustmentData>>(res);
+      expect(json.data.reason).toBe("Admin credit deduction");
+    });
   });
 
   // 3. GET /api/admin/tasks
