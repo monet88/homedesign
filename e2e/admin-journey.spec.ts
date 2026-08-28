@@ -47,7 +47,7 @@ test.describe("Phase 1: Admin Operations & RBAC", () => {
     // The signed-in email block is intentionally hidden below `sm` (admin
     // header collapses), so only assert it on desktop runs.
     if (testInfo.project.name === "chromium-desktop") {
-      await expect(page.getByText(ADMIN_CREDENTIALS.email)).toBeVisible();
+      await expect(page.getByText(ADMIN_CREDENTIALS.email).first()).toBeVisible();
     }
 
     // Tab 1: User Management Table

@@ -77,7 +77,7 @@ test.describe("Full End-to-End System Journey", () => {
       ).toBeVisible({ timeout: 15_000 });
       // The signed-in email block is hidden below `sm`; assert on desktop only.
       if (testInfo.project.name === "chromium-desktop") {
-        await expect(page.getByText(ADMIN_CREDENTIALS.email)).toBeVisible();
+        await expect(page.getByText(ADMIN_CREDENTIALS.email).first()).toBeVisible();
       }
     });
 
