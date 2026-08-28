@@ -36,16 +36,37 @@ export async function handleProviderNotify(
 
   switch (msg?.type) {
     case "task-dispatch": {
-      const r = await runGeneration(env, taskId);
-      return { taskId, type: msg.type, status: r.status, skipped: r.skipped };
+      try {
+        const r = await runGeneration(env, taskId);
+        return { taskId, type: msg.type, status: r.status, skipped: r.skipped };
+      } catch (err) {
+        console.error(
+          `[provider-notify] task-dispatch retry: taskId=${taskId} error=${safeErrorCode(err)}`
+        );
+        throw err;
+      }
     }
     case "provider-complete": {
-      const r = await completeGeneration(env, taskId);
-      return { taskId, type: msg.type, status: r.status, skipped: r.skipped };
+      try {
+        const r = await completeGeneration(env, taskId);
+        return { taskId, type: msg.type, status: r.status, skipped: r.skipped };
+      } catch (err) {
+        console.error(
+          `[provider-notify] provider-complete retry: taskId=${taskId} error=${safeErrorCode(err)}`
+        );
+        throw err;
+      }
     }
     case "provider-failed": {
-      await failGeneration(env, taskId, msg.error || "PROVIDER_FAILED");
-      return { taskId, type: msg.type, status: "failed" };
+      try {
+        await failGeneration(env, taskId, msg.error || "PROVIDER_FAILED");
+        return { taskId, type: msg.type, status: "failed" };
+      } catch (err) {
+        console.error(
+          `[provider-notify] provider-failed retry: taskId=${taskId} error=${safeErrorCode(err)}`
+        );
+        throw err;
+      }
     }
     default: {
       // Unknown message (e.g. the ticket #1 fake-provider `ai-output-ready`
@@ -56,6 +77,18 @@ export async function handleProviderNotify(
       return { taskId, type: String((msg as { type?: string })?.type ?? "unknown"), status: "ignored" };
     }
   }
+}
+
+/**
+ * Extract a safe error code/message for logging. Never logs credentials,
+ * prompts, or private asset URLs — only a short code-safe substring.
+ */
+function safeErrorCode(err: unknown): string {
+  if (!(err instanceof Error)) return 'UNKNOWN';
+  const msg = err.message ?? '';
+  // Only keep the first stable identifier token (UPPER_SNAKE or short phrase).
+  const code = msg.slice(0, 80).replace(/[^\w\s.:_-]/g, '');
+  return code || 'UNKNOWN';
 }
 
 /**

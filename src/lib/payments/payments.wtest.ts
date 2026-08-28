@@ -31,6 +31,7 @@ import {
   getLedgerSummary,
   getActiveHoldByRef,
   ensureFreeCreditGrant,
+  releaseHold,
 } from "@/lib/credits/ledger";
 
 let userId: string;
@@ -437,6 +438,234 @@ describe("Invariant after every terminal transition (AC6)", () => {
     expect(summary.totalGrants + summary.totalPayments).toBe(
       summary.totalUsage + summary.available + summary.activeHolds
     );
+  });
+});
+
+// ── Ticket #39: Fault-injection — Credit Hold integrity on terminal failures ─
+
+describe("Ticket #39: Fault-injection — release failure keeps task non-terminal", () => {
+  it("transient DB error during releaseHold re-throws; task stays non-terminal with active hold", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior",
+      provider: "fake",
+      model: "m",
+      prompt: "P",
+      sourceKey: null,
+      options: {},
+    }, 2, "fi-transient-1");
+    expect(await getAvailableCredits(env, userId)).toBe(8);
+    expect(await getActiveHoldByRef(env, "task", taskId)).not.toBeNull();
+
+    // Fault-inject: proxy env.DB so the batch() call inside releaseHold throws
+    // a transient error. The hold is still active → task must NOT go terminal.
+    const realDB = env.DB;
+    const faultyDB = new Proxy(realDB, {
+      get(target, prop, receiver) {
+        if (prop === "batch") {
+          return () => { throw new Error("D1_ERROR: database is temporarily unavailable"); };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const faultyEnv = { ...env, DB: faultyDB } as unknown as typeof env;
+
+    // releaseHoldOnTerminal must re-throw the transient error.
+    await expect(
+      releaseHoldOnTerminal(faultyEnv, taskId, "failed")
+    ).rejects.toThrow("D1_ERROR");
+
+    // Task must NOT be terminal — status unchanged from 'accepted'.
+    const task = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`)
+      .bind(taskId).first<{ status: string }>();
+    expect(task?.status).toBe("accepted");
+
+    // Hold is still active, credits still held.
+    expect(await getActiveHoldByRef(env, "task", taskId)).not.toBeNull();
+    expect(await getAvailableCredits(env, userId)).toBe(8);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("HOLD_NOT_ACTIVE (late callback) allows task to become terminal", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior",
+      provider: "fake",
+      model: "m",
+      prompt: "P",
+      sourceKey: null,
+      options: {},
+    }, 2, "fi-late-1");
+    expect(await getAvailableCredits(env, userId)).toBe(8);
+
+    // Manually release the hold (simulates expiry already ran).
+    const task = await env.DB.prepare(`SELECT hold_id FROM ai_tasks WHERE id = ?1`)
+      .bind(taskId).first<{ hold_id: string }>();
+    await releaseHold(env, task!.hold_id);
+    expect(await getAvailableCredits(env, userId)).toBe(10);
+
+    // Late releaseHoldOnTerminal sees HOLD_NOT_ACTIVE but still marks terminal.
+    await releaseHoldOnTerminal(env, taskId, "failed");
+
+    const taskAfter = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`)
+      .bind(taskId).first<{ status: string }>();
+    expect(taskAfter?.status).toBe("failed");
+
+    // Balance correct: no double-release.
+    expect(await getAvailableCredits(env, userId)).toBe(10);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+});
+
+describe("Ticket #39: Fault-injection — expiry with hold already released", () => {
+  it("expiry on a task whose hold was already released succeeds and marks expired", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior",
+      provider: "fake",
+      model: "m",
+      prompt: "P",
+      sourceKey: null,
+      options: {},
+    }, 3, "fi-exp-released-1");
+
+    // Manually release the hold before expiry runs.
+    const task = await env.DB.prepare(`SELECT hold_id FROM ai_tasks WHERE id = ?1`)
+      .bind(taskId).first<{ hold_id: string }>();
+    await releaseHold(env, task!.hold_id);
+    expect(await getAvailableCredits(env, userId)).toBe(10);
+
+    // Force past expiry.
+    await env.DB.prepare(`UPDATE ai_tasks SET expires_at = ?1 WHERE id = ?2`)
+      .bind(Date.now() - 1, taskId).run();
+
+    const expired = await expireStaleTasks(env);
+    expect(expired).toBe(1);
+
+    const taskAfter = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`)
+      .bind(taskId).first<{ status: string }>();
+    expect(taskAfter?.status).toBe("expired");
+
+    // No double-release — balance still correct.
+    expect(await getAvailableCredits(env, userId)).toBe(10);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("transient DB error during expiry skips the task; next run retries", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior",
+      provider: "fake",
+      model: "m",
+      prompt: "P",
+      sourceKey: null,
+      options: {},
+    }, 3, "fi-exp-transient-1");
+    expect(await getAvailableCredits(env, userId)).toBe(7);
+
+    // Force past expiry.
+    await env.DB.prepare(`UPDATE ai_tasks SET expires_at = ?1 WHERE id = ?2`)
+      .bind(Date.now() - 1, taskId).run();
+
+    // Fault-inject: proxy env.DB.batch to throw on releaseHold's batch call.
+    // We need batch() to fail only for the hold release, not the initial query.
+    let batchCallCount = 0;
+    const realDB = env.DB;
+    const faultyDB = new Proxy(realDB, {
+      get(target, prop, receiver) {
+        if (prop === "batch") {
+          return (...args: unknown[]) => {
+            batchCallCount++;
+            if (batchCallCount >= 1) {
+              throw new Error("D1_ERROR: disk I/O error");
+            }
+            return (target.batch as Function)(...args);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const faultyEnv = { ...env, DB: faultyDB } as unknown as typeof env;
+
+    // expireStaleTasks should skip the faulted task (not throw, not mark expired).
+    const expired = await expireStaleTasks(faultyEnv);
+    expect(expired).toBe(0);
+
+    // Task is NOT expired — still in non-terminal state.
+    const taskAfter = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`)
+      .bind(taskId).first<{ status: string }>();
+    expect(taskAfter?.status).toBe("accepted");
+
+    // Hold is still active.
+    expect(await getActiveHoldByRef(env, "task", taskId)).not.toBeNull();
+    expect(await getAvailableCredits(env, userId)).toBe(7);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+
+    // Retry with real env succeeds.
+    const retryExpired = await expireStaleTasks(env);
+    expect(retryExpired).toBe(1);
+    expect(await getAvailableCredits(env, userId)).toBe(10);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+});
+
+describe("Ticket #39: Fault-injection — DLQ path releases hold", () => {
+  it("DLQ release + terminal status preserves invariant", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior",
+      provider: "fake",
+      model: "m",
+      prompt: "P",
+      sourceKey: null,
+      options: {},
+    }, 2, "fi-dlq-1");
+    expect(await getAvailableCredits(env, userId)).toBe(8);
+
+    // Simulate DLQ via the same path as failGeneration with "dlq" reason.
+    await releaseHoldOnTerminal(env, taskId, "dlq");
+
+    const task = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`)
+      .bind(taskId).first<{ status: string }>();
+    expect(task?.status).toBe("failed");
+
+    expect(await getActiveHoldByRef(env, "task", taskId)).toBeNull();
+    expect(await getAvailableCredits(env, userId)).toBe(10);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+});
+
+describe("Ticket #39: Fault-injection — late completion after expiry", () => {
+  it("settle throws HOLD_NOT_ACTIVE on already-expired task; task stays terminal", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior",
+      provider: "fake",
+      model: "m",
+      prompt: "P",
+      sourceKey: null,
+      options: {},
+    }, 2, "fi-late-settle-1");
+
+    // Force expiry.
+    await env.DB.prepare(`UPDATE ai_tasks SET expires_at = ?1 WHERE id = ?2`)
+      .bind(Date.now() - 1, taskId).run();
+    await expireStaleTasks(env);
+
+    const taskExpired = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`)
+      .bind(taskId).first<{ status: string }>();
+    expect(taskExpired?.status).toBe("expired");
+    expect(await getAvailableCredits(env, userId)).toBe(10);
+
+    // Late settle attempt must throw HOLD_NOT_ACTIVE.
+    await expect(
+      settleHoldOnReady(env, taskId, true, true)
+    ).rejects.toThrow(/HOLD_NOT_ACTIVE/);
+
+    // Task stays expired — no resurrection, no usage, no double-release.
+    const taskAfter = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`)
+      .bind(taskId).first<{ status: string }>();
+    expect(taskAfter?.status).toBe("expired");
+
+    expect(await getAvailableCredits(env, userId)).toBe(10);
+    const summary = await getLedgerSummary(env, userId);
+    expect(summary.totalUsage).toBe(0);
+    expect(summary.activeHolds).toBe(0);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 });
 

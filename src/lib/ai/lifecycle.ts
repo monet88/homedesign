@@ -734,12 +734,18 @@ export async function failGeneration(
   try {
     await releaseHoldOnTerminal(env, taskId, terminalReason);
   } catch (err) {
-    // TASK_HAS_NO_HOLD / TASK_NOT_FOUND — still force the terminal status so a
-    // task can never dangle in a non-terminal state after an error.
-    await env.DB.prepare(
-      `UPDATE ai_tasks SET status = 'failed', updated_at = ?2 WHERE id = ?1 AND status NOT IN ('ready','failed','expired')`
-    ).bind(taskId, Date.now()).run();
-    if (!/TASK_/.test((err as Error).message)) throw err;
+    const errMsg = (err as Error).message ?? '';
+    if (/^TASK_/.test(errMsg)) {
+      // TASK_HAS_NO_HOLD / TASK_NOT_FOUND — no active hold to worry about.
+      // Force terminal status so the task can never dangle non-terminal.
+      await env.DB.prepare(
+        `UPDATE ai_tasks SET status = 'failed', updated_at = ?2 WHERE id = ?1 AND status NOT IN ('ready','failed','expired')`
+      ).bind(taskId, Date.now()).run();
+    } else {
+      // Transient release failure: the hold may still be active.
+      // Do NOT force terminal status — re-throw so the caller retries.
+      throw err;
+    }
   }
 }
 

@@ -393,9 +393,16 @@ export async function releaseHoldOnTerminal(
   // Only release if the hold is still active.
   try {
     await releaseHold(env, task.hold_id);
-  } catch {
-    // Hold already released/settled — could be a late callback after expiry.
-    // The task is still marked terminal but the balance is already correct.
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    if (msg === 'HOLD_NOT_ACTIVE' || msg === 'HOLD_NOT_FOUND') {
+      // Expected: hold already released/settled (late callback after expiry).
+      // The task is still marked terminal but the balance is already correct.
+    } else {
+      // Transient/unexpected failure: do NOT mark task terminal while an
+      // active hold may still be in place — re-throw so the caller retries.
+      throw err;
+    }
   }
 
   const now = Date.now();
@@ -433,8 +440,15 @@ export async function expireStaleTasks(env: Env): Promise<number> {
     if (task.hold_id) {
       try {
         await releaseHold(env, task.hold_id);
-      } catch {
-        // Hold already released/settled — skip.
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : '';
+        if (msg === 'HOLD_NOT_ACTIVE' || msg === 'HOLD_NOT_FOUND') {
+          // Expected: hold already released/settled — safe to expire.
+        } else {
+          // Transient failure: skip this task so the next reconciler run
+          // retries it. Do NOT mark expired while the hold may still be active.
+          continue;
+        }
       }
     }
     await env.DB.prepare(
