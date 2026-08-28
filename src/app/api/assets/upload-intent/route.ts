@@ -1,6 +1,7 @@
 import { authorizeVerified } from "@/lib/ai/http";
 import { createUploadIntent } from "@/lib/intake/intake-service";
 import { presignPutUrl, type PresignCredentials } from "@/lib/intake/presign";
+import { UploadIntentSchema } from "@/lib/validation/schemas";
 
 // `POST /api/assets/upload-intent` (ADR 0003 / Ticket 06 AC1).
 // Authenticated (verified user only). Creates an Asset `pending-upload` and
@@ -16,20 +17,22 @@ export async function POST(request: Request) {
   const env = auth.env;
   const userId = auth.userId;
 
-  let body: { name?: string; mimeType?: string; size?: number };
+  let body: unknown;
   try {
-    body = (await request.json()) as typeof body;
+    body = await request.json();
   } catch {
     return Response.json({ error: "INVALID_JSON" }, { status: 400 });
   }
 
-  const name = body.name?.trim() ?? "";
-  const mimeType = body.mimeType ?? "";
-  const size = Number(body.size);
-
-  if (!name || !mimeType || !Number.isFinite(size) || size < 0) {
-    return Response.json({ error: "INVALID_INPUT" }, { status: 400 });
+  const parsed = UploadIntentSchema.safeParse(body);
+  if (!parsed.success) {
+    return Response.json(
+      { error: "INVALID_INPUT", details: parsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
   }
+
+  const { name, mimeType, size } = parsed.data;
 
   try {
     const intent = await createUploadIntent(env, { userId, name, mimeType, size });

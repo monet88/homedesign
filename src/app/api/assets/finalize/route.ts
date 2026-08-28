@@ -1,5 +1,6 @@
 import { authorizeVerified } from "@/lib/ai/http";
 import { finalizeUpload } from "@/lib/intake/intake-service";
+import { FinalizeAssetSchema } from "@/lib/validation/schemas";
 
 // `POST /api/assets/finalize` (ADR 0003 / Ticket 06 AC2).
 // Authenticated (verified user only). Verifies the object exists at the
@@ -15,17 +16,22 @@ export async function POST(request: Request) {
   if (auth instanceof Response) return auth;
   const env = auth.env;
 
-  let body: { assetId?: string };
+  let body: unknown;
   try {
-    body = (await request.json()) as typeof body;
+    body = await request.json();
   } catch {
     return Response.json({ error: "INVALID_JSON" }, { status: 400 });
   }
 
-  const assetId = body.assetId ?? "";
-  if (!assetId) {
-    return Response.json({ error: "INVALID_INPUT" }, { status: 400 });
+  const parsed = FinalizeAssetSchema.safeParse(body);
+  if (!parsed.success) {
+    return Response.json(
+      { error: "INVALID_INPUT", details: parsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
   }
+
+  const { assetId } = parsed.data;
 
   // Ownership check: the finalizer must own the Asset.
   const owner = await env.DB.prepare(

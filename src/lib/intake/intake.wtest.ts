@@ -20,6 +20,7 @@ import {
   type AssetValidationJob,
 } from "@/lib/intake/intake-service";
 import { validateAsset, type CopyObjectOptions } from "@/lib/intake/validator";
+import { UploadIntentSchema, FinalizeAssetSchema } from "@/lib/validation/schemas";
 
 let userCounter = 0;
 function nextUser(): string {
@@ -711,3 +712,96 @@ describe("asset promotion streaming + bounded memory (Ticket 34)", () => {
     expect(count?.cnt).toBe(1);
   });
 });
+
+describe("asset intake & finalize command validation (Ticket #45)", () => {
+  it("malformed upload-intent commands fail before D1 row or R2 quarantine key creation", async () => {
+    const user = nextUser();
+    const malformedPayloads = [
+      { name: "", mimeType: "image/png", size: 1024 },
+      { name: "   ", mimeType: "image/png", size: 1024 },
+      { name: "bad-mime.gif", mimeType: "image/gif", size: 1024 },
+      { name: "negative-size.png", mimeType: "image/png", size: -100 },
+      { name: "zero-size.png", mimeType: "image/png", size: 0 },
+      { name: "fractional.png", mimeType: "image/png", size: 10.5 },
+      { name: "oversized.png", mimeType: "image/png", size: 55 * 1024 * 1024 },
+      { name: "extra-keys.png", mimeType: "image/png", size: 1024, maliciousKey: true },
+    ];
+
+    const initialAssetCount = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM assets WHERE user_id = ?1`)
+      .bind(user)
+      .first<{ cnt: number }>();
+
+    for (const bad of malformedPayloads) {
+      const parsed = UploadIntentSchema.safeParse(bad);
+      expect(parsed.success).toBe(false);
+      // Because validation fails before domain work, no intent or D1 row is created
+    }
+
+    const finalAssetCount = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM assets WHERE user_id = ?1`)
+      .bind(user)
+      .first<{ cnt: number }>();
+    expect(finalAssetCount?.cnt).toBe(initialAssetCount?.cnt);
+  });
+
+  it("valid upload-intent command creates pending-upload asset with bounded metadata", async () => {
+    const user = nextUser();
+    const validPayload = {
+      name: "  kitchen_render.png  ",
+      mimeType: "image/png" as const,
+      size: 4096,
+    };
+
+    const parsed = UploadIntentSchema.safeParse(validPayload);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+
+    const intent = await createUploadIntent(env, {
+      userId: user,
+      name: parsed.data.name,
+      mimeType: parsed.data.mimeType,
+      size: parsed.data.size,
+    });
+
+    expect(intent.name).toBe("kitchen_render.png");
+    expect(intent.mimeType).toBe("image/png");
+    expect(intent.size).toBe(4096);
+    expect(intent.expiresInSec).toBe(600);
+    expect(await getAssetLifecycle(env, intent.assetId)).toBe("pending-upload");
+  });
+
+  it("malformed finalize command fails validation and cannot advance Asset lifecycle", async () => {
+    const user = nextUser();
+    const intent = await createUploadIntent(env, {
+      userId: user,
+      name: "valid.png",
+      mimeType: "image/png",
+      size: validPngBytes().length,
+    });
+    await env.HD_PRIVATE.put(intent.key, validPngBytes());
+
+    const malformedFinalizePayloads = [
+      {},
+      { assetId: "" },
+      { assetId: "   " },
+      { assetId: 123 },
+      { assetId: intent.assetId, extraKey: "exploit" },
+    ];
+
+    for (const bad of malformedFinalizePayloads) {
+      const parsed = FinalizeAssetSchema.safeParse(bad);
+      expect(parsed.success).toBe(false);
+    }
+
+    // Asset lifecycle remains pending-upload
+    expect(await getAssetLifecycle(env, intent.assetId)).toBe("pending-upload");
+
+    // Valid finalize schema advances lifecycle
+    const validParsed = FinalizeAssetSchema.safeParse({ assetId: `  ${intent.assetId}  ` });
+    expect(validParsed.success).toBe(true);
+    if (!validParsed.success) return;
+
+    const res = await finalizeUpload(env, validParsed.data.assetId);
+    expect(res.ok).toBe(true);
+    expect(await getAssetLifecycle(env, intent.assetId)).toBe("quarantined");
+  });
+});

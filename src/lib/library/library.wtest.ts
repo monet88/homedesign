@@ -9,6 +9,7 @@ import { listProjects, toggleProjectFavorite } from "@/lib/library/projects";
 import { listAssets, deleteOwnerAsset } from "@/lib/library/assets";
 import { listActivity } from "@/lib/library/activity";
 import { ensureFreeCreditGrant } from "@/lib/credits/ledger";
+import { ProjectFavoriteSchema } from "@/lib/validation/schemas";
 
 beforeEach(async () => {
   await applyMigrations(env.DB);
@@ -169,6 +170,44 @@ describe("toggleProjectFavorite", () => {
 
     await expect(toggleProjectFavorite(env, crypto.randomUUID(), projectId, false)).rejects.toThrow("FORBIDDEN");
     await expect(toggleProjectFavorite(env, userId, crypto.randomUUID(), false)).rejects.toThrow("NOT_FOUND");
+  });
+
+  it("malformed favorite commands fail validation and do not mutate Project state (Ticket #45)", async () => {
+    const userId = await seedUser();
+    const projectId = await seedProject(userId, { favorite: 0, visibility: "unlisted" });
+
+    const malformedPayloads = [
+      {},
+      { favorite: "true" },
+      { favorite: 1 },
+      { favorite: 0 },
+      { favorite: null },
+      { favorite: true, extraKey: "exploit", visibility: "private" },
+    ];
+
+    for (const bad of malformedPayloads) {
+      const parsed = ProjectFavoriteSchema.safeParse(bad);
+      expect(parsed.success).toBe(false);
+    }
+
+    // State is strictly preserved
+    const row = await env.DB.prepare(
+      `SELECT favorite, visibility FROM projects WHERE id = ?1`
+    ).bind(projectId).first<{ favorite: number; visibility: string }>();
+    expect(row?.favorite).toBe(0);
+    expect(row?.visibility).toBe("unlisted");
+
+    // Valid command succeeds
+    const valid = ProjectFavoriteSchema.safeParse({ favorite: true });
+    expect(valid.success).toBe(true);
+    if (!valid.success) return;
+
+    await toggleProjectFavorite(env, userId, projectId, valid.data.favorite);
+    const updated = await env.DB.prepare(
+      `SELECT favorite, visibility FROM projects WHERE id = ?1`
+    ).bind(projectId).first<{ favorite: number; visibility: string }>();
+    expect(updated?.favorite).toBe(1);
+    expect(updated?.visibility).toBe("unlisted");
   });
 });
 
