@@ -697,6 +697,151 @@ describe("Add Next Room isolation", () => {
   });
 });
 
+describe("Floor Plan stage commands validation & safety (Ticket #47)", () => {
+  it("invalid commands leave Room Brief, active lineage, stage runs, assets, and credits unchanged", async () => {
+    const userId = await seedUser();
+    const { sourceId, roomId, marker } = await setupConfirmedBrief(userId);
+
+    const creditsBefore = await getAvailableCredits(env, userId);
+    const roomBefore = await env.DB.prepare(`SELECT * FROM room_designs WHERE id = ?1`)
+      .bind(roomId)
+      .first<{ progress: string; proposal_json: string; brief_confirmed_at: number }>();
+    const runsBefore = await env.DB.prepare(`SELECT COUNT(*) as c FROM floor_plan_stage_runs WHERE room_design_id = ?1`)
+      .bind(roomId)
+      .first<{ c: number }>();
+
+    // 1. Attempting confirm layout when no layout run exists
+    await expect(confirmRoomLayout(env, userId, roomId)).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      status: 404,
+    });
+
+    // 2. Attempting confirm render when no render run exists
+    await expect(confirmRoomRender(env, userId, roomId)).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      status: 404,
+    });
+
+    // 3. Attempting invalid stage creation with malformed intent
+    await expect(
+      createDesign(env, userId, {
+        sourceAssetId: sourceId,
+        scene: "floor-plan",
+        intent: { stage: "layout", marker: { x: -5, y: 50 }, roomId },
+        idempotencyKey: "invalid-marker-intent",
+      })
+    ).rejects.toMatchObject({
+      code: "INVALID_INTENT",
+      status: 400,
+    });
+
+    // Verify invariants: credits, room design, runs, ledger untouched
+    const creditsAfter = await getAvailableCredits(env, userId);
+    expect(creditsAfter).toBe(creditsBefore);
+
+    const roomAfter = await env.DB.prepare(`SELECT * FROM room_designs WHERE id = ?1`)
+      .bind(roomId)
+      .first<{ progress: string; proposal_json: string; brief_confirmed_at: number }>();
+    expect(roomAfter?.progress).toBe(roomBefore?.progress);
+    expect(roomAfter?.proposal_json).toBe(roomBefore?.proposal_json);
+    expect(roomAfter?.brief_confirmed_at).toBe(roomBefore?.brief_confirmed_at);
+
+    const runsAfter = await env.DB.prepare(`SELECT COUNT(*) as c FROM floor_plan_stage_runs WHERE room_design_id = ?1`)
+      .bind(roomId)
+      .first<{ c: number }>();
+    expect(runsAfter?.c).toBe(runsBefore?.c);
+
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("enforces strict ownership across stage confirmations", async () => {
+    const ownerId = await seedUser();
+    const intruderId = await seedUser();
+    const { roomId, sourceId, marker } = await setupConfirmedBrief(ownerId);
+
+    // Other user cannot propose brief or confirm brief on owner's room
+    await expect(proposeRoomBrief(env, intruderId, roomId)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403,
+    });
+    await expect(confirmRoomBrief(env, intruderId, roomId)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403,
+    });
+
+    // Owner creates layout
+    const layout = await createDesign(
+      env,
+      ownerId,
+      stagePayload("layout", sourceId, roomId, marker, "owner-layout")
+    );
+    await runDesignToReady(layout.id);
+
+    // Intruder cannot confirm owner's layout
+    await expect(confirmRoomLayout(env, intruderId, roomId, layout.id)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403,
+    });
+
+    // Owner confirms layout
+    await confirmRoomLayout(env, ownerId, roomId, layout.id);
+
+    // Owner creates render
+    const render = await createDesign(
+      env,
+      ownerId,
+      stagePayload("render", sourceId, roomId, marker, "owner-render")
+    );
+    await runDesignToReady(render.id);
+
+    // Intruder cannot confirm owner's render
+    await expect(confirmRoomRender(env, intruderId, roomId, render.id)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403,
+    });
+
+    // Intruder cannot restore owner's runs
+    await expect(restoreStageRun(env, intruderId, layout.id)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403,
+    });
+  });
+
+  it("enforces stage prerequisites and gates transitions", async () => {
+    const userId = await seedUser();
+    const sourceId = await seedReadyAsset(userId);
+    const { id: projectId } = await createFloorPlanProject(env, userId, sourceId);
+    const room = await placeRoomMarker(env, userId, projectId, { x: 30, y: 30 });
+
+    // Cannot confirm brief before brief proposal is generated
+    await expect(confirmRoomBrief(env, userId, room.id)).rejects.toMatchObject({
+      code: "BRIEF_NOT_READY",
+      status: 409,
+    });
+
+    // Cannot run layout before brief confirmation
+    await expect(
+      createDesign(env, userId, stagePayload("layout", sourceId, room.id, { x: 30, y: 30 }, "no-brief-layout"))
+    ).rejects.toMatchObject({
+      code: "INVALID_INTENT",
+      status: 409,
+    });
+
+    // Propose & confirm brief
+    await proposeRoomBrief(env, userId, room.id);
+    await confirmRoomBrief(env, userId, room.id);
+
+    // Cannot run render before layout confirmation
+    await expect(
+      createDesign(env, userId, stagePayload("render", sourceId, room.id, { x: 30, y: 30 }, "no-layout-render"))
+    ).rejects.toMatchObject({
+      code: "INVALID_INTENT",
+      status: 409,
+    });
+  });
+});
+
+
 async function applyMigrations(db: D1Database) {
   const drops = [
     "DROP TABLE IF EXISTS floor_plan_stage_runs",

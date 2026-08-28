@@ -110,7 +110,7 @@ function exteriorPayload(
   return {
     sourceAssetId,
     scene: "exterior",
-    intent: { mode: "redesign", architectureStyle: "modern", timeOfDay: "day" },
+    intent: { mode: "redesign", area: "House Facade", style: "Modern" },
     options: { aspect_ratio: "1:1", num_outputs: 1 },
     idempotencyKey,
     ...overrides,

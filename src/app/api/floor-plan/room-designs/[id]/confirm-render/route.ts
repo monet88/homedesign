@@ -1,6 +1,7 @@
 import { authorizeVerified, floorPlanErrorResponse } from "@/lib/ai/http";
 import type { Env } from "@/lib/bindings";
 import { confirmRoomRender } from "@/lib/floor-plan/stages";
+import { FloorPlanConfirmRenderSchema } from "@/lib/validation/schemas";
 
 // POST /api/floor-plan/room-designs/[id]/confirm-render
 
@@ -11,19 +12,35 @@ export async function POST(
   const auth = await authorizeVerified(request);
   if (auth instanceof Response) return auth;
 
-  const { id } = await ctx.params;
-  let designId: string | undefined;
+  let body: unknown = {};
   try {
-    const body = (await request.json().catch(() => ({}))) as { designId?: string };
-    designId = typeof body.designId === "string" ? body.designId.trim() : undefined;
+    const text = await request.text();
+    if (text.trim()) {
+      body = JSON.parse(text);
+    }
   } catch {
-    designId = undefined;
+    return Response.json({ error: "INVALID_JSON" }, { status: 400 });
   }
 
+  const parsed = FloorPlanConfirmRenderSchema.safeParse(body);
+  if (!parsed.success) {
+    return Response.json(
+      { error: "INVALID_INPUT", details: parsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
+  }
+
+  const { id } = await ctx.params;
   try {
-    const room = await confirmRoomRender(auth.env as unknown as Env, auth.userId, id, designId);
+    const room = await confirmRoomRender(
+      auth.env as unknown as Env,
+      auth.userId,
+      id,
+      parsed.data.designId
+    );
     return Response.json({ code: 0, data: room });
   } catch (err) {
     return floorPlanErrorResponse(err);
   }
 }
+

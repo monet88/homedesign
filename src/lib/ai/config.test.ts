@@ -224,6 +224,147 @@ describe("Design Config contract — rejected inputs (AC1 400 codes)", () => {
     expectDesignError(base({ idempotencyKey: undefined }), "IDEMPOTENCY_KEY_REQUIRED", 400);
     expectDesignError(base({ idempotencyKey: "   " }), "IDEMPOTENCY_KEY_REQUIRED", 400);
   });
+
+  it("INVALID_CONFIG when unknown fields are passed at root level", () => {
+    expectDesignError(base({ extraField: "should-fail" }), "INVALID_CONFIG", 400);
+    expectDesignError(base({ unexpected: 123 }), "INVALID_CONFIG", 400);
+  });
+
+  it("INVALID_OPTIONS when unknown fields are passed in options", () => {
+    expectDesignError(base({ options: { extraOption: "bad" } }), "INVALID_OPTIONS", 400);
+  });
+
+  it("INVALID_INTENT when unknown fields are passed in intent or marker", () => {
+    expectDesignError(
+      base({ intent: { mode: "redesign", unknownIntentProp: true } }),
+      "INVALID_INTENT",
+      400
+    );
+    expectDesignError(
+      base({
+        scene: "exterior",
+        intent: { mode: "redesign", unexpectedExteriorProp: "nope" },
+      }),
+      "INVALID_INTENT",
+      400
+    );
+    expectDesignError(
+      base({
+        scene: "floor-plan",
+        intent: { stage: "layout", marker: { x: 10, y: 20, z: 30 } },
+      }),
+      "INVALID_INTENT",
+      400
+    );
+  });
+});
+
+describe("DesignGenerationSchema & DesignQuerySchema Zod contracts (Ticket #44)", () => {
+  it("DesignGenerationSchema parses valid interior, exterior, and floor-plan payloads", async () => {
+    const { DesignGenerationSchema } = await import("@/lib/validation/schemas");
+
+    const interiorRes = DesignGenerationSchema.safeParse(base());
+    expect(interiorRes.success).toBe(true);
+
+    const exteriorRes = DesignGenerationSchema.safeParse(
+      base({ scene: "exterior", intent: { mode: "redesign", area: "backyard" } })
+    );
+    expect(exteriorRes.success).toBe(true);
+
+    const fpRes = DesignGenerationSchema.safeParse(
+      base({
+        scene: "floor-plan",
+        intent: { stage: "layout", marker: { x: 25, y: 75 } },
+      })
+    );
+    expect(fpRes.success).toBe(true);
+  });
+
+  it("DesignGenerationSchema rejects unknown fields at root, intent, and options", async () => {
+    const { DesignGenerationSchema } = await import("@/lib/validation/schemas");
+
+    expect(
+      DesignGenerationSchema.safeParse(base({ unknownField: "bad" })).success
+    ).toBe(false);
+
+    expect(
+      DesignGenerationSchema.safeParse(
+        base({ options: { unknownOption: "bad" } })
+      ).success
+    ).toBe(false);
+
+    expect(
+      DesignGenerationSchema.safeParse(
+        base({ intent: { mode: "redesign", extra: "bad" } })
+      ).success
+    ).toBe(false);
+  });
+
+  it("DesignGenerationSchema rejects inline images, URLs, object keys, and client prompts", async () => {
+    const { DesignGenerationSchema } = await import("@/lib/validation/schemas");
+
+    expect(
+      DesignGenerationSchema.safeParse(
+        base({ sourceAssetId: "data:image/png;base64,AAAA" })
+      ).success
+    ).toBe(false);
+
+    expect(
+      DesignGenerationSchema.safeParse(
+        base({ sourceAssetId: "https://evil.com/img.png" })
+      ).success
+    ).toBe(false);
+
+    expect(
+      DesignGenerationSchema.safeParse(
+        base({ sourceAssetId: "ready/some-key.png" })
+      ).success
+    ).toBe(false);
+
+    expect(
+      DesignGenerationSchema.safeParse(
+        base({ sourceAssetId: "A".repeat(300) })
+      ).success
+    ).toBe(false);
+
+    expect(
+      DesignGenerationSchema.safeParse(
+        base({ prompt: "injected prompt" })
+      ).success
+    ).toBe(false);
+  });
+
+  it("DesignQuerySchema parses valid taskId and rejects invalid/unsafe taskId or unknown fields", async () => {
+    const { DesignQuerySchema } = await import("@/lib/validation/schemas");
+
+    const valid = DesignQuerySchema.safeParse({ taskId: "task-abc-123" });
+    expect(valid.success).toBe(true);
+    if (valid.success) {
+      expect(valid.data.taskId).toBe("task-abc-123");
+    }
+
+    // Rejects empty/missing/whitespace taskId
+    expect(DesignQuerySchema.safeParse({ taskId: "" }).success).toBe(false);
+    expect(DesignQuerySchema.safeParse({ taskId: "   " }).success).toBe(false);
+    expect(DesignQuerySchema.safeParse({}).success).toBe(false);
+    expect(DesignQuerySchema.safeParse(null).success).toBe(false);
+
+    // Rejects unknown fields
+    expect(
+      DesignQuerySchema.safeParse({ taskId: "task-1", extraField: "bad" }).success
+    ).toBe(false);
+
+    // Rejects unsafe text (data URL, URL, object key, base64 blob)
+    expect(
+      DesignQuerySchema.safeParse({ taskId: "data:image/png;base64,abc" }).success
+    ).toBe(false);
+    expect(
+      DesignQuerySchema.safeParse({ taskId: "https://evil.com/task" }).success
+    ).toBe(false);
+    expect(
+      DesignQuerySchema.safeParse({ taskId: "ready/task-key" }).success
+    ).toBe(false);
+  });
 });
 
 describe("status maps (AC3 public poll contract)", () => {
@@ -266,3 +407,4 @@ describe("status maps (AC3 public poll contract)", () => {
     expect(CLIENT_POLL_MAX_WAIT_MS).toBe(120_000);
   });
 });
+

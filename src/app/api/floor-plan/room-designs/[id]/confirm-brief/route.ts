@@ -1,6 +1,7 @@
 import { authorizeVerified, floorPlanErrorResponse } from "@/lib/ai/http";
 import type { Env } from "@/lib/bindings";
 import { confirmRoomBrief } from "@/lib/floor-plan/brief";
+import { FloorPlanConfirmBriefSchema } from "@/lib/validation/schemas";
 
 // POST /api/floor-plan/room-designs/[id]/confirm-brief
 
@@ -11,6 +12,24 @@ export async function POST(
   const auth = await authorizeVerified(request);
   if (auth instanceof Response) return auth;
 
+  let body: unknown = {};
+  try {
+    const text = await request.text();
+    if (text.trim()) {
+      body = JSON.parse(text);
+    }
+  } catch {
+    return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+  }
+
+  const parsed = FloorPlanConfirmBriefSchema.safeParse(body);
+  if (!parsed.success) {
+    return Response.json(
+      { error: "INVALID_INPUT", details: parsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
+  }
+
   const { id } = await ctx.params;
   try {
     const room = await confirmRoomBrief(auth.env as unknown as Env, auth.userId, id);
@@ -19,3 +38,4 @@ export async function POST(
     return floorPlanErrorResponse(err);
   }
 }
+

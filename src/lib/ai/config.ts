@@ -83,6 +83,13 @@ function validateOptions(raw: unknown): DesignOptions {
     throw new DesignError("IMAGE_INPUT_NOT_ALLOWED", 400, "options.image_input is server-resolved");
   }
 
+  const allowedOptions = new Set(["aspect_ratio", "num_outputs", "resolution", "quality"]);
+  for (const key of Object.keys(o)) {
+    if (!allowedOptions.has(key)) {
+      throw new DesignError("INVALID_OPTIONS", 400, `unrecognized field in options: ${key}`);
+    }
+  }
+
   const out: DesignOptions = {};
 
   if (o.aspect_ratio !== undefined) {
@@ -107,6 +114,23 @@ function validateOptions(raw: unknown): DesignOptions {
 }
 
 function validateInteriorIntent(raw: Record<string, unknown>): InteriorIntent {
+  const allowedInterior = new Set([
+    "mode",
+    "roomType",
+    "customRoomType",
+    "style",
+    "customStyle",
+    "colorScheme",
+    "customColorScheme",
+    "requirements",
+    "editInstruction",
+  ]);
+  for (const key of Object.keys(raw)) {
+    if (!allowedInterior.has(key)) {
+      throw new DesignError("INVALID_INTENT", 400, `unrecognized field in intent: ${key}`);
+    }
+  }
+
   const mode = assertMode(raw.mode);
   const intent: InteriorIntent = {
     mode,
@@ -126,6 +150,23 @@ function validateInteriorIntent(raw: Record<string, unknown>): InteriorIntent {
 }
 
 function validateExteriorIntent(raw: Record<string, unknown>): ExteriorIntent {
+  const allowedExterior = new Set([
+    "mode",
+    "area",
+    "customArea",
+    "style",
+    "customStyle",
+    "colorScheme",
+    "customColorScheme",
+    "requirements",
+    "editInstruction",
+  ]);
+  for (const key of Object.keys(raw)) {
+    if (!allowedExterior.has(key)) {
+      throw new DesignError("INVALID_INTENT", 400, `unrecognized field in intent: ${key}`);
+    }
+  }
+
   const mode = assertMode(raw.mode);
   const intent: ExteriorIntent = {
     mode,
@@ -146,11 +187,37 @@ function validateExteriorIntent(raw: Record<string, unknown>): ExteriorIntent {
 
 /** Forward-declared floor-plan stage intent (ADR 0004); stages ship in #15/#10. */
 function validateFloorPlanIntent(raw: Record<string, unknown>): FloorPlanIntent {
+  const allowedFloorPlan = new Set([
+    "stage",
+    "marker",
+    "roomId",
+    "style",
+    "stylePreference",
+    "feedback",
+    "recognition",
+    "intake",
+  ]);
+  for (const key of Object.keys(raw)) {
+    if (!allowedFloorPlan.has(key)) {
+      throw new DesignError("INVALID_INTENT", 400, `unrecognized field in intent: ${key}`);
+    }
+  }
+
   const stage = String(raw.stage ?? "");
   if (!(FLOOR_PLAN_STAGES as readonly string[]).includes(stage)) {
     throw new DesignError("INVALID_INTENT", 400, `unknown floor-plan stage: ${stage}`);
   }
-  const marker = raw.marker as { x?: unknown; y?: unknown } | undefined;
+  const marker = raw.marker as Record<string, unknown> | undefined;
+  if (!marker || typeof marker !== "object" || Array.isArray(marker)) {
+    throw new DesignError("INVALID_INTENT", 400, "marker must be an object");
+  }
+  const allowedMarker = new Set(["x", "y"]);
+  for (const key of Object.keys(marker)) {
+    if (!allowedMarker.has(key)) {
+      throw new DesignError("INVALID_INTENT", 400, `unrecognized field in marker: ${key}`);
+    }
+  }
+
   const x = Number(marker?.x);
   const y = Number(marker?.y);
   if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 100 || y < 0 || y > 100) {
@@ -190,6 +257,22 @@ export function validateDesignConfig(raw: unknown): DesignConfig {
   }
   if ("sourceKey" in body || "storageKey" in body || "imageUrl" in body || "image_input" in body) {
     throw new DesignError("OBJECT_KEY_NOT_ALLOWED", 400, "source is identified by sourceAssetId only");
+  }
+
+  const allowedRoot = new Set([
+    "sourceAssetId",
+    "mediaType",
+    "scene",
+    "intent",
+    "options",
+    "idempotencyKey",
+    "provider",
+    "model",
+  ]);
+  for (const key of Object.keys(body)) {
+    if (!allowedRoot.has(key)) {
+      throw new DesignError("INVALID_CONFIG", 400, `unrecognized field in body: ${key}`);
+    }
   }
 
   const sourceAssetId = typeof body.sourceAssetId === "string" ? body.sourceAssetId.trim() : "";
