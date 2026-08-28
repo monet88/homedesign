@@ -1,0 +1,23 @@
+src/app/api/payments/mock/route.ts
+  s_3cf9f95b99f20b::t_6d0171e80e2158 1-60
+src/lib/payments/payments.wtest.ts
+  s_3cf9f95b99f20b::t_34dbc55d8f2bdb 36,673-798,800
+tests/unit.test.ts
+  s_3cf9f95b99f20b::t_42463b0a56c27d 16-21,97-390
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "aaf281b510026628362b79e60189c25910e4d63c",
+  "prompts": {},
+  "sessions": {
+    "s_3cf9f95b99f20b": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03d35-50b9-7aa5-9aa3-d39826031a9f",
+        "model": "deepseek-v4-flash-vision"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
