@@ -7,30 +7,50 @@ import {
 } from "./helpers/auth-helper";
 
 // Ticket #24 / ADR 0007 / Spec 0001: Phase 1 — Admin Operations & RBAC Verification.
+// Ticket #41: Server-side admin authorization boundary.
 
 test.describe("Phase 1: Admin Operations & RBAC", () => {
   test.beforeEach(async ({ page }) => {
     await signOutUser(page);
   });
 
-  test("anonymous visitor to /admin sees 403 Forbidden", async ({ page }) => {
+  test("anonymous visitor to /admin sees 401 Unauthorized and API returns 401", async ({ page }) => {
     await page.goto("/admin");
-    await expect(page.getByRole("heading", { name: "403 Forbidden" })).toBeVisible();
+
+    // Server-rendered unauthorized screen (no dashboard content)
+    await expect(page.getByRole("heading", { name: "401 Unauthorized" })).toBeVisible();
     await expect(
       page.getByText("Access to the Administrator Operations Panel is restricted.")
     ).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Sign In as Administrator" })
     ).toBeVisible();
+
+    // Dashboard content must NOT be present (server-side boundary prevents rendering)
+    await expect(page.getByRole("heading", { name: "System Administration" })).not.toBeVisible();
+    await expect(page.getByText("Admin Console")).not.toBeVisible();
+
+    // API boundary returns proper 401 status
+    const apiRes = await page.request.fetch("/api/admin/users");
+    expect(apiRes.status()).toBe(401);
   });
 
-  test("non-admin user to /admin sees 403 Forbidden", async ({ page }) => {
+  test("non-admin user to /admin sees 403 Forbidden and API returns 403", async ({ page }) => {
     await signInAsStandardUser(page);
     await page.goto("/admin");
+
+    // Server-rendered forbidden screen
     await expect(page.getByRole("heading", { name: "403 Forbidden" })).toBeVisible();
     await expect(
       page.getByText("Access to the Administrator Operations Panel is restricted.")
     ).toBeVisible();
+
+    // Dashboard content must NOT be present
+    await expect(page.getByRole("heading", { name: "System Administration" })).not.toBeVisible();
+
+    // API boundary returns proper 403 status
+    const apiRes = await page.request.fetch("/api/admin/users");
+    expect(apiRes.status()).toBe(403);
   });
 
   test("admin session accesses /admin, views tabs, inspects users and tasks", async ({
@@ -39,7 +59,7 @@ test.describe("Phase 1: Admin Operations & RBAC", () => {
     await signInAsAdmin(page);
     await page.goto("/admin");
 
-    // Header assertions
+    // Header assertions — admin dashboard renders immediately (no flicker)
     await expect(
       page.getByRole("heading", { name: "System Administration" })
     ).toBeVisible({ timeout: 15_000 });
@@ -49,6 +69,10 @@ test.describe("Phase 1: Admin Operations & RBAC", () => {
     if (testInfo.project.name === "chromium-desktop") {
       await expect(page.getByText(ADMIN_CREDENTIALS.email).first()).toBeVisible();
     }
+
+    // API boundary returns 200 for admin session
+    const apiRes = await page.request.fetch("/api/admin/users");
+    expect(apiRes.status()).toBe(200);
 
     // Tab 1: User Management Table
     await expect(page.getByRole("button", { name: /User Management/ })).toBeVisible();
