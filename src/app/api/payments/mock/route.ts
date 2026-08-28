@@ -1,5 +1,6 @@
 import { authorizeVerified } from "@/lib/ai/http";
-import { mockPurchase, MOCK_PACKS, type MockPack } from "@/lib/payments/core";
+import { mockPurchase } from "@/lib/payments/core";
+import { MockPaymentSchema } from "@/lib/validation/schemas";
 
 // `POST /api/payments/mock` (ADR 0002, spec US 14–15, 18): Mock Payment.
 //
@@ -8,7 +9,7 @@ import { mockPurchase, MOCK_PACKS, type MockPack } from "@/lib/payments/core";
 // Behavior:
 //   - Banned in production (ENVIRONMENT === "production") → 403 MOCK_PAYMENT_BANNED_IN_PRODUCTION
 //   - Requires a verified session → 401 / 403 EMAIL_NOT_VERIFIED
-//   - Invalid pack → 400
+//   - Invalid input → 400 INVALID_INPUT with details
 //   - Same idempotency key + same payload → cached result (200, cached:true)
 //   - Same idempotency key + different payload → 409 IDEMPOTENCY_KEY_REUSED
 //   - Success → 200 { code:0, data:{ id, pack, label, amount, idempotencyKey, ledgerEntryId, cached } }
@@ -20,22 +21,23 @@ export async function POST(request: Request) {
   if (auth instanceof Response) return auth;
   const env = auth.env;
 
-  let body: { pack?: unknown; idempotencyKey?: unknown };
+  let body: unknown;
   try {
     body = await request.json();
   } catch {
     return Response.json({ error: "INVALID_JSON" }, { status: 400 });
   }
 
-  const pack = body.pack as MockPack;
-  const idempotencyKey = body.idempotencyKey as string;
+  // ── Zod parse-or-400 (ticket #40 pattern) ──────────────────────────────
+  const parsed = MockPaymentSchema.safeParse(body);
+  if (!parsed.success) {
+    return Response.json(
+      { error: "INVALID_INPUT", details: parsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
+  }
 
-  if (typeof idempotencyKey !== "string" || idempotencyKey.length === 0) {
-    return Response.json({ error: "IDEMPOTENCY_KEY_REQUIRED" }, { status: 400 });
-  }
-  if (typeof pack !== "string" || !(pack in MOCK_PACKS)) {
-    return Response.json({ error: "INVALID_PACK" }, { status: 400 });
-  }
+  const { pack, idempotencyKey } = parsed.data;
 
   try {
     const result = await mockPurchase(env, auth.userId, pack, idempotencyKey);
@@ -55,4 +57,4 @@ export async function POST(request: Request) {
     // INVALID_PACK etc.
     return Response.json({ error: message }, { status });
   }
-}
+}

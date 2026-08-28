@@ -33,6 +33,7 @@ import {
   ensureFreeCreditGrant,
   releaseHold,
 } from "@/lib/credits/ledger";
+import { MockPaymentSchema } from "@/lib/validation/schemas";
 
 let userId: string;
 let email: string;
@@ -669,7 +670,134 @@ describe("Ticket #39: Fault-injection — late completion after expiry", () => {
   });
 });
 
+// ── Ticket #46: Mock Payment Zod command validation & Credit Ledger integrity ─
+
+describe("Ticket #46: Mock Payment Zod command validation & Credit Ledger integrity", () => {
+  it("MockPaymentSchema accepts valid pack and non-empty key", () => {
+    const valid = MockPaymentSchema.safeParse({ pack: "lite", idempotencyKey: "k-valid" });
+    expect(valid.success).toBe(true);
+    if (valid.success) {
+      expect(valid.data.pack).toBe("lite");
+      expect(valid.data.idempotencyKey).toBe("k-valid");
+    }
+  });
+
+  it("MockPaymentSchema rejects malformed, unknown, fractional, non-positive, or empty inputs", () => {
+    expect(MockPaymentSchema.safeParse({ pack: "ultra", idempotencyKey: "k1" }).success).toBe(false);
+    expect(MockPaymentSchema.safeParse({ pack: -1, idempotencyKey: "k1" }).success).toBe(false);
+    expect(MockPaymentSchema.safeParse({ pack: 0, idempotencyKey: "k1" }).success).toBe(false);
+    expect(MockPaymentSchema.safeParse({ pack: 1.5, idempotencyKey: "k1" }).success).toBe(false);
+    expect(MockPaymentSchema.safeParse({ pack: "lite", idempotencyKey: "" }).success).toBe(false);
+    expect(MockPaymentSchema.safeParse({ pack: "lite", idempotencyKey: "   " }).success).toBe(false);
+    expect(MockPaymentSchema.safeParse({ pack: "lite", idempotencyKey: 123 }).success).toBe(false);
+    expect(MockPaymentSchema.safeParse({ pack: "lite", idempotencyKey: null }).success).toBe(false);
+    expect(MockPaymentSchema.safeParse({}).success).toBe(false);
+    expect(MockPaymentSchema.safeParse(null).success).toBe(false);
+  });
+
+  it("invalid requests create no payment record or Credit Ledger entry", async () => {
+    const beforeBalance = await getAvailableCredits(env, userId);
+    expect(beforeBalance).toBe(10);
+
+    const invalidInputs = [
+      { pack: "enterprise", idempotencyKey: "inv-1" },
+      { pack: "lite", idempotencyKey: "" },
+      { pack: "lite", idempotencyKey: "   " },
+      { pack: null, idempotencyKey: "inv-4" },
+    ];
+
+    for (const input of invalidInputs) {
+      const parsed = MockPaymentSchema.safeParse(input);
+      expect(parsed.success).toBe(false);
+    }
+
+    const rows = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM mock_payments WHERE user_id = ?1`
+    ).bind(userId).first<{ cnt: number }>();
+    expect(rows?.cnt).toBe(0);
+
+    const ledgerRows = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'payment'`
+    ).bind(userId).first<{ cnt: number }>();
+    expect(ledgerRows?.cnt).toBe(0);
+
+    expect(await getAvailableCredits(env, userId)).toBe(10);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("valid request updates balance and writes append-only ledger entry", async () => {
+    const input = { pack: "pro" as const, idempotencyKey: "valid-pack-pro" };
+    const parsed = MockPaymentSchema.safeParse(input);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+
+    const res = await mockPurchase(env, userId, parsed.data.pack, parsed.data.idempotencyKey);
+    expect(res.amount).toBe(320);
+    expect(res.cached).toBe(false);
+
+    expect(await getAvailableCredits(env, userId)).toBe(330); // 10 + 320
+
+    const ledgerEntry = await env.DB.prepare(
+      `SELECT * FROM credit_ledger WHERE id = ?1`
+    ).bind(res.ledgerEntryId).first<{
+      user_id: string;
+      entry_type: string;
+      amount: number;
+      ref_type: string;
+      ref_id: string;
+    }>();
+    expect(ledgerEntry).not.toBeNull();
+    expect(ledgerEntry?.user_id).toBe(userId);
+    expect(ledgerEntry?.entry_type).toBe("payment");
+    expect(ledgerEntry?.amount).toBe(320);
+    expect(ledgerEntry?.ref_type).toBe("mock_purchase");
+    expect(ledgerEntry?.ref_id).toBe("valid-pack-pro");
+
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("retry with same idempotency key returns cached result and cannot double-credit", async () => {
+    const input = { pack: "max" as const, idempotencyKey: "retry-test-key-46" };
+    const parsed = MockPaymentSchema.safeParse(input);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+
+    const first = await mockPurchase(env, userId, parsed.data.pack, parsed.data.idempotencyKey);
+    expect(first.cached).toBe(false);
+    expect(first.amount).toBe(640);
+    const balanceAfterFirst = await getAvailableCredits(env, userId);
+
+    // Retry with exact same key
+    const second = await mockPurchase(env, userId, parsed.data.pack, parsed.data.idempotencyKey);
+    expect(second.cached).toBe(true);
+    expect(second.id).toBe(first.id);
+    expect(second.ledgerEntryId).toBe(first.ledgerEntryId);
+    expect(second.amount).toBe(640);
+
+    const balanceAfterSecond = await getAvailableCredits(env, userId);
+    expect(balanceAfterSecond).toBe(balanceAfterFirst); // No double credit
+
+    const paymentRows = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM mock_payments WHERE user_id = ?1 AND idempotency_key = ?2`
+    ).bind(userId, "retry-test-key-46").first<{ cnt: number }>();
+    expect(paymentRows?.cnt).toBe(1);
+
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("collision: same idempotency key with different payload throws 409 IDEMPOTENCY_KEY_REUSED", async () => {
+    const key = "collision-test-key-46";
+    await mockPurchase(env, userId, "lite", key);
+
+    await expect(mockPurchase(env, userId, "plus", key)).rejects.toThrow("IDEMPOTENCY_KEY_REUSED");
+
+    // Balance remains unchanged by rejected request
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+});
+
 // ── Schema recreation for the workers-runtime harness ────────────────────────
+
 // The vitest-pool-workers harness starts from an empty DB, so tests must
 // provision the same tables the real migrations would create (0001..0004).
 async function applyMigrations(db: D1Database) {
