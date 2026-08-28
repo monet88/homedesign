@@ -244,6 +244,24 @@ describe("Brief stage lifecycle", () => {
       .first<{ proposal_json: string | null }>();
     expect(proposal?.proposal_json).toBeTruthy();
   });
+  it("max one processing brief run per room design", async () => {
+    const userId = await seedUser();
+    const sourceId = await seedReadyAsset(userId);
+    const { id: projectId } = await createFloorPlanProject(env, userId, sourceId);
+    const room = await placeRoomMarker(env, userId, projectId, { x: 25, y: 75 });
+
+    await createDesign(
+      env,
+      userId,
+      stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-brief-a")
+    );
+    await expect(assertNoProcessingRun(env, room.id, "brief")).rejects.toMatchObject({
+      code: "STAGE_PROCESSING",
+    });
+    await expect(
+      createDesign(env, userId, stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-brief-b"))
+    ).rejects.toMatchObject({ code: "INVALID_INTENT", status: 409 });
+  });
 });
 describe("Floor plan prompt builders", () => {
   it("builds brief, layout, render, and panorama prompts", () => {
@@ -676,7 +694,7 @@ describe("Add Next Room isolation", () => {
 describe("Floor Plan stage commands validation & safety (Ticket #47)", () => {
   it("invalid commands leave Room Brief, active lineage, stage runs, assets, and credits unchanged", async () => {
     const userId = await seedUser();
-    const { sourceId, roomId, marker } = await setupConfirmedBrief(userId);
+    const { sourceId, roomId } = await setupConfirmedBrief(userId);
 
     const creditsBefore = await getAvailableCredits(env, userId);
     const roomBefore = await env.DB.prepare(`SELECT * FROM room_designs WHERE id = ?1`)

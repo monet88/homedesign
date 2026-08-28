@@ -32,7 +32,6 @@ import { FloorPlanError } from "@/lib/floor-plan/errors";
 export interface ResolvedFloorPlanStagePlan {
   effectiveSourceAssetId: string;
   prompt: string;
-  options: DesignConfig["options"];
   finalizedConfig: DesignConfig;
   recordStageRun(env: Env, taskId: string): Promise<void>;
 }
@@ -79,11 +78,12 @@ export async function resolveFloorPlanStagePlan(
   };
   const finalizedIntent = finalizedConfig.intent as FloorPlanIntent;
 
-  let prompt = "";
+  let prompt: string;
 
   try {
     if (stage === "brief") {
       await assertRoomDesignForBrief(env, userId, roomId, config.sourceAssetId, fp.marker);
+      await assertNoProcessingRun(env, roomId, "brief");
       prompt = buildFloorPlanBriefPrompt(finalizedIntent);
     } else if (stage === "layout") {
       const row = await assertRoomDesignForLayout(env, userId, roomId, config.sourceAssetId, fp.marker);
@@ -134,7 +134,6 @@ export async function resolveFloorPlanStagePlan(
   return {
     effectiveSourceAssetId,
     prompt,
-    options: finalizedConfig.options,
     finalizedConfig,
     async recordStageRun(env: Env, taskId: string): Promise<void> {
       if (stage === "brief") {
@@ -152,10 +151,10 @@ export async function handleFloorPlanTerminal(
   outcome: "ready" | "failed"
 ): Promise<void> {
   const design = await env.DB.prepare(
-    `SELECT id, scene, stage, config_json FROM designs WHERE id = ?1`
+    `SELECT id, scene, stage FROM designs WHERE id = ?1`
   )
     .bind(taskId)
-    .first<{ id: string; scene: string; stage: string | null; config_json: string }>();
+    .first<{ id: string; scene: string; stage: string | null }>();
 
   if (!design || design.scene !== "floor-plan" || !design.stage) {
     return;

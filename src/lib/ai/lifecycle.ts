@@ -33,7 +33,6 @@ import {
   toPublicStatus,
   type DesignConfig,
   type ExteriorIntent,
-  type FloorPlanIntent,
   type InteriorIntent,
   type ProviderRequest,
   type PublicTaskStatus,
@@ -141,7 +140,7 @@ export async function createDesign(
 
   let floorPlanStagePlan: ResolvedFloorPlanStagePlan | null = null;
   let effectiveSourceAssetId = config.sourceAssetId;
-  let prompt = "";
+  let prompt: string;
   let effectiveConfig = config;
   if (config.scene === "floor-plan") {
     floorPlanStagePlan = await resolveFloorPlanStagePlan(env, userId, config);
@@ -581,7 +580,9 @@ export async function completeGeneration(
     `UPDATE projects SET status = 'ready', updated_at = ?2 WHERE id = ?1`
   ).bind(design.project_id, now).run();
 
-  await handleFloorPlanTerminal(env, taskId, "ready");
+  if (design.scene === "floor-plan") {
+    await handleFloorPlanTerminal(env, taskId, "ready");
+  }
 
   return { status: "ready" };
 }
@@ -599,7 +600,10 @@ export async function failGeneration(
   errorCode: string,
   terminalReason: "failed" | "canceled" | "validation-exhausted" | "dlq" = "failed"
 ): Promise<void> {
-  await handleFloorPlanTerminal(env, taskId, "failed");
+  const design = await getDesign(env, taskId);
+  if (design?.scene === "floor-plan") {
+    await handleFloorPlanTerminal(env, taskId, "failed");
+  }
   await env.DB.prepare(`UPDATE ai_tasks SET error_code = ?2, updated_at = ?3 WHERE id = ?1`)
     .bind(taskId, errorCode, Date.now())
     .run();
@@ -794,4 +798,3 @@ function providerErrorCode(err: unknown): string {
   const msg = (err as Error)?.message ?? "PROVIDER_ERROR";
   return /^[A-Z0-9_]+$/.test(msg) ? msg : "PROVIDER_ERROR";
 }
-
