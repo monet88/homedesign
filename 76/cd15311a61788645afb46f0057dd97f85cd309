@@ -1,0 +1,31 @@
+src/app/api/assets/finalize/route.ts
+  s_3cf9f95b99f20b::t_5e584437bb0ef8 3,19,21,26-31,34-35
+src/app/api/assets/upload-intent/route.ts
+  s_624565fd86fb4d::t_1cce19d2f4009c 4,20,22,27-32,35-36
+src/app/api/projects/[id]/favorite/route.ts
+  s_3cf9f95b99f20b::t_103bd7943c944d 5,19,21,26-31,34-35,37-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "76cd15311a61788645afb46f0057dd97f85cd309",
+  "prompts": {},
+  "sessions": {
+    "s_3cf9f95b99f20b": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03d35-50b9-7aa5-9aa3-d39826031a9f",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_624565fd86fb4d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "995c2abf-92d2-4889-80b4-ad4b943a86c0",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
