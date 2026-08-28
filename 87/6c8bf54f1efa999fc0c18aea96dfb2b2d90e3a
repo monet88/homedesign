@@ -1,0 +1,30 @@
+src/app/api/admin/admin-api.test.ts
+  h_17f2fa2b92da6a 739-864
+src/app/api/admin/health/route.ts
+  h_17f2fa2b92da6a 2,10-11,16
+src/lib/admin/types.ts
+  h_17f2fa2b92da6a 47
+src/lib/ai/gemini-adapter.test.ts
+  h_17f2fa2b92da6a 425
+src/lib/ai/gemini-adapter.ts
+  h_17f2fa2b92da6a 21,246-306,318-323
+src/lib/ai/provider-adapter.test.ts
+  h_17f2fa2b92da6a 187-189
+src/lib/ai/provider-adapter.ts
+  h_17f2fa2b92da6a 59-67,100-109
+src/lib/ai/types.ts
+  h_17f2fa2b92da6a 191-199,204
+tests/staging-proof.test.ts
+  h_17f2fa2b92da6a 1-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "876c8bf54f1efa999fc0c18aea96dfb2b2d90e3a",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
