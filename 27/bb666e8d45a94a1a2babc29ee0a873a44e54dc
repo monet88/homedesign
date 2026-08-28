@@ -1,0 +1,14 @@
+docs/coding-standards.md
+  h_17f2fa2b92da6a 1-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "27bb666e8d45a94a1a2babc29ee0a873a44e54dc",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
