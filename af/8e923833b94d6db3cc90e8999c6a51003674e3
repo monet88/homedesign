@@ -1,0 +1,38 @@
+.github/workflows/staging-smoke.yml
+  h_17f2fa2b92da6a 39
+.gitignore
+  h_17f2fa2b92da6a 16
+AGENTS.md
+  h_17f2fa2b92da6a 11-19
+docs/coding-standards.md
+  h_17f2fa2b92da6a 34,42
+package-lock.json
+  h_17f2fa2b92da6a 35,9760-9797
+package.json
+  h_17f2fa2b92da6a 9-10,12-14,20-21,40,52
+scripts/free-first-gate.mjs
+  h_17f2fa2b92da6a 1-56
+scripts/free-first-gate.sh
+  h_17f2fa2b92da6a 2,8
+scripts/lib/run-command.mjs
+  h_17f2fa2b92da6a 1-60
+scripts/preview-provision.sh
+  h_17f2fa2b92da6a 52
+scripts/smoke.mjs
+  h_17f2fa2b92da6a 1-24
+scripts/smoke.sh
+  h_17f2fa2b92da6a 2,8
+tests/deploy.test.ts
+  h_17f2fa2b92da6a 92-103,105-115,118-119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "af8e923833b94d6db3cc90e8999c6a51003674e3",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
