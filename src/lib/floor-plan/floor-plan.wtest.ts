@@ -4,7 +4,11 @@ import { env } from "cloudflare:test";
 import { describe, expect, it, beforeEach } from "vitest";
 import { createDesign } from "@/lib/ai/lifecycle";
 import { handleProviderNotify } from "@/lib/ai/notify-consumer";
-import { buildPrompt } from "@/lib/ai/lifecycle";
+import {
+  buildFloorPlanBriefPrompt,
+  buildFloorPlanLayoutPrompt,
+  buildFloorPlanPanoramaPrompt,
+} from "@/lib/ai/prompt";
 import {
   assertLayoutStageAllowed,
   assertNoProcessingRun,
@@ -241,56 +245,28 @@ describe("Brief stage lifecycle", () => {
     expect(proposal?.proposal_json).toBeTruthy();
   });
 });
-
-describe("buildPrompt floor-plan", () => {
+describe("Floor plan prompt builders", () => {
   it("builds brief, layout, render, and panorama prompts", () => {
-    const prompt = buildPrompt({
-      sourceAssetId: "a1",
-      mediaType: "image",
-      scene: "floor-plan",
+    const prompt = buildFloorPlanBriefPrompt({
       stage: "brief",
-      provider: "fake",
-      model: "gemini-2.5-flash-image",
-      providerScene: "room-design-brief",
-      intent: { stage: "brief", marker: { x: 5, y: 95 }, roomId: "room-1" },
-      options: {},
-      cost: 1,
-      idempotencyKey: "k",
+      marker: { x: 5, y: 95 },
+      roomId: "room-1",
     });
     expect(prompt).toContain("marker (5%, 95%)");
     expect(prompt).toContain("Do not fabricate measurements");
 
-    const layoutPrompt = buildPrompt({
-      sourceAssetId: "a1",
-      mediaType: "image",
-      scene: "floor-plan",
+    const layoutPrompt = buildFloorPlanLayoutPrompt({
       stage: "layout",
-      provider: "fake",
-      model: "gemini-2.5-flash-image",
-      providerScene: "room-design-layout",
-      intent: { stage: "layout", marker: { x: 1, y: 1 }, roomId: "room-1" },
-      options: {},
-      cost: 2,
-      idempotencyKey: "k2",
+      marker: { x: 1, y: 1 },
+      roomId: "room-1",
     });
     expect(layoutPrompt).toContain("2D furniture layout");
 
-    const panoramaPrompt = buildPrompt({
-      sourceAssetId: "a1",
-      mediaType: "image",
-      scene: "floor-plan",
+    const panoramaPrompt = buildFloorPlanPanoramaPrompt({
       stage: "panorama",
-      provider: "fake",
-      model: "gemini-2.5-flash-image",
-      providerScene: "room-design-panorama",
-      intent: {
-        stage: "panorama",
-        marker: { x: 1, y: 1 },
-        panoramaOrientation: { yaw: 0, pitch: 0, hfov: 100 },
-      },
-      options: { aspect_ratio: "2:1", resolution: "4096x2048" },
-      cost: 4,
-      idempotencyKey: "k3",
+      marker: { x: 1, y: 1 },
+      roomId: "room-1",
+      panoramaOrientation: { yaw: 0, pitch: 0, hfov: 100 },
     });
     expect(panoramaPrompt).toContain("equirectangular");
     expect(panoramaPrompt).toContain("4096×2048");

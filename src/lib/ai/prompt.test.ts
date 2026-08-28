@@ -183,34 +183,28 @@ describe("buildPrompt dispatch by scene", () => {
   });
 
   it("builds a floor-plan brief prompt", () => {
-    const prompt = buildPrompt(
-      config("floor-plan", { stage: "brief", marker: { x: 10, y: 10 }, roomId: "room-1" })
-    );
+    const prompt = buildFloorPlanBriefPrompt({
+      stage: "brief",
+      marker: { x: 10, y: 10 },
+      roomId: "room-1",
+    });
     expect(prompt).toContain("marker (10%, 10%)");
     expect(prompt).toContain("Do not fabricate measurements");
   });
 
   it("floor-plan layout/render/panorama build prompts", () => {
-    const layoutPrompt = buildPrompt({
-      ...config("floor-plan", { stage: "layout", marker: { x: 10, y: 10 }, roomId: "room-1" }),
+    const layoutPrompt = buildFloorPlanLayoutPrompt({
       stage: "layout",
-      providerScene: "room-design-layout",
-      cost: 2,
+      marker: { x: 10, y: 10 },
+      roomId: "room-1",
     });
     expect(layoutPrompt).toContain("2D furniture layout");
 
-    const panoramaPrompt = buildPrompt({
-      ...config("floor-plan", { stage: "panorama", marker: { x: 10, y: 10 }, roomId: "room-1" }),
+    const panoramaPrompt = buildFloorPlanPanoramaPrompt({
       stage: "panorama",
-      providerScene: "room-design-panorama",
-      cost: 4,
-      options: { aspect_ratio: "2:1", resolution: "4096x2048" },
-      intent: {
-        stage: "panorama",
-        marker: { x: 10, y: 10 },
-        roomId: "room-1",
-        panoramaOrientation: { yaw: 0, pitch: 0, hfov: 100 },
-      },
+      marker: { x: 10, y: 10 },
+      roomId: "room-1",
+      panoramaOrientation: { yaw: 0, pitch: 0, hfov: 100 },
     });
     expect(panoramaPrompt).toContain("equirectangular");
     expect(panoramaPrompt).toContain("4096×2048");
