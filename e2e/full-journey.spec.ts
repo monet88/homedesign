@@ -8,16 +8,21 @@ import {
   signUpAndVerifyStandardUser,
   signOutUser,
 } from "./helpers/auth-helper";
+import {
+  fetchCreditsSummary,
+  sanitizeFailureOutput,
+  type CreditsSummary,
+} from "./helpers/credit-helper";
 
-// Ticket #24 / ADR 0007 / Spec 0001 / Ticket #37: Complete End-to-End System Journey.
+// Ticket #24 / ADR 0007 / Spec 0001 / Ticket #37 / Ticket #48: Complete End-to-End System Journey.
 // Covers:
 // 1. Auth: Sign up, Outbox verification (ADR 0001 / Ticket #32), Verified session with Free Grant
 // 2. Admin RBAC & Credit Adjustment: 403 for non-admin, admin console, credit adjustments
-// 3. AI Interior Design Generation: Offline FakeProvider lifecycle to ready output with Before/After comparison
-// 4. AI Exterior Design Generation: Offline FakeProvider lifecycle to ready output with Before/After comparison
-// 5. AI Floor Plan Generation: Marker placement, Recognize, Brief, Layout, Render, Panorama stage
+// 3. AI Interior Design Generation: Offline FakeProvider lifecycle to ready output with Before/After comparison & exact credit settlement
+// 4. AI Exterior Design Generation: Offline FakeProvider lifecycle to ready output with Before/After comparison & exact credit settlement
+// 5. AI Floor Plan Generation: Marker placement, Recognize, Brief (1 Cr), Layout (2 Cr), Render (3 Cr), Panorama stage
 // 6. Project Share: Lineage-aware project sharing and anonymous access
-// 7. Credits & Activity Ledger: Transaction history and settled balance verification
+// 7. Credits & Activity Ledger: Exact transaction reference, settled balance verification & repeated polling idempotency
 
 const roomFixture = join(process.cwd(), "e2e", "fixtures", "room.png");
 const houseFixture = join(process.cwd(), "e2e", "fixtures", "house.jpg");
@@ -25,11 +30,20 @@ const floorPlanFixture = join(process.cwd(), "e2e", "fixtures", "floor-plan.png"
 
 test.describe("Full End-to-End System Journey", () => {
   test.beforeEach(async ({ page }) => {
-    // Sanitize any page error logs to prevent leaking tokens or credentials
+    // Sanitize any page error logs to prevent leaking tokens, credentials, prompts, or private asset URLs
     page.on("pageerror", (err) => {
-      const sanitized = (err.message || "").split("?")[0];
+      const sanitized = sanitizeFailureOutput(err.message || "");
       if (sanitized) {
         console.error("[PAGE ERROR]:", sanitized);
+      }
+    });
+
+    page.on("console", (msg) => {
+      if (msg.type() === "error") {
+        const sanitized = sanitizeFailureOutput(msg.text());
+        if (sanitized) {
+          console.error("[CONSOLE ERROR]:", sanitized);
+        }
       }
     });
 
@@ -50,6 +64,13 @@ test.describe("Full End-to-End System Journey", () => {
       await page.goto("/ai-interior-design");
       const creditBadge = page.locator("aside, header").getByText(/\d+|Credits/i).first();
       await expect(creditBadge).toBeVisible({ timeout: 15_000 });
+
+      // Prove exact Credit summary via authorized HTTP boundary
+      const credits = await fetchCreditsSummary(page);
+      expect(credits.available).toBe(10);
+      expect(credits.totalGrants).toBe(10);
+      expect(credits.totalUsage).toBe(0);
+      expect(credits.activeHolds).toBe(0);
     });
   });
 
@@ -137,19 +158,52 @@ test.describe("Full End-to-End System Journey", () => {
       await styleSelect.selectOption("Modern Warm");
     });
 
+    let taskId = "";
+    let creditsBefore: CreditsSummary;
+
     await test.step("3. Submit generation and wait for FakeProvider completion", async () => {
+      creditsBefore = await fetchCreditsSummary(page);
+
       const generateBtn = page.getByRole("button", { name: "Generate (1 Credits)" });
       await expect(generateBtn).toBeEnabled({ timeout: 35_000 });
-      await generateBtn.click();
+
+      const [response] = await Promise.all([
+        page.waitForResponse(
+          (res) =>
+            (res.url().includes("/api/designs") || res.url().includes("/api/ai/generate")) &&
+            res.request().method() === "POST"
+        ),
+        generateBtn.click(),
+      ]);
+      const resJson = (await response.json()) as { code: number; data: { id: string } };
+      taskId = resJson.data.id;
+      expect(taskId).toBeTruthy();
     });
 
-    await test.step("4. Verify generated result with interactive Before/After comparison slider", async () => {
+    await test.step("4. Verify generated result with interactive Before/After comparison slider and assert exact credit settlement", async () => {
       await expect(page.getByText("Generated Result")).toBeVisible({
         timeout: 45_000,
       });
       const slider = page.locator("#generator-card").getByRole("slider", { name: /before after/i });
       await expect(slider).toBeVisible();
       await expect(page.getByRole("link", { name: "Download" })).toBeVisible();
+
+      // Assert post-ready credit balance decreased by exactly the cost (1 credit)
+      const creditsAfter = await fetchCreditsSummary(page);
+      expect(creditsAfter.available).toBe(creditsBefore.available - 1);
+      expect(creditsAfter.totalUsage).toBe(creditsBefore.totalUsage + 1);
+      expect(creditsAfter.activeHolds).toBe(0);
+
+      // Assert repeated polling and reconnect queries cannot settle the same generation twice
+      const pollRes = await page.request.get(`/api/designs/${taskId}`);
+      expect(pollRes.ok()).toBeTruthy();
+      const pollCompatRes = await page.request.post("/api/ai/query", { data: { taskId } });
+      expect(pollCompatRes.ok()).toBeTruthy();
+
+      const creditsAfterRepoll = await fetchCreditsSummary(page);
+      expect(creditsAfterRepoll.available).toBe(creditsAfter.available);
+      expect(creditsAfterRepoll.totalUsage).toBe(creditsAfter.totalUsage);
+      expect(creditsAfterRepoll.activeHolds).toBe(0);
     });
   });
 
@@ -174,19 +228,29 @@ test.describe("Full End-to-End System Journey", () => {
       await styleSelect.selectOption("Modern Farmhouse");
     });
 
+    let creditsBefore: CreditsSummary;
+
     await test.step("3. Submit generation and wait for FakeProvider completion", async () => {
+      creditsBefore = await fetchCreditsSummary(page);
+
       const generateBtn = page.getByRole("button", { name: "Generate (1 Credits)" });
       await expect(generateBtn).toBeEnabled({ timeout: 35_000 });
       await generateBtn.click();
     });
 
-    await test.step("4. Verify generated result with Before/After comparison slider", async () => {
+    await test.step("4. Verify generated result with Before/After comparison slider and assert credit settlement", async () => {
       await expect(page.getByText("Generated Result")).toBeVisible({
         timeout: 45_000,
       });
       const slider = page.locator("#generator-card").getByRole("slider", { name: /before after/i });
       await expect(slider).toBeVisible();
       await expect(page.getByRole("link", { name: "Download" })).toBeVisible();
+
+      // Assert post-ready credit balance decreased by exactly 1
+      const creditsAfter = await fetchCreditsSummary(page);
+      expect(creditsAfter.available).toBe(creditsBefore.available - 1);
+      expect(creditsAfter.totalUsage).toBe(creditsBefore.totalUsage + 1);
+      expect(creditsAfter.activeHolds).toBe(0);
     });
   });
 
@@ -219,33 +283,111 @@ test.describe("Full End-to-End System Journey", () => {
       await recognizeBtn.click();
     });
 
+    let creditsBeforeBrief: CreditsSummary;
+    let briefTaskId = "";
     await test.step("3. Generate and Confirm Brief (locks marker)", async () => {
+      creditsBeforeBrief = await fetchCreditsSummary(page);
+
       const generateBriefBtn = page.getByRole("button", { name: /Generate Brief/i });
       await expect(generateBriefBtn).toBeEnabled({ timeout: 35_000 });
-      await generateBriefBtn.click();
+
+      const [briefRes] = await Promise.all([
+        page.waitForResponse(
+          (res) =>
+            (res.url().includes("/api/designs") || res.url().includes("/api/ai/generate")) &&
+            res.request().method() === "POST"
+        ),
+        generateBriefBtn.click(),
+      ]);
+      const briefData = (await briefRes.json()) as { code: number; data: { id: string } };
+      briefTaskId = briefData.data.id;
+      expect(briefTaskId).toBeTruthy();
 
       const confirmBriefBtn = page.getByRole("button", { name: "Confirm Brief" });
       await expect(confirmBriefBtn).toBeEnabled({ timeout: 25_000 });
+
+      // Assert post-ready delta for brief (1 credit)
+      const creditsAfterBrief = await fetchCreditsSummary(page);
+      expect(creditsAfterBrief.available).toBe(creditsBeforeBrief.available - 1);
+      expect(creditsAfterBrief.totalUsage).toBe(creditsBeforeBrief.totalUsage + 1);
+      expect(creditsAfterBrief.activeHolds).toBe(0);
+
       await confirmBriefBtn.click();
     });
 
+    let creditsBeforeLayout: CreditsSummary;
+    let layoutTaskId = "";
     await test.step("4. Generate and Confirm Layout", async () => {
+      creditsBeforeLayout = await fetchCreditsSummary(page);
+
       const generateLayoutBtn = page.getByRole("button", { name: /Generate Layout/i });
       await expect(generateLayoutBtn).toBeVisible({ timeout: 15_000 });
-      await generateLayoutBtn.click();
+
+      const [layoutRes] = await Promise.all([
+        page.waitForResponse(
+          (res) =>
+            (res.url().includes("/api/designs") || res.url().includes("/api/ai/generate")) &&
+            res.request().method() === "POST"
+        ),
+        generateLayoutBtn.click(),
+      ]);
+      const layoutData = (await layoutRes.json()) as { code: number; data: { id: string } };
+      layoutTaskId = layoutData.data.id;
+      expect(layoutTaskId).toBeTruthy();
 
       const confirmLayoutBtn = page.getByRole("button", { name: "Confirm Layout" });
       await expect(confirmLayoutBtn).toBeEnabled({ timeout: 45_000 });
+
+      // Assert post-ready delta for layout (2 credits)
+      const creditsAfterLayout = await fetchCreditsSummary(page);
+      expect(creditsAfterLayout.available).toBe(creditsBeforeLayout.available - 2);
+      expect(creditsAfterLayout.totalUsage).toBe(creditsBeforeLayout.totalUsage + 2);
+      expect(creditsAfterLayout.activeHolds).toBe(0);
+
+      // Assert repeated polling / reconnect on layout task cannot settle twice
+      const pollLayout = await page.request.get(`/api/designs/${layoutTaskId}`);
+      expect(pollLayout.ok()).toBeTruthy();
+      const creditsAfterRepoll = await fetchCreditsSummary(page);
+      expect(creditsAfterRepoll.available).toBe(creditsAfterLayout.available);
+
       await confirmLayoutBtn.click();
     });
 
+    let creditsBeforeRender: CreditsSummary;
+    let renderTaskId = "";
     await test.step("5. Generate and Confirm Render", async () => {
+      creditsBeforeRender = await fetchCreditsSummary(page);
+
       const generateRenderBtn = page.getByRole("button", { name: /Generate Render/i });
       await expect(generateRenderBtn).toBeEnabled({ timeout: 25_000 });
-      await generateRenderBtn.click();
+
+      const [renderRes] = await Promise.all([
+        page.waitForResponse(
+          (res) =>
+            (res.url().includes("/api/designs") || res.url().includes("/api/ai/generate")) &&
+            res.request().method() === "POST"
+        ),
+        generateRenderBtn.click(),
+      ]);
+      const renderData = (await renderRes.json()) as { code: number; data: { id: string } };
+      renderTaskId = renderData.data.id;
+      expect(renderTaskId).toBeTruthy();
 
       const confirmRenderBtn = page.getByRole("button", { name: "Confirm Render" });
       await expect(confirmRenderBtn).toBeEnabled({ timeout: 45_000 });
+
+      // Assert post-ready delta for render (3 credits)
+      const creditsAfterRender = await fetchCreditsSummary(page);
+      expect(creditsAfterRender.available).toBe(creditsBeforeRender.available - 3);
+      expect(creditsAfterRender.totalUsage).toBe(creditsBeforeRender.totalUsage + 3);
+      expect(creditsAfterRender.activeHolds).toBe(0);
+
+      // Assert repeated polling / query cannot double settle render
+      const pollRender = await page.request.get(`/api/designs/${renderTaskId}`);
+      expect(pollRender.ok()).toBeTruthy();
+      const creditsAfterRepoll = await fetchCreditsSummary(page);
+      expect(creditsAfterRepoll.available).toBe(creditsAfterRender.available);
+
       await confirmRenderBtn.click();
     });
 
@@ -288,26 +430,102 @@ test.describe("Full End-to-End System Journey", () => {
   }) => {
     await signInAsAdmin(page);
 
-    await test.step("1. Perform a generation to trigger ledger debit", async () => {
+    let generationTaskId = "";
+    let creditsBefore: CreditsSummary;
+
+    await test.step("1. Perform a generation to trigger ledger debit and assert exact settlement", async () => {
+      creditsBefore = await fetchCreditsSummary(page);
+
       await page.goto("/ai-interior-design");
       const fileInput = page.locator('input[type="file"]');
       await fileInput.setInputFiles(roomFixture);
 
       const generateBtn = page.getByRole("button", { name: "Generate (1 Credits)" });
       await expect(generateBtn).toBeEnabled({ timeout: 35_000 });
-      await generateBtn.click();
+
+      const [response] = await Promise.all([
+        page.waitForResponse(
+          (res) =>
+            (res.url().includes("/api/designs") || res.url().includes("/api/ai/generate")) &&
+            res.request().method() === "POST"
+        ),
+        generateBtn.click(),
+      ]);
+      const resJson = (await response.json()) as { code: number; data: { id: string } };
+      generationTaskId = resJson.data.id;
+      expect(generationTaskId).toBeTruthy();
 
       await expect(page.getByText("Generated Result")).toBeVisible({
         timeout: 45_000,
       });
+
+      // 1a. Assert exact post-ready balance delta (decreased by 1, usage increased by 1, hold is 0)
+      const creditsAfter = await fetchCreditsSummary(page);
+      expect(creditsAfter.available).toBe(creditsBefore.available - 1);
+      expect(creditsAfter.totalUsage).toBe(creditsBefore.totalUsage + 1);
+      expect(creditsAfter.activeHolds).toBe(0);
+
+      // 1b. Assert repeated status polling and reconnect cannot settle the same generation twice
+      const poll1 = await page.request.get(`/api/designs/${generationTaskId}`);
+      expect(poll1.ok()).toBeTruthy();
+      const poll2 = await page.request.post("/api/ai/query", { data: { taskId: generationTaskId } });
+      expect(poll2.ok()).toBeTruthy();
+
+      const creditsAfterRepoll = await fetchCreditsSummary(page);
+      expect(creditsAfterRepoll.available).toBe(creditsAfter.available);
+      expect(creditsAfterRepoll.totalUsage).toBe(creditsAfter.totalUsage);
+      expect(creditsAfterRepoll.activeHolds).toBe(0);
+
+      // 1c. Verify settled usage through admin HTTP boundary (/api/admin/tasks)
+      const adminTasksRes = await page.request.get("/api/admin/tasks");
+      expect(adminTasksRes.ok()).toBeTruthy();
+      const adminTasks = (await adminTasksRes.json()) as {
+        code: number;
+        data: { tasks: Array<{ id: string; status: string; cost_credits: number }> };
+      };
+      const matchingTask = adminTasks.data.tasks.find((t) => t.id === generationTaskId);
+      expect(matchingTask).toBeDefined();
+      expect(matchingTask?.status).toBe("ready");
+      expect(matchingTask?.cost_credits).toBe(1);
     });
 
-    await test.step("2. Verify Activity page displays settled generation records", async () => {
+    await test.step("2. Verify Activity timeline records the exact generation reference", async () => {
+      // 2a. Verify through authorized /api/activity HTTP boundary with exact referenceId
+      const activityRes = await page.request.get("/api/activity?family=generation");
+      expect(activityRes.ok()).toBeTruthy();
+      const activityData = (await activityRes.json()) as {
+        code: number;
+        data: {
+          items: Array<{
+            eventId: string;
+            family: string;
+            type: string;
+            referenceId: string;
+            status: string;
+          }>;
+        };
+      };
+      const exactGenerationEvent = activityData.data.items.find(
+        (item) => item.referenceId === generationTaskId && item.type === "generation_succeeded"
+      );
+      expect(exactGenerationEvent).toBeDefined();
+      expect(exactGenerationEvent?.status).toBe("ready");
+      expect(exactGenerationEvent?.family).toBe("generation");
+
+      // 2b. Verify in browser UI on /activity page
       await page.goto("/activity");
       await expect(
         page.getByRole("heading", { name: "Activity", exact: true })
       ).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByText(/generation|interior/i).first()).toBeVisible();
+
+      const familySelect = page.getByRole("combobox", { name: "Filter by event family" });
+      await expect(familySelect).toBeVisible();
+      await familySelect.selectOption("generation");
+
+      await expect(
+        page.getByText("generation succeeded — Interior design").first()
+      ).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText("generation · ready").first()).toBeVisible({ timeout: 10_000 });
     });
   });
 });
