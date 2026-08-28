@@ -1,0 +1,19 @@
+package-lock.json
+  s_0952115fffedc9::t_0310fc676be37e 17-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "a99138c360f15ef814d540333674dc5fde1a128d",
+  "prompts": {},
+  "sessions": {
+    "s_0952115fffedc9": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2c80e090-30da-4507-8924-2e3a0c0101eb",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
