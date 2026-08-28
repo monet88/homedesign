@@ -27,6 +27,9 @@ jobs:
       - name: Secret regression gate
         run: bash scripts/secret-gate.sh
 
+      - name: Lint
+        run: npm run lint
+
       - name: Typecheck
         run: npm run typecheck
 

@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 // Playwright config for HomeDesign (ticket 01).
-// Viewports: desktop 1264x591, mobile 390x844 (per DESIGN.md).
+// Viewports: desktop 1440x900 (per spec 0001), mobile 390x844.
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -19,7 +19,7 @@ export default defineConfig({
       name: "chromium-desktop",
       use: {
         ...devices["Desktop Chrome"],
-        viewport: { width: 1264, height: 591 },
+        viewport: { width: 1440, height: 900 },
         hasTouch: true,
       },
     },

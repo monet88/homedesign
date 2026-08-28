@@ -63,3 +63,15 @@ Running `npm run test:e2e` executes `scripts/run-e2e.mjs`, which handles all lif
   npx playwright install chromium
   ```
 - If `.dev.vars` exists locally with `AUTH_BYPASS=1`, ensure `AUTH_BYPASS=0` when running manual server debugging for E2E tests.
+
+## Merge-gate commands
+
+These commands mirror CI (`.github/workflows/ci.yml`) and must all pass before merge:
+
+```bash
+npm run lint          # ESLint (flat config, eslint.config.mjs)
+npm run typecheck     # tsc --noEmit
+npm test              # Vitest unit tests
+npm run wrangler:test # Workers-runtime integration tests
+npm run test:e2e      # Playwright deterministic E2E suite
+```

@@ -1,2 +1,11 @@
 # Force LF for shell scripts — Windows checkout must not get CRLF (bash chokes on \r)
 *.sh text eol=lf
+
+# Normalise all text to LF on check-in; native on checkout.
+* text=auto eol=lf
+
+# Generated type declarations — wrangler/next emit tabs and may trail spaces.
+# Mark linguist-generated so GitHub diffs collapse and whitespace checks skip.
+cloudflare-env.d.ts  linguist-generated=true -whitespace
+worker-configuration.d.ts  linguist-generated=true -whitespace
+next-env.d.ts  linguist-generated=true -whitespace
