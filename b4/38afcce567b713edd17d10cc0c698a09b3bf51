@@ -1,0 +1,31 @@
+e2e/catalog-wiring.spec.ts
+  s_c4aefca05755db::t_2aa94bbf2512d0 5,8,18,24,27,29-30,32,46,48,70
+e2e/design-flow.spec.ts
+  s_3cf9f95b99f20b::t_43f1b29555e3fa 9,17-18,22,30-37,39-43
+e2e/smoke.spec.ts
+  s_3cf9f95b99f20b::t_9fdf65572ea409 90-92,94,97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "b438afcce567b713edd17d10cc0c698a09b3bf51",
+  "prompts": {},
+  "sessions": {
+    "s_3cf9f95b99f20b": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03d35-50b9-7aa5-9aa3-d39826031a9f",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_c4aefca05755db": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "47d23b97-ed62-413c-80ce-d8c4420232a8",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
