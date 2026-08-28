@@ -1,0 +1,20 @@
+e2e/admin-journey.spec.ts
+  h_17f2fa2b92da6a 10,17,19-21,28-35,38,41-42,47-53,62,73-76
+src/app/admin/_components/admin-dashboard.tsx
+  h_17f2fa2b92da6a 1-900
+src/app/admin/_components/admin-unauthorized.tsx
+  h_17f2fa2b92da6a 1-52
+src/app/admin/page.tsx
+  h_17f2fa2b92da6a 1-22,25,27-29,32-35,37-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "360ede3824105065bfb8c56e073f20f8c0389e1f",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
