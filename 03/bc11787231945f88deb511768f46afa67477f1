@@ -1,0 +1,24 @@
+src/lib/ai/lifecycle.ts
+  h_17f2fa2b92da6a 28,42-45,111,142,144-152,155,179,183,194-196,199,201-202,224,231,242-246,248,250-251,255-256,262,584,602
+src/lib/ai/lifecycle.wtest.ts
+  h_17f2fa2b92da6a 48-51,809-971
+src/lib/ai/prompt.test.ts
+  h_17f2fa2b92da6a 186-190,196,198-199,203,205-207
+src/lib/floor-plan/facade.ts
+  h_17f2fa2b92da6a 1-187
+src/lib/floor-plan/floor-plan.wtest.ts
+  h_17f2fa2b92da6a 7-11,248,250,252-253,258,260-261,265,267-269
+src/lib/floor-plan/index.ts
+  h_17f2fa2b92da6a 2-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "03bc11787231945f88deb511768f46afa67477f1",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
