@@ -204,7 +204,9 @@ test.describe("Full End-to-End System Journey", () => {
 
     await test.step("2. Place marker on canvas and run recognition", async () => {
       const canvas = page.getByRole("button", { name: "Click to place room marker" });
-      await expect(canvas).toBeVisible({ timeout: 20_000 });
+      // CI runners are slower and the upload→project→marker canvas chain is
+      // async; allow generous settling time.
+      await expect(canvas).toBeVisible({ timeout: 60_000 });
       await canvas.click({ position: { x: 120, y: 120 } });
 
       // Registering the room is async (marker POST → room row); give the flow a

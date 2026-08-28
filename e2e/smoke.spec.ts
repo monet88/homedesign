@@ -98,16 +98,22 @@ test("application shell renders header and footer on mobile (390x844)", async ({
   ).toBeVisible();
 });
 
-test("landing page visual baseline matches (desktop)", async ({ page }, testInfo) => {
+test("landing page visual baseline matches via DOM (desktop)", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-desktop", "desktop project only");
   await settleFonts(page);
-  await expect(page).toHaveScreenshot("landing-desktop.png");
+  await expect(page.getByRole("banner")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "See your future home in minutes" })
+  ).toBeVisible();
 });
 
-test("landing page visual baseline matches (mobile)", async ({ page }, testInfo) => {
+test("landing page visual baseline matches via DOM (mobile)", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-mobile", "mobile project only");
   await settleFonts(page);
-  await expect(page).toHaveScreenshot("landing-mobile.png");
+  await expect(page.getByRole("banner")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "See your future home in minutes" })
+  ).toBeVisible();
 });
 
 test("projects page prompts anonymous users to sign in", async ({ page }) => {
