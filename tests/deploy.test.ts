@@ -101,6 +101,17 @@ describe("smoke script", () => {
   });
 });
 
+describe("e2e runner", () => {
+  it("isolates the default admin per run and forwards Playwright args without a shell", () => {
+    const runner = read("scripts/run-e2e.mjs");
+
+    expect(runner).toContain("e2e-admin-${Date.now()}");
+    expect(runner).toContain("...process.argv.slice(2)");
+    expect(runner).toContain('runCommand("npx", playwrightArgs');
+    expect(runner).not.toContain("shell: true");
+  });
+});
+
 describe("free-first gate script", () => {
   it("uses the cross-platform runner, documents CPU ≤10ms, and checks 3MB bundle", () => {
     const packageJson = JSON.parse(read("package.json")) as {

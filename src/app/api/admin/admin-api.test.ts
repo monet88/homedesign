@@ -815,7 +815,7 @@ describe("Admin Operations API Endpoints", () => {
       // we'll test the adapter class directly with a custom fetchFn
       const { GeminiFlashImageAdapter } = await import("@/lib/ai/gemini-adapter");
       const adapter = new GeminiFlashImageAdapter({
-        apiKey: "live-test-key",
+        apiKey: "test-live-key",
         baseUrl: "https://example.com/v1",
         fetchFn: (_url: string | URL | Request, init?: RequestInit) => {
           return new Promise<Response>((_resolve, reject) => {

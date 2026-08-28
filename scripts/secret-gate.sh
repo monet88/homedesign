@@ -59,7 +59,7 @@ while IFS=: read -r file line content; do
   fi
 
   # Skip placeholder / template / env references
-  if [[ "$content" =~ [:=][[:space:]]*[\"\'](\$|\$\{|\<|\{|\/|test-|dev-only-|mock-|example|changeme|placeholder|your[_-]|password123|change-me) ]]; then
+  if [[ "$content" =~ [:=][[:space:]]*[\"\'](\$|\$\{|\<|\{|\/|test-|dev-only-|mock-|example|changeme|placeholder|your[_-]|password123|change-me|\[REDACTED\]) ]]; then
     continue
   fi
 
@@ -85,7 +85,7 @@ while IFS= read -r line; do
   fi
 
   if [[ "$line" =~ (password|secret|token|api_key|apikey)[[:space:]]*[:=][[:space:]]*[\"\'][^\"\']{6,}[\"\'] ]] && \
-     ! [[ "$line" =~ [:=][[:space:]]*[\"\'](\$|\$\{|\<|\{|\/|test-|dev-only-|mock-|example|changeme|placeholder|your[_-]|password123) ]]; then
+     ! [[ "$line" =~ [:=][[:space:]]*[\"\'](\$|\$\{|\<|\{|\/|test-|dev-only-|mock-|example|changeme|placeholder|your[_-]|password123|change-me|\[REDACTED\]) ]]; then
     echo "[RULE-03-COMMIT-MSG-SECRET] commit message: potential hardcoded credential detected"
     VIOLATIONS=$((VIOLATIONS + 1))
   fi

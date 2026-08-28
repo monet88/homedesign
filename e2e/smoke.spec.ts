@@ -16,13 +16,13 @@ async function settleFonts(page: Page) {
   await page.waitForTimeout(150);
 }
 
-test("landing page boots at desktop viewport 1264x591", async ({ page }, testInfo) => {
+test("landing page boots at desktop viewport 1440x900", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-desktop", "desktop project only");
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "See your future home in minutes" })
   ).toBeVisible();
-  expect(page.viewportSize()).toEqual({ width: 1264, height: 591 });
+  expect(page.viewportSize()).toEqual({ width: 1440, height: 900 });
 });
 
 test("landing page boots at mobile viewport 390x844", async ({ page }, testInfo) => {

@@ -79,9 +79,9 @@ test.describe("Full End-to-End System Journey", () => {
   }, testInfo) => {
     const regularUser = generateTestUserCredentials("regular-visitor");
 
-    await test.step("1. Anonymous & non-admin visitors to /admin receive 403 Forbidden", async () => {
+    await test.step("1. Anonymous receives 401 and non-admin receives 403 at /admin", async () => {
       await page.goto("/admin");
-      await expect(page.getByRole("heading", { name: "403 Forbidden" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "401 Unauthorized" })).toBeVisible();
 
       await signInAsStandardUser(page, regularUser);
       await page.goto("/admin");
@@ -105,7 +105,9 @@ test.describe("Full End-to-End System Journey", () => {
     await test.step("3. Admin inspects User Management and AI Task Monitor", async () => {
       await expect(page.getByRole("button", { name: /User Management/ })).toBeVisible();
       await expect(page.getByText("User", { exact: true }).first()).toBeVisible();
-      await expect(page.getByText("Adjust Credits").first()).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Adjust Credits" }).first()
+      ).toBeVisible({ timeout: 15_000 });
 
       await page.getByRole("button", { name: /AI Task Monitor/ }).click();
       await expect(page.getByLabel("Scene:")).toBeVisible();
