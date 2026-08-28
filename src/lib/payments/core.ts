@@ -242,6 +242,60 @@ export async function mockPurchase(
 
 export const TASK_EXPIRY_MS = 30 * 60 * 1000; // 30 minutes server expiry
 
+export interface TaskCreateDefinition {
+  scene: string;
+  provider: string;
+  model: string;
+  prompt: string;
+  sourceKey: string | null;
+  options: Record<string, unknown>;
+}
+
+function taskCreatePayload(taskDef: TaskCreateDefinition, cost: number) {
+  return {
+    scene: taskDef.scene,
+    provider: taskDef.provider,
+    model: taskDef.model,
+    prompt: taskDef.prompt,
+    sourceKey: taskDef.sourceKey,
+    options: taskDef.options,
+    cost,
+  };
+}
+
+/**
+ * Read-only task-create idempotency check. Returns the existing task when the
+ * key/fingerprint already exists, returns null when creation may proceed, and
+ * preserves the same-key/different-payload conflict used by createTaskWithHold.
+ */
+export async function preflightTaskCreateIdempotency(
+  env: Env,
+  userId: string,
+  taskDef: TaskCreateDefinition,
+  cost: number,
+  idempotencyKey: string
+): Promise<{ taskId: string; cached: true } | null> {
+  const fingerprint = await canonicalHash(taskCreatePayload(taskDef, cost));
+  const existing = await env.DB.prepare(
+    `SELECT * FROM idempotency_keys WHERE user_id = ?1 AND operation = 'task_create' AND idempotency_key = ?2`
+  )
+    .bind(userId, idempotencyKey)
+    .first<IdempotencyRecord>();
+
+  if (!existing) return null;
+  if (existing.request_fingerprint !== fingerprint) {
+    const err = new Error("IDEMPOTENCY_KEY_REUSED") as Error & { status?: number };
+    err.status = 409;
+    throw err;
+  }
+
+  const row = await env.DB.prepare(`SELECT id FROM ai_tasks WHERE id = ?1`)
+    .bind(existing.result_id)
+    .first<{ id: string }>();
+  if (!row) throw new Error("IDEMPOTENCY_RECORD_MISSING");
+  return { taskId: row.id, cached: true };
+}
+
 /**
  * Atomically create a task row + credit hold.
  *
@@ -259,28 +313,13 @@ export const TASK_EXPIRY_MS = 30 * 60 * 1000; // 30 minutes server expiry
 export async function createTaskWithHold(
   env: Env,
   userId: string,
-  taskDef: {
-    scene: string;
-    provider: string;
-    model: string;
-    prompt: string;
-    sourceKey: string | null;
-    options: Record<string, unknown>;
-  },
+  taskDef: TaskCreateDefinition,
   cost: number,
   idempotencyKey: string
 ): Promise<{ taskId: string; cached: boolean }> {
   // Full canonical payload: scene + prompt + source + options + cost. Any
   // change (including prompt) makes the fingerprint differ -> 409 on reuse.
-  const payload = {
-    scene: taskDef.scene,
-    provider: taskDef.provider,
-    model: taskDef.model,
-    prompt: taskDef.prompt,
-    sourceKey: taskDef.sourceKey,
-    options: taskDef.options,
-    cost,
-  };
+  const payload = taskCreatePayload(taskDef, cost);
 
   const result = await withIdempotency(env, userId, "task_create", idempotencyKey, payload, async () => {
     const taskId = crypto.randomUUID();

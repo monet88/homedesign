@@ -244,23 +244,37 @@ describe("Brief stage lifecycle", () => {
       .first<{ proposal_json: string | null }>();
     expect(proposal?.proposal_json).toBeTruthy();
   });
-  it("max one processing brief run per room design", async () => {
+  it("preserves Brief idempotency while rejecting a second processing run", async () => {
     const userId = await seedUser();
     const sourceId = await seedReadyAsset(userId);
     const { id: projectId } = await createFloorPlanProject(env, userId, sourceId);
     const room = await placeRoomMarker(env, userId, projectId, { x: 25, y: 75 });
+    const payload = stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-brief-a");
 
-    await createDesign(
-      env,
-      userId,
-      stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-brief-a")
-    );
+    const first = await createDesign(env, userId, payload);
+    const cached = await createDesign(env, userId, payload);
+    expect(cached).toMatchObject({ id: first.id, cached: true, status: "accepted" });
+    await expect(
+      createDesign(env, userId, { ...payload, options: { num_outputs: 2 } })
+    ).rejects.toMatchObject({ code: "IDEMPOTENCY_KEY_REUSED", status: 409 });
+
     await expect(assertNoProcessingRun(env, room.id, "brief")).rejects.toMatchObject({
       code: "STAGE_PROCESSING",
     });
     await expect(
       createDesign(env, userId, stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-brief-b"))
     ).rejects.toMatchObject({ code: "INVALID_INTENT", status: 409 });
+
+    const holds = await env.DB.prepare(`SELECT COUNT(*) AS c FROM credit_holds WHERE user_id = ?1`)
+      .bind(userId)
+      .first<{ c: number }>();
+    const runs = await env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM floor_plan_stage_runs WHERE room_design_id = ?1 AND stage = 'brief'`
+    )
+      .bind(room.id)
+      .first<{ c: number }>();
+    expect(holds?.c).toBe(1);
+    expect(runs?.c).toBe(1);
   });
 });
 describe("Floor plan prompt builders", () => {

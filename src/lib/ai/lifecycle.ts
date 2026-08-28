@@ -48,6 +48,7 @@ import { presignGetUrl } from "@/lib/intake/presign";
 import { validateAsset, type AssetValidationJob } from "@/lib/intake/validator";
 import {
   createTaskWithHold,
+  preflightTaskCreateIdempotency,
   releaseHoldOnTerminal,
   settleHoldOnReady,
   expireStaleTasks,
@@ -170,36 +171,54 @@ export async function createDesign(
     throw new DesignError("SOURCE_ASSET_NOT_READY", 409, `asset lifecycle is ${asset.lifecycle}`);
   }
 
-  // Free grant is ensured on every verified task path (ADR 0002); idempotent.
-  await ensureFreeCreditGrant(env, userId);
+  const taskDef = {
+    scene: effectiveConfig.providerScene,
+    provider: effectiveConfig.provider,
+    model: effectiveConfig.model,
+    prompt,
+    sourceKey: asset.storage_key,
+    options: effectiveConfig.options as Record<string, unknown>,
+  };
 
-  // Credit gate BEFORE the hold. createTaskWithHold re-checks atomically.
-  const available = await getAvailableCredits(env, userId);
-  if (available < effectiveConfig.cost) {
-    throw new DesignError(
-      "INSUFFICIENT_CREDITS",
-      402,
-      `available ${available} < cost ${effectiveConfig.cost}`
-    );
-  }
-
-  // Atomic task row + Credit Hold (#5). Idempotent by (user, task_create, key).
-  let created: { taskId: string; cached: boolean };
+  // Floor Plan checks maximum-one-processing only for a genuinely new task.
+  // Same-key retries are resolved read-only first, before any credit side effect.
+  let created: { taskId: string; cached: boolean } | null = null;
   try {
-    created = await createTaskWithHold(
-      env,
-      userId,
-      {
-        scene: effectiveConfig.providerScene,
-        provider: effectiveConfig.provider,
-        model: effectiveConfig.model,
-        prompt,
-        sourceKey: asset.storage_key,
-        options: effectiveConfig.options as Record<string, unknown>,
-      },
-      effectiveConfig.cost,
-      effectiveConfig.idempotencyKey
-    );
+    if (floorPlanStagePlan) {
+      created = await preflightTaskCreateIdempotency(
+        env,
+        userId,
+        taskDef,
+        effectiveConfig.cost,
+        effectiveConfig.idempotencyKey
+      );
+      if (!created) {
+        await floorPlanStagePlan.assertCanStart();
+      }
+    }
+
+    if (!created) {
+      // Free grant is ensured on every verified new-task path (ADR 0002); idempotent.
+      await ensureFreeCreditGrant(env, userId);
+
+      // Credit gate BEFORE the hold. createTaskWithHold re-checks atomically.
+      const available = await getAvailableCredits(env, userId);
+      if (available < effectiveConfig.cost) {
+        throw new DesignError(
+          "INSUFFICIENT_CREDITS",
+          402,
+          `available ${available} < cost ${effectiveConfig.cost}`
+        );
+      }
+
+      created = await createTaskWithHold(
+        env,
+        userId,
+        taskDef,
+        effectiveConfig.cost,
+        effectiveConfig.idempotencyKey
+      );
+    }
   } catch (err) {
     const message = (err as Error).message;
     if (message === "IDEMPOTENCY_KEY_REUSED") {

@@ -33,6 +33,7 @@ export interface ResolvedFloorPlanStagePlan {
   effectiveSourceAssetId: string;
   prompt: string;
   finalizedConfig: DesignConfig;
+  assertCanStart(): Promise<void>;
   recordStageRun(env: Env, taskId: string): Promise<void>;
 }
 
@@ -83,11 +84,9 @@ export async function resolveFloorPlanStagePlan(
   try {
     if (stage === "brief") {
       await assertRoomDesignForBrief(env, userId, roomId, config.sourceAssetId, fp.marker);
-      await assertNoProcessingRun(env, roomId, "brief");
       prompt = buildFloorPlanBriefPrompt(finalizedIntent);
     } else if (stage === "layout") {
       const row = await assertRoomDesignForLayout(env, userId, roomId, config.sourceAssetId, fp.marker);
-      await assertNoProcessingRun(env, roomId, "layout");
       const proposal = parseRoomProposal(row);
       prompt = buildFloorPlanLayoutPrompt(finalizedIntent, proposal);
     } else if (stage === "render") {
@@ -98,7 +97,6 @@ export async function resolveFloorPlanStagePlan(
         config.sourceAssetId,
         fp.marker
       );
-      await assertNoProcessingRun(env, roomId, "render");
       finalizedIntent.layoutRunId = layoutRun.id;
       const proposal = parseRoomProposal(row);
       prompt = buildFloorPlanRenderPrompt(finalizedIntent, proposal);
@@ -110,7 +108,6 @@ export async function resolveFloorPlanStagePlan(
         config.sourceAssetId,
         fp.marker
       );
-      await assertNoProcessingRun(env, roomId, "panorama");
       finalizedIntent.renderRunId = renderRun.id;
       finalizedIntent.panoramaOrientation = DEFAULT_PANORAMA_ORIENTATION;
       finalizedConfig.options = {
@@ -135,6 +132,16 @@ export async function resolveFloorPlanStagePlan(
     effectiveSourceAssetId,
     prompt,
     finalizedConfig,
+    async assertCanStart(): Promise<void> {
+      try {
+        await assertNoProcessingRun(env, roomId, stage);
+      } catch (err) {
+        if (err instanceof FloorPlanError) {
+          throw mapFloorPlanError(err);
+        }
+        throw err;
+      }
+    },
     async recordStageRun(env: Env, taskId: string): Promise<void> {
       if (stage === "brief") {
         await createBriefStageRun(env, roomId, taskId);
