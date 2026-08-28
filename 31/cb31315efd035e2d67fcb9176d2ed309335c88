@@ -1,0 +1,31 @@
+src/lib/ai/notify-consumer.ts
+  s_3cf9f95b99f20b::t_c00c1b28884acb 39-47,50-58,61-69,82-93
+src/lib/payments/core.ts
+  s_5e84a4c736087e::t_4e0a5985cfe9ec 396-405,443-451
+src/lib/payments/payments.wtest.ts
+  s_3cf9f95b99f20b::t_e6873a9196733b 34,444-671
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "31cb31315efd035e2d67fcb9176d2ed309335c88",
+  "prompts": {},
+  "sessions": {
+    "s_3cf9f95b99f20b": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03d35-50b9-7aa5-9aa3-d39826031a9f",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    },
+    "s_5e84a4c736087e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2c2760a1-19e3-4f89-a12b-5af7b06c7360",
+        "model": "grok-4.6"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
