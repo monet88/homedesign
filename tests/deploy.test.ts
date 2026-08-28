@@ -89,11 +89,33 @@ describe("GitHub Actions workflows", () => {
   });
 });
 
+describe("smoke script", () => {
+  it("uses the cross-platform runner behind the POSIX wrapper", () => {
+    const packageJson = JSON.parse(read("package.json")) as {
+      scripts?: Record<string, string>;
+    };
+    const wrapper = read("scripts/smoke.sh");
+
+    expect(packageJson.scripts?.smoke).toBe("node scripts/smoke.mjs");
+    expect(wrapper).toContain("exec node scripts/smoke.mjs");
+  });
+});
+
 describe("free-first gate script", () => {
-  it("documents CPU ≤10ms and checks 3MB bundle", () => {
-    const gate = read("scripts/free-first-gate.sh");
+  it("uses the cross-platform runner, documents CPU ≤10ms, and checks 3MB bundle", () => {
+    const packageJson = JSON.parse(read("package.json")) as {
+      scripts?: Record<string, string>;
+    };
+    const wrapper = read("scripts/free-first-gate.sh");
+    const gate = read("scripts/free-first-gate.mjs");
+
+    expect(packageJson.scripts?.["gate:free-first"]).toBe(
+      "node scripts/free-first-gate.mjs"
+    );
+    expect(wrapper).toContain("exec node scripts/free-first-gate.mjs");
     expect(gate).toContain("10ms");
     expect(gate).toMatch(/3 \* 1024 \* 1024/);
-    expect(gate).toContain("wrangler deploy --dry-run");
+    expect(gate).toContain('"wrangler", "deploy", "--dry-run"');
+    expect(gate).toContain("Total Upload:");
   });
 });

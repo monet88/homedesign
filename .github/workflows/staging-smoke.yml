@@ -36,8 +36,7 @@ jobs:
           export CLOUDFLARE_API_TOKEN="$CLOUDFLARE_STAGING_API_TOKEN"
           export CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_STAGING_ACCOUNT_ID"
           npx wrangler d1 migrations apply hd-staging --remote --env staging
-          npm run build
-          npx opennextjs-cloudflare build
+          npm run build:worker
           npx wrangler deploy --env staging --dry-run
 
       - name: Staging secrets note

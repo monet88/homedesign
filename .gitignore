@@ -13,6 +13,7 @@ next-env.d.ts
 # Test artifacts
 test-results/
 playwright-report/
+.smoke-seed.json
 
 .ref
 .scratch

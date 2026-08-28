@@ -49,8 +49,7 @@ echo "==> Seeding synthetic fixtures"
 node scripts/seed-smoke.mjs
 
 echo "==> Building + deploying Worker ${WORKER_NAME}"
-npm run build
-npx opennextjs-cloudflare build
+npm run build:worker
 # Deploy uses preview env; resource IDs recorded for destroy/janitor.
 npx wrangler deploy --env preview --name "$WORKER_NAME" \
   --var "ENVIRONMENT:preview" \
