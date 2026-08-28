@@ -1,0 +1,16 @@
+e2e/admin-journey.spec.ts
+  h_17f2fa2b92da6a 50
+e2e/full-journey.spec.ts
+  h_17f2fa2b92da6a 80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "698d183a1a6db18fe2a7402939b3e1bd4eb0ed58",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
