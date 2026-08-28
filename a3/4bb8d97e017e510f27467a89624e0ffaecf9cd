@@ -1,0 +1,26 @@
+e2e/full-journey.spec.ts
+  h_17f2fa2b92da6a 82,84,108-110
+e2e/helpers/credit-helper.ts
+  h_17f2fa2b92da6a 13,16-38
+e2e/smoke.spec.ts
+  h_17f2fa2b92da6a 19,25
+scripts/run-e2e.mjs
+  h_17f2fa2b92da6a 9,13-14,19,22,30-35,44,60,63,68
+scripts/secret-gate.sh
+  h_17f2fa2b92da6a 62,88
+src/app/api/admin/admin-api.test.ts
+  h_17f2fa2b92da6a 818
+tests/deploy.test.ts
+  h_17f2fa2b92da6a 104-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "a34bb8d97e017e510f27467a89624e0ffaecf9cd",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
