@@ -1,2 +1,22 @@
-.ref/
-.scratch/
+node_modules/
+.next/
+.open-next/
+*.tsbuildinfo
+next-env.d.ts
+
+# Cloudflare / Wrangler local state
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# Test artifacts
+test-results/
+playwright-report/
+
+.ref
+.scratch
+.claude
+.agents
+AGENTS.md
+CLAUDE.md

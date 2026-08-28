@@ -1,0 +1,63 @@
+{
+  "name": "homedesign",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HomeDesign clone — spec #13. Foundation harness: Next.js (App Router, Turbopack) + OpenNext on Cloudflare Workers, workers runtime test harness, fake AI provider seam, Playwright visual baseline, fixture helpers.",
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "wrangler:test": "vitest run --config vitest.workers.config.ts",
+    "smoke": "bash scripts/smoke.sh",
+    "gate:free-first": "bash scripts/free-first-gate.sh",
+    "test:e2e": "node scripts/run-e2e.mjs",
+    "test:e2e:update": "node scripts/run-e2e.mjs --update-snapshots",
+    "db:seed:admin": "node scripts/seed-admin.mjs",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@better-auth/memory-adapter": "^1.7.1",
+    "@opennextjs/cloudflare": "1.20.2",
+    "better-auth": "^1.7.1",
+    "next": "16.3.3",
+    "pannellum": "^2.5.7",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.1.0",
+    "@cloudflare/vitest-pool-workers": "0.22.0",
+    "@eslint/js": "^9.28.0",
+    "@next/eslint-plugin-next": "^16.3.3",
+    "@playwright/test": "1.62.1",
+    "@tailwindcss/postcss": "4.3.3",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "26.3.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "eslint": "^10.9.1",
+    "happy-dom": "^20.11.8",
+    "jsdom": "^29.1.1",
+    "tailwindcss": "4.3.3",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^4.1.0",
+    "wrangler": "4.126.0"
+  },
+  "allowScripts": {
+    "workerd@1.20260815.1": true,
+    "workerd@1.20260825.1": true,
+    "esbuild@0.25.4": true,
+    "esbuild@0.28.1": true
+  },
+  "type": "module"
+}

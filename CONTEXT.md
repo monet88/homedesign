@@ -4,6 +4,9 @@
 
 - **Generation** — một lần gọi AI tạo ảnh từ ảnh gốc + tham số (Model, Style, Room/Area, Palette, Aspect Ratio, Custom Requirements). Chi phí Credits phụ thuộc model/action; luồng mặc định hiện có giá 1 Credit. Không nhầm với **Render** (Floor Plan → 3D/360°).
 - **AI Task** — bản ghi thực thi phía server cho đúng một Generation hoặc Floor Plan Stage Run. Provider hoàn tất chưa đồng nghĩa task thành công; task chỉ success khi mọi Generated Asset mong đợi đã qua validation thành `ready`.
+- **AI Provider Adapter** — module trừu tượng hóa giao tiếp với backend AI ngoài (`ProviderAdapter`). Hiện hỗ trợ `FakeProviderAdapter` (test/stub) và `GeminiFlashImageAdapter` (kết nối endpoint thật `https://cliproxy.monet.uno/v1` với model `gemini-3.1-flash-image`).
+- **Admin** — người dùng có role `admin` (mặc định: `minhthang421992@gmail.com`), sở hữu hạn mức Credits đặc quyền (99,999 credits), quyền truy cập Admin Panel (`/admin`), xem/điều chỉnh Credits của mọi người dùng, và giám sát lịch sử AI Tasks toàn hệ thống.
+- **Admin Panel** — giao diện quản trị riêng tại `/admin` dành cho role `admin`, cung cấp các bảng điều khiển: Quản lý Người dùng, Điều chỉnh Credits thủ công, Giám sát AI Tasks & Logs, và Kiểm tra kết nối AI Provider.
 - **Project** — workspace thuộc một user, gom intent thiết kế, Generations và các Source/Generated Assets cho một phương án Interior, Exterior hoặc Floor Plan. Project là aggregate duy nhất mang visibility, favorite và sharing; khác **Asset** là một ảnh độc lập.
 - **Project Favorite** — dấu lưu cá nhân của owner trên một Project, không thay đổi visibility hoặc quyền truy cập và không áp dụng riêng cho Asset.
 - **Project Share** — quyền xem read-only qua một link unlisted có thể thu hồi, chỉ trình bày các Generated Assets được chọn từ lineage hiện hành. Không đồng nghĩa với public Asset hoặc raw object access.
@@ -31,11 +34,13 @@
 - **Floor Plan Stage Run** — một lần chạy bất biến của Room Brief, Room Layout, Room Render hoặc Room Panorama. Retry/regenerate tạo run mới; run cũ vẫn giữ lịch sử và Credits đã settle.
 - **Activity Entry** — mục timeline append-only, owner-only ghi lại một thay đổi có ý nghĩa với Project, Asset, Generation hoặc Mock Payment. Không phải security audit log hoặc Credit Ledger.
 - **Before/After** — component so sánh ảnh gốc vs ảnh generate, có slider và 5 nút Show comparison.
+- **E2E Test Journey** — chuỗi kiểm thử tự động toàn trình giả lập tương tác người dùng qua Playwright từ đăng nhập $\rightarrow$ upload ảnh $\rightarrow$ sinh ảnh qua AI Provider $\rightarrow$ xác thực kết quả hiển thị & trừ Credits $\rightarrow$ kiểm tra Admin Dashboard.
 
 ## Bounded Contexts
 
-1. **Identity & Credits** — BetterAuth (`__Secure-better-auth.session_token`), email+Google One Tap, free Credits entitlement và Mock Payment. Payment thật không thuộc phase hiện tại.
+1. **Identity & Credits** — BetterAuth (`__Secure-better-auth.session_token`), email+Google One Tap, Admin role (`minhthang421992@gmail.com`), free Credits entitlement và Mock Payment.
 2. **Catalog** — Styles, Ideas, Popular Galleries (dùng chung UI card Preview/Use style).
-3. **Generation Pipeline** — Upload 50MB (PNG/JPG/JPEG), Model=Nano Banana, Full Redesign/Local Edit, Aspect Ratios (1:1,4:3,16:9,3:4,9:16), Custom Requirements 0/300.
+3. **Generation Pipeline** — Upload 50MB (PNG/JPG/JPEG), Model=gemini-3.1-flash-image (Nano Banana), Full Redesign/Local Edit, Aspect Ratios (1:1,4:3,16:9,3:4,9:16), Custom Requirements 0/300, tích hợp endpoint `https://cliproxy.monet.uno/v1`.
 4. **Asset & Project Library** — Projects, Assets, Activity, Private/Favorite/Share.
 5. **Floor Plan Processing** — Recognition → 2D → 3D → 360° (tách pipeline).
+6. **Admin & Operations** — Admin Dashboard (`/admin`), User & Credit Management, Task Monitor, Provider Health Check.

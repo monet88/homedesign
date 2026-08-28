@@ -1,0 +1,292 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "homedesign",
+  "main": "worker.ts",
+  "compatibility_date": "2026-08-24",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "homedesign"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "homedesign-next-cache",
+      "preview_bucket_name": "homedesign-next-cache"
+    },
+    {
+      "binding": "HD_PRIVATE",
+      "bucket_name": "homedesign-private",
+      "preview_bucket_name": "homedesign-private"
+    },
+    {
+      "binding": "HD_PUBLIC",
+      "bucket_name": "homedesign-public",
+      "preview_bucket_name": "homedesign-public"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "homedesign",
+      "database_id": "local",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "ASSET_VALIDATE",
+        "queue": "homedesign-asset-validate"
+      },
+      {
+        "binding": "PROVIDER_NOTIFY",
+        "queue": "homedesign-provider-notify"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "homedesign-asset-validate",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5
+      },
+      {
+        "queue": "homedesign-provider-notify",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5
+      }
+    ]
+  },
+  "triggers": {
+    "crons": ["*/15 * * * *"]
+  },
+  "vars": {
+    "ENVIRONMENT": "local",
+    "BETTER_AUTH_URL": "http://localhost:3000",
+    "BETTER_AUTH_SECRET": "dev-only-insecure-secret-for-local-e2e",
+    "EMAIL_DELIVERY_MODE": "test-outbox",
+    "R2_ACCOUNT_ID": "local-dev-account",
+    "R2_ACCESS_KEY_ID": "local-dev-access-key",
+    "R2_SECRET_ACCESS_KEY": "local-dev-secret-key"
+  },
+  // Deploy secrets (names only — values via `wrangler secret put` per account/env):
+  // BETTER_AUTH_SECRET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, GOOGLE_CLIENT_ID
+  "observability": {
+    "enabled": true
+  },
+  "env": {
+    "development": {
+      "name": "homedesign-dev",
+      "vars": {
+        "ENVIRONMENT": "development",
+        "EMAIL_DELIVERY_MODE": "test-outbox"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hd-dev",
+          "database_id": "__PROVISIONED_DEV__",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "NEXT_INC_CACHE_R2_BUCKET",
+          "bucket_name": "hd-dev-next-cache"
+        },
+        {
+          "binding": "HD_PRIVATE",
+          "bucket_name": "hd-dev-private"
+        },
+        {
+          "binding": "HD_PUBLIC",
+          "bucket_name": "hd-dev-public"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ASSET_VALIDATE",
+            "queue": "hd-dev-asset-validate"
+          },
+          {
+            "binding": "PROVIDER_NOTIFY",
+            "queue": "hd-dev-provider-notify"
+          }
+        ],
+        "consumers": [
+          { "queue": "hd-dev-asset-validate", "max_batch_size": 10, "max_batch_timeout": 5 },
+          { "queue": "hd-dev-provider-notify", "max_batch_size": 10, "max_batch_timeout": 5 }
+        ]
+      },
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "homedesign-dev"
+        }
+      ]
+    },
+    "preview": {
+      "name": "homedesign-preview",
+      "vars": {
+        "ENVIRONMENT": "preview",
+        "EMAIL_DELIVERY_MODE": "test-outbox"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hd-preview",
+          "database_id": "__PROVISIONED_PREVIEW__",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "NEXT_INC_CACHE_R2_BUCKET",
+          "bucket_name": "hd-preview-next-cache"
+        },
+        {
+          "binding": "HD_PRIVATE",
+          "bucket_name": "hd-preview-private"
+        },
+        {
+          "binding": "HD_PUBLIC",
+          "bucket_name": "hd-preview-public"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ASSET_VALIDATE",
+            "queue": "hd-preview-asset-validate"
+          },
+          {
+            "binding": "PROVIDER_NOTIFY",
+            "queue": "hd-preview-provider-notify"
+          }
+        ],
+        "consumers": [
+          { "queue": "hd-preview-asset-validate", "max_batch_size": 10, "max_batch_timeout": 5 },
+          { "queue": "hd-preview-provider-notify", "max_batch_size": 10, "max_batch_timeout": 5 }
+        ]
+      },
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "homedesign-preview"
+        }
+      ]
+    },
+    "staging": {
+      "name": "homedesign-staging",
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "EMAIL_DELIVERY_MODE": "test-outbox"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hd-staging",
+          "database_id": "__PROVISIONED_STAGING__",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "NEXT_INC_CACHE_R2_BUCKET",
+          "bucket_name": "hd-staging-next-cache"
+        },
+        {
+          "binding": "HD_PRIVATE",
+          "bucket_name": "hd-staging-private"
+        },
+        {
+          "binding": "HD_PUBLIC",
+          "bucket_name": "hd-staging-public"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ASSET_VALIDATE",
+            "queue": "hd-staging-asset-validate"
+          },
+          {
+            "binding": "PROVIDER_NOTIFY",
+            "queue": "hd-staging-provider-notify"
+          }
+        ],
+        "consumers": [
+          { "queue": "hd-staging-asset-validate", "max_batch_size": 10, "max_batch_timeout": 5 },
+          { "queue": "hd-staging-provider-notify", "max_batch_size": 10, "max_batch_timeout": 5 }
+        ]
+      },
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "homedesign-staging"
+        }
+      ]
+    },
+    "production": {
+      "name": "homedesign-prod",
+      "vars": {
+        "ENVIRONMENT": "production",
+        "EMAIL_DELIVERY_MODE": "production"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hd-prod",
+          "database_id": "__PROVISIONED_PROD__",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "NEXT_INC_CACHE_R2_BUCKET",
+          "bucket_name": "hd-prod-next-cache"
+        },
+        {
+          "binding": "HD_PRIVATE",
+          "bucket_name": "hd-prod-private"
+        },
+        {
+          "binding": "HD_PUBLIC",
+          "bucket_name": "hd-prod-public"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ASSET_VALIDATE",
+            "queue": "hd-prod-asset-validate"
+          },
+          {
+            "binding": "PROVIDER_NOTIFY",
+            "queue": "hd-prod-provider-notify"
+          }
+        ],
+        "consumers": [
+          { "queue": "hd-prod-asset-validate", "max_batch_size": 10, "max_batch_timeout": 5 },
+          { "queue": "hd-prod-provider-notify", "max_batch_size": 10, "max_batch_timeout": 5 }
+        ]
+      },
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "homedesign-prod"
+        }
+      ]
+    }
+  }
+}
