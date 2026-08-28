@@ -2,7 +2,7 @@ import { Page, expect } from "@playwright/test";
 
 export const ADMIN_CREDENTIALS = {
   email: process.env.ADMIN_EMAIL || "minhthang421992@gmail.com",
-  password: process.env.ADMIN_PASSWORD || `admin-test-${Math.random().toString(36).slice(2)}!Aa1`,
+  password: process.env.ADMIN_PASSWORD || "Tonight123@",
 };
 
 export function generateTestUserCredentials(prefix = "test-user") {

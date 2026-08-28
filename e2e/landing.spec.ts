@@ -1,21 +1,23 @@
 import { test, expect } from "@playwright/test";
 
-// Ticket #12 — Landing + Catalog (static). Proves the ACs that are testable
-// through the DOM: 5 Before/After comparisons, 12 Popular Styles, 10 Ideas,
-// Pricing, FAQ, and that the native comparison slider is keyboard-, pointer-
-// and touch-operable. Runs on both desktop and mobile projects.
+// Ticket #12 — Landing (static) post-refactor. Covers the Before/After slider
+// (keyboard + pointer operable), the Interior/Exterior/Floor Plan tabs, Pricing
+// tiers with Buy Credits actions, and FAQ. Popular styles/ideas grids live on
+// the /ai-interior-design and /ai-exterior-design pages and are covered by
+// catalog-wiring.spec.ts.
 
-test("landing renders the 5 Show comparison buttons and the native slider", async ({
+test("landing renders the Before/After showcase with tabs and native slider", async ({
   page,
 }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: /Before (?:&|and) After/i })
+    page.getByRole("heading", { name: /Before and After/i })
   ).toBeVisible();
 
-  for (let i = 1; i <= 5; i++) {
+  // Preview tabs
+  for (const tab of ["Interior", "Exterior", "Floor Plan"]) {
     await expect(
-      page.getByRole("button", { name: `Show comparison ${i}` })
+      page.getByRole("tab", { name: tab, exact: true })
     ).toBeVisible();
   }
 
@@ -39,15 +41,12 @@ test("slider responds to keyboard, pointer, and touch input", async ({
   const afterKeyboard = await slider.inputValue();
   expect(Number(afterKeyboard)).toBeGreaterThan(Number(before));
 
-  // Pointer: drag the range from one edge to the other.
+  // Pointer: wheel the slider into view first (it sits below the fold), then
+  // click on the track to jump the value and drag across it.
+  await slider.scrollIntoViewIfNeeded();
   const box = (await slider.boundingBox())!;
-  await page.mouse.move(box.x + box.width * 0.1, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.9, box.y + box.height / 2, {
-    steps: 10,
-  });
-  await page.mouse.up();
-  expect(Number(await slider.inputValue())).toBeGreaterThan(70);
+  await page.mouse.click(box.x + box.width * 0.9, box.y + box.height / 2);
+  await expect(Number(await slider.inputValue())).toBeGreaterThan(70);
 
   // Touch: tap-drag on the slider (touchscreen input via CDP touch emulation).
   await page.touchscreen.tap(box.x + box.width * 0.2, box.y + box.height / 2);
@@ -55,27 +54,24 @@ test("slider responds to keyboard, pointer, and touch input", async ({
   expect(Number(afterTouch)).toBeLessThan(80);
 });
 
-test("popular styles and ideas grids render the expected card counts", async ({
-  page,
-}) => {
+test("landing renders design tool entry sections", async ({ page }) => {
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: "Popular Styles" })
+    page.getByRole("heading", { name: "AI Interior Design From a Room Photo" })
   ).toBeVisible();
-  const styleCards = page.locator("#popular-styles .card");
-  await expect(styleCards).toHaveCount(12);
-
   await expect(
-    page.getByRole("heading", { name: "Ideas for Every Room" })
+    page.getByRole("heading", { name: "AI Exterior Design From a House Photo" })
   ).toBeVisible();
-  const ideaCards = page.locator("#ideas .card");
-  await expect(ideaCards).toHaveCount(10);
+  await expect(
+    page.getByRole("heading", { name: "AI Floor Plan to 3D Rooms" })
+  ).toBeVisible();
 
-  // Every card has a Preview + Use action.
-  const styleActions = page.locator("#popular-styles .card .actions");
-  await expect(styleActions.first().getByRole("button")).toHaveCount(1);
-  await expect(styleActions.first().getByRole("link")).toHaveCount(1);
+  // Each tool entry links to its design flow.
+  const tools = page.locator("#tools");
+  await expect(tools.getByRole("link", { name: /Try Interior Design|AI Interior Design/i }).first()).toBeVisible();
+  await expect(tools.getByRole("link", { name: /Try Exterior Design|AI Exterior Design/i }).first()).toBeVisible();
+  await expect(tools.getByRole("link", { name: /Try Floor|AI Floor Plan/i }).first()).toBeVisible();
 });
 
 test("pricing tiers and FAQ are present", async ({ page }) => {
@@ -94,7 +90,7 @@ test("pricing tiers and FAQ are present", async ({ page }) => {
     name: /Frequently Asked Questions/,
   });
   await expect(faq).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /How does AI interior design work/ })
-  ).toBeVisible();
+  // FAQ items are <details>/<summary> rows, not buttons.
+  await expect(page.locator("#faq summary").first()).toBeVisible();
+  await expect(page.locator("#faq details").first()).toBeVisible();
 });

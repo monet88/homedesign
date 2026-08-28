@@ -87,14 +87,14 @@ test("application shell renders header and footer on mobile (390x844)", async ({
   await page.goto("/");
 
   await expect(page.getByRole("banner")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Sign In", exact: true })
-  ).toBeVisible();
+  // Mobile header collapses nav into a menu toggle; the CTA is the primary
+  // entry point and footer keeps the tool navigation visible.
   await expect(page.getByRole("contentinfo")).toBeVisible();
-
-  // Mobile hides the nav link row (md:flex) but keeps the footer columns.
   await expect(
-    page.getByRole("navigation", { name: "Design Tools" })
+    page.getByRole("link", { name: /Try Interior Design/ }).first()
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /AI Interior Design/ }).first()
   ).toBeVisible();
 });
 

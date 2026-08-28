@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { BeforeAfter } from "@/components/landing/before-after";
+import { CatalogPreviewModal } from "@/components/landing/catalog-preview-modal";
 import { PricingSection } from "@/components/landing/pricing-section";
 import {
   POPULAR_STYLES,
@@ -14,6 +16,7 @@ import {
   FAQ_INTERIOR,
   FAQ_EXTERIOR,
   FAQ_FLOOR_PLAN,
+  buildCatalogPresetHref,
   type CatalogItem,
   type FaqItem,
 } from "@/lib/catalog";
@@ -87,6 +90,7 @@ export function ToolMarketingSections({
   scene,
   onSelectPreset,
 }: ToolMarketingSectionsProps) {
+  const [previewItem, setPreviewItem] = useState<CatalogItem | null>(null);
   const isInterior = scene === "interior";
   const isExterior = scene === "exterior";
   const isFloorPlan = scene === "floor-plan";
@@ -141,7 +145,7 @@ export function ToolMarketingSections({
               return (
                 <div
                   key={item.title}
-                  className="group flex flex-col justify-between overflow-hidden rounded-2xl border border-border/80 bg-card p-3 shadow-2xs transition-all hover:shadow-md"
+                  className="card group flex flex-col justify-between overflow-hidden rounded-2xl border border-border/80 bg-card p-3 shadow-2xs transition-all hover:shadow-md"
                 >
                   <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-black/5 mb-3">
                     <img
@@ -185,6 +189,14 @@ export function ToolMarketingSections({
                       <IconSparkles className="size-3 text-brand-copper" />
                       <span>{item.useLabel}</span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewItem(item)}
+                      className="actions mt-2 flex w-full items-center justify-center gap-1.5 rounded-full border border-border/80 bg-background/60 py-1.5 text-xs font-semibold text-foreground/70 transition-colors hover:bg-background hover:text-foreground"
+                    >
+                      <IconImagePlus className="size-3" />
+                      <span>{item.previewLabel}</span>
+                    </button>
                   </div>
                 </div>
               );
@@ -213,7 +225,7 @@ export function ToolMarketingSections({
             {ideas.slice(0, 10).map((item) => (
               <div
                 key={item.title}
-                className="group flex flex-col justify-between overflow-hidden rounded-2xl border border-border/80 bg-card p-3 shadow-2xs transition-all hover:shadow-md"
+                className="card group flex flex-col justify-between overflow-hidden rounded-2xl border border-border/80 bg-card p-3 shadow-2xs transition-all hover:shadow-md"
               >
                 <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-black/5 mb-3">
                   <img
@@ -244,6 +256,14 @@ export function ToolMarketingSections({
                   >
                     <IconSparkles className="size-3 text-brand-copper" />
                     <span>{item.useLabel}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewItem(item)}
+                    className="actions mt-3 flex w-full items-center justify-center gap-1.5 rounded-full border border-border/80 bg-background/60 py-1.5 text-xs font-semibold text-foreground/70 transition-colors hover:bg-background hover:text-foreground"
+                  >
+                    <IconImagePlus className="size-3" />
+                    <span>Preview area</span>
                   </button>
                 </div>
               </div>
@@ -445,6 +465,17 @@ export function ToolMarketingSections({
           </div>
         </div>
       </section>
+
+      {previewItem && (
+        <CatalogPreviewModal
+          image={previewItem.image}
+          title={previewItem.title}
+          open={true}
+          onClose={() => setPreviewItem(null)}
+          useHref={buildCatalogPresetHref(previewItem)}
+          useLabel={previewItem.useLabel}
+        />
+      )}
     </div>
   );
 }

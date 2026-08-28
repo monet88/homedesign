@@ -2,10 +2,10 @@ import { test, expect } from "@playwright/test";
 
 // Ticket #17 — Use-style wiring + Preview modal on catalog cards.
 
-test("Preview style opens the card gallery image on the landing page", async ({
+test("Preview style opens the card gallery image on the interior page", async ({
   page,
 }) => {
-  await page.goto("/#popular-styles");
+  await page.goto("/ai-interior-design#popular-styles");
 
   const card = page.locator("#popular-styles .card").filter({ hasText: "Modern Warm" });
   await card.getByRole("button", { name: "Preview style" }).click();
@@ -15,21 +15,21 @@ test("Preview style opens the card gallery image on the landing page", async ({
 
   const previewImage = dialog.getByTestId("catalog-preview-image");
   await expect(previewImage).toBeVisible();
-  await expect(previewImage).toHaveAttribute("src", /hero-room-light\.webp/);
+  await expect(previewImage).toHaveAttribute("src", /modern-warm\.webp/);
 });
 
 test("Use style on interior card applies preset and routes to interior flow", async ({
   page,
 }) => {
-  await page.goto("/#popular-styles");
+  await page.goto("/ai-interior-design#popular-styles");
 
   const card = page.locator("#popular-styles .card").filter({ hasText: "Japandi" });
-  await card.getByRole("link", { name: "Use style" }).click();
+  await card.getByRole("button", { name: "Use style" }).click();
 
-  await expect(page).toHaveURL(/\/ai-interior-design\?style=Japandi/);
-  await expect(page.getByRole("heading", { name: "AI Interior Design" })).toBeVisible();
+  await expect(page).toHaveURL(/\/ai-interior-design/);
+  await expect(page.getByRole("heading", { name: "AI Interior Design" }).first()).toBeVisible();
 
-  const styleSelect = page.locator("select").nth(1);
+  const styleSelect = page.locator("select").nth(2);
   await expect(styleSelect).toHaveValue("Japandi");
 
   await expect(
@@ -43,9 +43,9 @@ test("Try this look on exterior card applies area preset and routes to exterior 
   await page.goto("/ai-exterior-design#ideas");
 
   const card = page.locator("#ideas .card").filter({ hasText: "Front Porch" });
-  await card.getByRole("link", { name: "Try this look" }).click();
+  await card.getByRole("button", { name: "Try this look" }).click();
 
-  await expect(page).toHaveURL(/\/ai-exterior-design\?area=Front\+Porch/);
+  await expect(page).toHaveURL(/\/ai-exterior-design/);
 
   const areaSelect = page.getByLabel("Area");
   await expect(areaSelect).toHaveValue("Front Porch");
@@ -67,6 +67,6 @@ test("Preview area idea opens the exterior card image", async ({ page }) => {
   await expect(dialog).toBeVisible();
   await expect(dialog.getByTestId("catalog-preview-image")).toHaveAttribute(
     "src",
-    /ai-exterior-design-poster\.webp/
+    /modern-farmhouse\.webp/
   );
 });

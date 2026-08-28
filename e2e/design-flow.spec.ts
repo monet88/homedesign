@@ -6,7 +6,7 @@ import { test, expect } from "@playwright/test";
 
 test("interior design page renders the form and upload dropzone", async ({ page }) => {
   await page.goto("/ai-interior-design");
-  await expect(page.getByRole("heading", { name: "AI Interior Design" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI Interior Design" }).first()).toBeVisible();
   await expect(page.getByText("Upload a room photo", { exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: /Room Type|Area/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Generate (1 Credits)" })).toBeVisible();
@@ -14,12 +14,12 @@ test("interior design page renders the form and upload dropzone", async ({ page 
 
 test("exterior design page renders the form and upload dropzone", async ({ page }) => {
   await page.goto("/ai-exterior-design");
-  await expect(page.getByRole("heading", { name: "AI Exterior Design" })).toBeVisible();
-  await expect(page.getByText("Upload a home photo", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI Exterior Design" }).first()).toBeVisible();
+  await expect(page.getByText("Upload a house photo", { exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: /Room Type|Area/ })).toBeVisible();
 });
 
-test("anonymous Generate click shows a toast and sends no request", async ({ page }) => {
+test("anonymous upload is blocked and no generation request fires", async ({ page }) => {
   await page.goto("/ai-interior-design");
 
   let requestFired = false;
@@ -27,8 +27,19 @@ test("anonymous Generate click shows a toast and sends no request", async ({ pag
     if (req.url().includes("/api/designs")) requestFired = true;
   });
 
-  await page.getByRole("button", { name: "Generate (1 Credits)" }).click();
+  await page.getByLabel("Upload a room photo").setInputFiles({
+    name: "room.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64"
+    ),
+  });
 
-  await expect(page.getByRole("status")).toContainText("Sign in to generate designs.");
+  // Anonymous upload hits the auth guard, so the Generate button stays disabled
+  // and no generation request ever fires.
+  await expect(
+    page.getByRole("button", { name: "Generate (1 Credits)" })
+  ).toBeDisabled();
   expect(requestFired).toBe(false);
 });

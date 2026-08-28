@@ -35,7 +35,7 @@ test.describe("Phase 1: Admin Operations & RBAC", () => {
 
   test("admin session accesses /admin, views tabs, inspects users and tasks", async ({
     page,
-  }) => {
+  }, testInfo) => {
     await signInAsAdmin(page);
     await page.goto("/admin");
 
@@ -44,11 +44,16 @@ test.describe("Phase 1: Admin Operations & RBAC", () => {
       page.getByRole("heading", { name: "System Administration" })
     ).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Admin Console")).toBeVisible();
-    await expect(page.getByText(ADMIN_CREDENTIALS.email)).toBeVisible();
+    // The signed-in email block is intentionally hidden below `sm` (admin
+    // header collapses), so only assert it on desktop runs.
+    if (testInfo.project.name === "chromium-desktop") {
+      await expect(page.getByText(ADMIN_CREDENTIALS.email)).toBeVisible();
+    }
 
     // Tab 1: User Management Table
     await expect(page.getByRole("button", { name: /User Management/ })).toBeVisible();
-    await expect(page.getByText("admin", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("User", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Adjust Credits").first()).toBeVisible();
 
     // Tab 2: AI Task Monitor
     await page.getByRole("button", { name: /AI Task Monitor/ }).click();
