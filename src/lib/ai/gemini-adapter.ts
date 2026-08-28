@@ -18,6 +18,7 @@ import type {
   ProviderOutput,
   ProviderRequest,
   ProviderSubmitResult,
+  HealthCheckResult,
 } from "@/lib/ai/types";
 import { validJpegBytes } from "@/lib/fixtures/images";
 
@@ -242,6 +243,67 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
 
     return null;
   }
+
+  async healthCheck(): Promise<HealthCheckResult> {
+    const endpoint = getModelsEndpoint(this.baseUrl);
+
+    if (!this.apiKey || !isLiveApiKeyConfigured(this.apiKey)) {
+      return {
+        status: "unhealthy",
+        latencyMs: 0,
+        models: [],
+        endpoint,
+        error: "MISSING_CREDENTIALS",
+      };
+    }
+
+    const start = performance.now();
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${this.apiKey}`,
+      };
+      const res = await this.fetchFn(endpoint, {
+        method: "GET",
+        headers,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      const latencyMs = Math.max(1, Math.round(performance.now() - start));
+
+      if (!res.ok) {
+        return { status: "unhealthy", latencyMs, models: [], endpoint };
+      }
+
+      const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      let models: string[] = [];
+      if (Array.isArray(json?.data)) {
+        models = (json.data as Array<{ id?: string; name?: string }>)
+          .map((m) => m.id || m.name)
+          .filter((id): id is string => typeof id === "string" && id.length > 0);
+      } else if (Array.isArray(json?.models)) {
+        models = (json.models as Array<{ id?: string; name?: string }>)
+          .map((m) => m.id || m.name)
+          .filter((id): id is string => typeof id === "string" && id.length > 0);
+      }
+
+      return { status: "healthy", latencyMs, models, endpoint };
+    } catch (err) {
+      const latencyMs = Math.max(1, Math.round(performance.now() - start));
+      const isTimeout =
+        err instanceof DOMException && err.name === "AbortError";
+      return {
+        status: "unhealthy",
+        latencyMs,
+        models: [],
+        endpoint,
+        error: isTimeout ? "TIMEOUT" : undefined,
+      };
+    }
+  }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -251,6 +313,12 @@ export function getChatCompletionsEndpoint(baseUrl: string): string {
   if (clean.endsWith("/chat/completions")) return clean;
   if (clean.endsWith("/v1")) return `${clean}/chat/completions`;
   return `${clean}/v1/chat/completions`;
+}
+
+export function getModelsEndpoint(baseUrl: string): string {
+  const clean = baseUrl.trim().replace(/\/+$/, "");
+  if (clean.endsWith("/v1")) return `${clean}/models`;
+  return `${clean}/v1/models`;
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {

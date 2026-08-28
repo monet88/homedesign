@@ -422,6 +422,7 @@ describe("Provider Registry with GeminiFlashImageAdapter", () => {
       name: "gemini",
       submit: async () => ({ ok: true, providerTaskId: "custom-1" }),
       fetchOutput: async () => null,
+      healthCheck: async () => ({ status: "healthy", latencyMs: 0, models: [], endpoint: "" }),
     };
     registerProvider(customStub);
     expect(getProvider("gemini")).toBe(customStub);

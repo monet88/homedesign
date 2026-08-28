@@ -56,6 +56,15 @@ export class FakeProviderAdapter implements ProviderAdapter {
     if (failure) throw new Error(failure);
     return { bytes: this.outputBytes, contentType: this.contentType };
   }
+
+  async healthCheck(): Promise<import("@/lib/ai/types").HealthCheckResult> {
+    return {
+      status: "healthy",
+      latencyMs: 0,
+      models: ["fake-model"],
+      endpoint: "fake://health",
+    };
+  }
 }
 
 /**
@@ -87,6 +96,16 @@ export class RealProviderAdapter implements ProviderAdapter {
 
   async fetchOutput(_req?: ProviderRequest, _providerTaskId?: string): Promise<ProviderOutput | null> {
     throw new Error("PROVIDER_NOT_CONFIGURED");
+  }
+
+  async healthCheck(): Promise<import("@/lib/ai/types").HealthCheckResult> {
+    return {
+      status: "unhealthy",
+      latencyMs: 0,
+      models: [],
+      endpoint: "",
+      error: "PROVIDER_NOT_CONFIGURED",
+    };
   }
 }
 

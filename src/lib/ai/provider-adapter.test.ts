@@ -184,6 +184,9 @@ describe("provider registry & selection policy matrix (Ticket #33)", () => {
       async fetchOutput() {
         return null;
       },
+      async healthCheck() {
+        return { status: "healthy", latencyMs: 0, models: [], endpoint: "" };
+      },
     };
     registerProvider(stub);
     expect(getProvider("stub")).toBe(stub);

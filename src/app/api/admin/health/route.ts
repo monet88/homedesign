@@ -1,5 +1,5 @@
 import { requireAdminSession } from "@/lib/auth/server";
-import { DEFAULT_AI_API_BASE_URL } from "@/lib/ai/gemini-adapter";
+import { getProvider } from "@/lib/ai/provider-adapter";
 
 async function checkHealth(request: Request) {
   const auth = await requireAdminSession(request);
@@ -7,69 +7,13 @@ async function checkHealth(request: Request) {
     return Response.json({ error: auth.error }, { status: auth.status });
   }
 
-  const baseUrl = (
-    auth.env.AI_API_BASE_URL ||
-    (typeof process !== "undefined" ? process.env?.AI_API_BASE_URL : undefined) ||
-    DEFAULT_AI_API_BASE_URL
-  )
-    .trim()
-    .replace(/\/+$/, "");
-
-  const apiKey =
-    auth.env.AI_API_KEY ||
-    (typeof process !== "undefined" ? process.env?.AI_API_KEY : undefined);
-
-  const endpoint = baseUrl.endsWith("/v1")
-    ? `${baseUrl}/models`
-    : `${baseUrl}/v1/models`;
-
-  const start = performance.now();
-  let status: "healthy" | "unhealthy" = "unhealthy";
-  let latencyMs = 0;
-  let models: string[] = [];
-
-  try {
-    const headers: Record<string, string> = {};
-    if (apiKey) {
-      headers["Authorization"] = `Bearer ${apiKey}`;
-    }
-
-    const res = await fetch(endpoint, {
-      method: "GET",
-      headers,
-    });
-
-    latencyMs = Math.max(1, Math.round(performance.now() - start));
-
-    if (res.ok) {
-      status = "healthy";
-      const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      if (Array.isArray(json?.data)) {
-        models = (json.data as Array<{ id?: string; name?: string }>)
-          .map((m) => m.id || m.name)
-          .filter((id): id is string => typeof id === "string" && id.length > 0);
-      } else if (Array.isArray(json?.models)) {
-        models = (json.models as Array<{ id?: string; name?: string }>)
-          .map((m) => m.id || m.name)
-          .filter((id): id is string => typeof id === "string" && id.length > 0);
-      }
-    } else {
-      status = "unhealthy";
-    }
-  } catch {
-    latencyMs = Math.max(1, Math.round(performance.now() - start));
-    status = "unhealthy";
-  }
+  const provider = getProvider("gemini", auth.env);
+  const result = await provider.healthCheck();
 
   return Response.json(
     {
       code: 0,
-      data: {
-        status,
-        latencyMs,
-        models,
-        endpoint,
-      },
+      data: result,
     },
     { headers: { "cache-control": "no-store" } }
   );

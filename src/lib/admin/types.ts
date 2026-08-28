@@ -44,6 +44,7 @@ export interface HealthCheckResult {
   models: string[];
   endpoint: string;
   checkedAt?: number;
+  error?: string;
 }
 
 export interface AdminCreditAdjustmentData {

@@ -188,10 +188,20 @@ export interface ProviderOutput {
   contentType: string;
 }
 
+/** Result of a provider health check. */
+export interface HealthCheckResult {
+  status: "healthy" | "unhealthy";
+  latencyMs: number;
+  models: string[];
+  endpoint: string;
+  error?: string;
+}
+
 export interface ProviderAdapter {
   readonly name: string;
   submit(req: ProviderRequest): Promise<ProviderSubmitResult>;
   fetchOutput(req?: ProviderRequest, providerTaskId?: string): Promise<ProviderOutput | null>;
+  healthCheck(): Promise<HealthCheckResult>;
 }
 
 // ── Task lifecycle ───────────────────────────────────────────────────────────
