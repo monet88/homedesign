@@ -240,6 +240,44 @@ describe("Credit Hold: atomic task + hold, settle on ready+attached (AC3)", () =
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 
+  it("atomically reserves balance across concurrent different-key tasks", async () => {
+    const taskDef = {
+      scene: "interior",
+      provider: "fake",
+      model: "gemini-2.5-flash-image",
+      prompt: "Concurrent expensive redesign",
+      sourceKey: null,
+      options: {},
+    };
+
+    const results = await Promise.allSettled([
+      createTaskWithHold(env, userId, taskDef, 8, "task-balance-race-a"),
+      createTaskWithHold(env, userId, taskDef, 8, "task-balance-race-b"),
+    ]);
+
+    const fulfilled = results.filter((result) => result.status === "fulfilled");
+    const rejected = results.filter((result) => result.status === "rejected") as PromiseRejectedResult[];
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toMatchObject({ message: "INSUFFICIENT_CREDITS" });
+
+    const tasks = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM ai_tasks WHERE user_id = ?1`
+    ).bind(userId).first<{ cnt: number }>();
+    const holds = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_holds WHERE user_id = ?1 AND status = 'active'`
+    ).bind(userId).first<{ cnt: number }>();
+    const idempotencyRows = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM idempotency_keys WHERE user_id = ?1 AND operation = 'task_create'`
+    ).bind(userId).first<{ cnt: number }>();
+
+    expect(tasks?.cnt).toBe(1);
+    expect(holds?.cnt).toBe(1);
+    expect(idempotencyRows?.cnt).toBe(1);
+    expect(await getAvailableCredits(env, userId)).toBe(2);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
   it("same task key + different payload -> 409", async () => {
     await createTaskWithHold(env, userId, {
       scene: "interior",

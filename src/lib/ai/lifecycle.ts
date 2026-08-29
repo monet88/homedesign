@@ -5,8 +5,8 @@
 //
 //   POST /api/designs
 //     validate config → authorize source Asset (`ready`, owned)
-//     → ensure free grant → check Available ≥ cost
-//     → createTaskWithHold (atomic task row + Credit Hold, #5)
+//      ensure free grant
+//      createTaskWithHold (atomic balance reservation + task/hold/domain acceptance)
 //     → insert Design row + Project linkage
 //     → dispatch PROVIDER_NOTIFY {type:"task-dispatch"} (instance id == task id)
 //
@@ -43,7 +43,7 @@ import {
   type ResolvedFloorPlanStagePlan,
 } from "@/lib/floor-plan";
 import type { Env } from "@/lib/bindings";
-import { ensureFreeCreditGrant, getAvailableCredits } from "@/lib/credits/ledger";
+import { ensureFreeCreditGrant } from "@/lib/credits/ledger";
 import { presignGetUrl } from "@/lib/intake/presign";
 import { validateAsset, type AssetValidationJob } from "@/lib/intake/validator";
 import {
@@ -188,7 +188,8 @@ export async function createDesign(
         env.DB.prepare(
           `INSERT INTO designs (id, user_id, project_id, scene, stage, provider, model, provider_scene, prompt,
              config_json, source_asset_id, output_asset_id, cost_credits, idempotency_key, created_at, updated_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, ?12, ?13, ?14, ?14)`
+           SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, ?12, ?13, ?14, ?14
+           WHERE EXISTS (SELECT 1 FROM ai_tasks WHERE id = ?15)`
         ).bind(
           taskId,
           userId,
@@ -203,44 +204,46 @@ export async function createDesign(
           asset.id,
           effectiveConfig.cost,
           effectiveConfig.idempotencyKey,
-          now
+          now,
+          taskId
         ),
         floorPlanStagePlan.prepareStageRun(env, taskId, now),
       ];
     }
 
     return [
-      // D1 serializes this batch transaction, so a concurrent Design using the
-      // same source observes the project inserted by the preceding winner and
-      // reuses it. No project is committed if later acceptance statements fail.
       env.DB.prepare(
         `INSERT INTO projects (id, user_id, kind, name, status, source_asset_id, created_at, updated_at)
          SELECT ?1, ?2, ?3, ?4, 'draft', ?5, ?6, ?6
-         WHERE NOT EXISTS (
-           SELECT 1 FROM projects WHERE user_id = ?2 AND kind = ?3 AND source_asset_id = ?5
-         )`
+         WHERE EXISTS (SELECT 1 FROM ai_tasks WHERE id = ?7)
+           AND NOT EXISTS (
+             SELECT 1 FROM projects WHERE user_id = ?2 AND kind = ?3 AND source_asset_id = ?5
+           )`
       ).bind(
         candidateProjectId!,
         userId,
         effectiveConfig.scene,
         defaultProjectName(effectiveConfig),
         asset.id,
-        now
+        now,
+        taskId
       ),
       env.DB.prepare(
         `INSERT OR IGNORE INTO project_assets (project_id, asset_id, role, created_at)
          SELECT id, ?4, 'source', ?5
          FROM projects
          WHERE user_id = ?1 AND kind = ?2 AND source_asset_id = ?3
+           AND EXISTS (SELECT 1 FROM ai_tasks WHERE id = ?6)
          ORDER BY created_at ASC, id ASC
          LIMIT 1`
-      ).bind(userId, effectiveConfig.scene, asset.id, asset.id, now),
+      ).bind(userId, effectiveConfig.scene, asset.id, asset.id, now, taskId),
       env.DB.prepare(
         `INSERT INTO designs (id, user_id, project_id, scene, stage, provider, model, provider_scene, prompt,
            config_json, source_asset_id, output_asset_id, cost_credits, idempotency_key, created_at, updated_at)
          SELECT ?1, ?2, id, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, NULL, ?11, ?12, ?13, ?13
          FROM projects
          WHERE user_id = ?2 AND kind = ?3 AND source_asset_id = ?10
+           AND EXISTS (SELECT 1 FROM ai_tasks WHERE id = ?14)
          ORDER BY created_at ASC, id ASC
          LIMIT 1`
       ).bind(
@@ -256,7 +259,8 @@ export async function createDesign(
         asset.id,
         effectiveConfig.cost,
         effectiveConfig.idempotencyKey,
-        now
+        now,
+        taskId
       ),
     ];
   };
@@ -281,16 +285,6 @@ export async function createDesign(
       // Free grant is ensured on every verified new-task path (ADR 0002); idempotent.
       await ensureFreeCreditGrant(env, userId);
 
-      // Credit gate before the acceptance batch; idempotency + hold + task/domain writes commit atomically.
-      const available = await getAvailableCredits(env, userId);
-      if (available < effectiveConfig.cost) {
-        throw new DesignError(
-          "INSUFFICIENT_CREDITS",
-          402,
-          `available ${available} < cost ${effectiveConfig.cost}`
-        );
-      }
-
       created = await createTaskWithHold(
         env,
         userId,
@@ -305,14 +299,14 @@ export async function createDesign(
     if (message === "IDEMPOTENCY_KEY_REUSED") {
       throw new DesignError("IDEMPOTENCY_KEY_REUSED", 409);
     }
+    if (floorPlanStagePlan) {
+      // If a concurrent Floor Plan request won while this acceptance was in
+      // flight, preserve the stage-processing 409 contract before mapping a
+      // balance rejection from the same serialized transaction.
+      await floorPlanStagePlan.assertCanStart();
+    }
     if (message === "INSUFFICIENT_CREDITS") {
       throw new DesignError("INSUFFICIENT_CREDITS", 402);
-    }
-    if (floorPlanStagePlan) {
-      // If the atomic batch lost the partial-unique processing-run race, the
-      // winner is now visible. Re-run the domain guard to preserve the public
-      // INVALID_INTENT / 409 contract instead of leaking a raw D1 constraint.
-      await floorPlanStagePlan.assertCanStart();
     }
     throw err;
   }

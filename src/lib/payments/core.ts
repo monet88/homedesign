@@ -316,8 +316,6 @@ export async function createTaskWithHold(
   idempotencyKey: string,
   acceptanceStatements?: TaskAcceptanceStatements
 ): Promise<{ taskId: string; cached: boolean }> {
-  // Fast path for normal retries. The unique idempotency row remains the
-  // serialization point for truly concurrent first attempts below.
   const cached = await preflightTaskCreateIdempotency(
     env,
     userId,
@@ -344,21 +342,26 @@ export async function createTaskWithHold(
   const fingerprint = await canonicalHash(taskCreatePayload(taskDef, cost));
 
   const statements: D1PreparedStatement[] = [
-    // Claim the idempotency key first. If another concurrent caller already
-    // won, this unique insert aborts the whole D1 batch before any hold/task
-    // side effect can commit.
+    // The conditional Credit Hold reservation is first and acts as the
+    // transaction-wide acceptance token for every later write.
+    ...preparedHold.statements,
     env.DB.prepare(
       `INSERT INTO idempotency_keys (
          id, user_id, operation, idempotency_key, request_fingerprint,
          result_type, result_id, created_at
-       ) VALUES (?1, ?2, 'task_create', ?3, ?4, 'task', ?5, ?6)`
-    ).bind(idempotencyId, userId, idempotencyKey, fingerprint, taskId, now),
-    ...preparedHold.statements,
+       )
+       SELECT ?1, ?2, 'task_create', ?3, ?4, 'task', ?5, ?6
+       FROM credit_holds
+       WHERE id = ?7 AND status = 'active'`
+    ).bind(idempotencyId, userId, idempotencyKey, fingerprint, taskId, now, holdId),
     env.DB.prepare(
       `INSERT INTO ai_tasks (
          id, scene, provider, model, prompt, source_key, status, created_at,
          updated_at, user_id, hold_id, cost_credits, expires_at
-       ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'accepted', ?7, ?7, ?8, ?9, ?10, ?11)`
+       )
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, 'accepted', ?7, ?7, ?8, ?9, ?10, ?11
+       FROM credit_holds
+       WHERE id = ?12 AND status = 'active'`
     ).bind(
       taskId,
       taskDef.scene,
@@ -370,7 +373,8 @@ export async function createTaskWithHold(
       userId,
       holdId,
       cost,
-      expiresAt
+      expiresAt,
+      holdId
     ),
   ];
 
@@ -379,16 +383,27 @@ export async function createTaskWithHold(
   }
 
   try {
-    // D1 batch() is a transaction: any uniqueness/statement failure rolls back
-    // the idempotency claim, hold ledger row, active hold, task, and optional
-    // domain acceptance rows as one unit.
-    await env.DB.batch(statements);
+    const results = await env.DB.batch(statements);
+    if ((results[0]?.meta.changes ?? 0) === 0) {
+      // A concurrent same-key winner can consume the balance before this
+      // reservation executes. Preserve cache semantics before treating the
+      // request as a distinct insufficient-credit attempt.
+      const winner = await preflightTaskCreateIdempotency(
+        env,
+        userId,
+        taskDef,
+        cost,
+        idempotencyKey
+      );
+      if (winner) return winner;
+      throw new Error("INSUFFICIENT_CREDITS");
+    }
     return { taskId, cached: false };
   } catch (err) {
-    // A same-key concurrent winner may have committed while this batch lost the
-    // unique idempotency race. Re-read it and preserve same-payload cache vs
-    // different-payload 409 semantics. If no winner exists, the failure came
-    // from another acceptance constraint (for example Floor Plan stage busy).
+    if ((err as Error).message === "INSUFFICIENT_CREDITS") throw err;
+
+    // Any later constraint failure rolls the reservation back. A same-key
+    // concurrent winner is the only failure that resolves as a cache hit.
     const winner = await preflightTaskCreateIdempotency(
       env,
       userId,
@@ -400,6 +415,7 @@ export async function createTaskWithHold(
     throw err;
   }
 }
+
 /**
  * Settle a hold when the Generated Asset is ready + attached to Project.
  *

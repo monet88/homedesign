@@ -32,6 +32,7 @@ import {
   getLedgerSummary,
   assertCreditInvariant,
   getActiveHoldByRef,
+  useCredits,
 } from "@/lib/credits/ledger";
 import { createTaskWithHold } from "@/lib/payments/core";
 import { validPngBytes } from "@/lib/fixtures/images";
@@ -343,6 +344,44 @@ describe("AC3: Idempotency", () => {
     expect(designRows?.c).toBe(1);
     expect(activeHolds?.c).toBe(1);
     expect(await getAvailableCredits(env, userId)).toBe(9);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent different-key createDesign calls cannot overspend or leave orphan Designs", async () => {
+    const userId = await seedUser();
+    const assetId = await seedReadyAsset(userId);
+    await useCredits(env, userId, 9, "Leave one credit for reservation race");
+    expect(await getAvailableCredits(env, userId)).toBe(1);
+
+    const results = await Promise.allSettled([
+      createDesign(env, userId, interiorPayload(assetId, "balance-design-a")),
+      createDesign(env, userId, interiorPayload(assetId, "balance-design-b")),
+    ]);
+
+    const fulfilled = results.filter((result) => result.status === "fulfilled");
+    const rejected = results.filter((result) => result.status === "rejected") as PromiseRejectedResult[];
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toMatchObject({ code: "INSUFFICIENT_CREDITS", status: 402 });
+
+    const tasks = await env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM ai_tasks WHERE user_id = ?1`
+    ).bind(userId).first<{ c: number }>();
+    const designs = await env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM designs WHERE user_id = ?1`
+    ).bind(userId).first<{ c: number }>();
+    const holds = await env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM credit_holds WHERE user_id = ?1 AND status = 'active'`
+    ).bind(userId).first<{ c: number }>();
+    const keys = await env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM idempotency_keys WHERE user_id = ?1 AND operation = 'task_create'`
+    ).bind(userId).first<{ c: number }>();
+
+    expect(tasks?.c).toBe(1);
+    expect(designs?.c).toBe(1);
+    expect(holds?.c).toBe(1);
+    expect(keys?.c).toBe(1);
+    expect(await getAvailableCredits(env, userId)).toBe(0);
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 

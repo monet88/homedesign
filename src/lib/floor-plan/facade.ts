@@ -151,7 +151,10 @@ export async function resolveFloorPlanStagePlan(
       return env.DB.prepare(
         `INSERT INTO floor_plan_stage_runs (
            id, room_design_id, stage, status, design_id, confirmed_at, created_at, updated_at
-         ) VALUES (?1, ?2, ?3, 'processing', ?1, NULL, ?4, ?4)`
+         )
+         SELECT ?1, ?2, ?3, 'processing', ?1, NULL, ?4, ?4
+         FROM designs
+         WHERE id = ?1`
       ).bind(taskId, roomId, stage, now);
     },
   };

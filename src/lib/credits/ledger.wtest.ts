@@ -109,6 +109,26 @@ describe("hold / settle / release primitives (AC4)", () => {
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 
+  it("atomically reserves available credits across concurrent different refs", async () => {
+    await ensureFreeCreditGrant(env, userId);
+
+    const results = await Promise.allSettled([
+      holdCredits(env, userId, 8, "task", "balance-race-a", "Concurrent A"),
+      holdCredits(env, userId, 8, "task", "balance-race-b", "Concurrent B"),
+    ]);
+
+    const fulfilled = results.filter((result) => result.status === "fulfilled");
+    const rejected = results.filter((result) => result.status === "rejected") as PromiseRejectedResult[];
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toMatchObject({ message: "INSUFFICIENT_CREDITS" });
+
+    const summary = await getLedgerSummary(env, userId);
+    expect(summary.activeHolds).toBe(8);
+    expect(summary.available).toBe(2);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
   it("settle/release on non-active hold throws", async () => {
     await ensureFreeCreditGrant(env, userId);
     const holdId = await holdCredits(env, userId, 1, "task", "task-4", "Test");

@@ -321,14 +321,33 @@ export function prepareCreditHold(
   return {
     holdId,
     statements: [
+      // Reserve only when the balance visible inside this D1 transaction can
+      // cover the full hold. Concurrent batches are serialized, so a later
+      // reservation observes earlier committed active holds.
       env.DB.prepare(
-        `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
-         VALUES (?1, ?2, 'hold', ?3, ?4, ?5, ?6, NULL, ?7)`
-      ).bind(ledgerEntryId, userId, amount, reason, refType, refId, now),
-      env.DB.prepare(
-        `INSERT INTO credit_holds (id, user_id, amount, status, ref_type, ref_id, ledger_hold_id, created_at)
-         VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, ?7)`
+        `INSERT INTO credit_holds (
+           id, user_id, amount, status, ref_type, ref_id, ledger_hold_id, created_at
+         )
+         SELECT ?1, ?2, ?3, 'active', ?4, ?5, ?6, ?7
+         WHERE (
+           (SELECT COALESCE(SUM(amount), 0) FROM credit_ledger
+              WHERE user_id = ?2 AND entry_type IN ('grant', 'payment'))
+           - (SELECT COALESCE(SUM(amount), 0) FROM credit_ledger
+              WHERE user_id = ?2 AND entry_type = 'usage')
+           - (SELECT COALESCE(SUM(amount), 0) FROM credit_holds
+              WHERE user_id = ?2 AND status = 'active')
+         ) >= ?3`
       ).bind(holdId, userId, amount, refType, refId, ledgerEntryId, now),
+      // The ledger row is conditional on the reservation above. If balance was
+      // insufficient, neither side of the hold contract is written.
+      env.DB.prepare(
+        `INSERT INTO credit_ledger (
+           id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at
+         )
+         SELECT ?1, ?2, 'hold', ?3, ?4, ?5, ?6, NULL, ?7
+         FROM credit_holds
+         WHERE id = ?8 AND status = 'active'`
+      ).bind(ledgerEntryId, userId, amount, reason, refType, refId, now, holdId),
     ],
   };
 }
@@ -343,18 +362,26 @@ export async function holdCredits(
 ): Promise<string> {
   const prepared = prepareCreditHold(env, userId, amount, refType, refId, reason);
 
-  // Atomic batch: hold ledger entry (negative amount) + active hold row.
-  // The unique ref index rejects a second active hold for the same task/run;
-  // because batch() is transactional, a conflict rolls the ledger entry back too.
   try {
-    await env.DB.batch(prepared.statements);
-  } catch {
-    // Unique constraint violation - a hold already exists for this ref.
-    throw new Error("HOLD_ALREADY_ACTIVE");
+    const results = await env.DB.batch(prepared.statements);
+    if ((results[0]?.meta.changes ?? 0) === 0) {
+      const existing = await getActiveHoldByRef(env, refType, refId);
+      if (existing) throw new Error("HOLD_ALREADY_ACTIVE");
+      throw new Error("INSUFFICIENT_CREDITS");
+    }
+  } catch (err) {
+    const message = (err as Error).message;
+    if (message === "HOLD_ALREADY_ACTIVE" || message === "INSUFFICIENT_CREDITS") {
+      throw err;
+    }
+    const existing = await getActiveHoldByRef(env, refType, refId);
+    if (existing) throw new Error("HOLD_ALREADY_ACTIVE", { cause: err });
+    throw err;
   }
 
   return prepared.holdId;
 }
+
 /**
  * Settle a hold: mark the credit_holds row as 'settled' and append a 'usage'
  * ledger entry. Called by #7 when Generated Assets are ready + attached.

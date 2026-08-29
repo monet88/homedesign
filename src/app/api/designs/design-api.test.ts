@@ -116,16 +116,18 @@ let mockAssets: MockAsset[] = [];
 let mockTasks: MockTask[] = [];
 let mockDesigns: MockDesign[] = [];
 let mockIdempotencyKeys: MockIdempotencyRow[] = [];
+let mockActiveHoldIds = new Set<string>();
 let userCredits = 10;
 let queueMessages: unknown[] = [];
 
 function createMockDb() {
   return {
-    async batch(stmts: Array<{ run: () => Promise<{ success: boolean }> }>) {
+    async batch(stmts: Array<{ run: () => Promise<{ success: boolean; meta: { changes: number } }> }>) {
+      const results = [];
       for (const s of stmts) {
-        await s.run();
+        results.push(await s.run());
       }
-      return [];
+      return results;
     },
     prepare(query: string) {
       let boundArgs: any[] = [];
@@ -187,11 +189,39 @@ function createMockDb() {
         async all<T = any>(): Promise<{ results: T[] }> {
           return { results: [] };
         },
-        async run(): Promise<{ success: boolean }> {
+        async run(): Promise<{ success: boolean; meta: { changes: number } }> {
           const q = query.trim().toUpperCase();
+          const ok = (changes = 1) => ({ success: true, meta: { changes } });
+
+          if (q.includes("INSERT INTO CREDIT_HOLDS")) {
+            const [holdId, , amount] = boundArgs as [string, string, number];
+            if (userCredits < amount) return ok(0);
+            userCredits -= amount;
+            mockActiveHoldIds.add(holdId);
+            return ok();
+          }
+
+          if (q.includes("INSERT INTO CREDIT_LEDGER") && q.includes("FROM CREDIT_HOLDS")) {
+            const reservationHoldId = boundArgs[7] as string;
+            return ok(mockActiveHoldIds.has(reservationHoldId) ? 1 : 0);
+          }
 
           if (q.includes("INSERT INTO AI_TASKS")) {
-            const [id, scene, provider, model, prompt, source_key, user_id, hold_id, cost_credits, expires_at, now] = boundArgs;
+            const [
+              id,
+              scene,
+              provider,
+              model,
+              prompt,
+              source_key,
+              now,
+              user_id,
+              hold_id,
+              cost_credits,
+              expires_at,
+              reservationHoldId,
+            ] = boundArgs;
+            if (!mockActiveHoldIds.has(reservationHoldId)) return ok(0);
             mockTasks.push({
               id,
               scene,
@@ -212,30 +242,47 @@ function createMockDb() {
               validation_attempts: 0,
               dispatched_at: null,
             });
-            return { success: true };
+            return ok();
           }
 
           if (q.includes("INSERT INTO IDEMPOTENCY_KEYS")) {
-            const [id, userId, op, key, fingerprint, resultType, resultId, now] = boundArgs;
+            const [id, userId, key, fingerprint, resultId, now, reservationHoldId] = boundArgs;
+            if (!mockActiveHoldIds.has(reservationHoldId)) return ok(0);
             mockIdempotencyKeys.push({
               id,
               user_id: userId,
-              operation: op,
+              operation: "task_create",
               idempotency_key: key,
               request_fingerprint: fingerprint,
-              result_type: resultType,
+              result_type: "task",
               result_id: resultId,
               created_at: now,
             });
-            return { success: true };
+            return ok();
           }
 
           if (q.includes("INSERT INTO DESIGNS")) {
-            const [id, user_id, project_id, scene, stage, provider, model, provider_scene, prompt, config_json, source_asset_id, cost_credits, idempotency_key, now] = boundArgs;
+            const [
+              id,
+              user_id,
+              scene,
+              stage,
+              provider,
+              model,
+              provider_scene,
+              prompt,
+              config_json,
+              source_asset_id,
+              cost_credits,
+              idempotency_key,
+              now,
+              acceptanceTaskId,
+            ] = boundArgs;
+            if (!mockTasks.some((task) => task.id === acceptanceTaskId)) return ok(0);
             mockDesigns.push({
               id,
               user_id,
-              project_id,
+              project_id: "proj-1",
               scene,
               stage,
               provider,
@@ -251,18 +298,17 @@ function createMockDb() {
               updated_at: now,
               completed_at: null,
             });
-            return { success: true };
+            return ok();
           }
 
           if (q.includes("UPDATE AI_TASKS SET DISPATCHED_AT")) {
             const [taskId, dispatchedAt] = boundArgs;
-            const t = mockTasks.find((item) => item.id === taskId);
-            if (t) t.dispatched_at = dispatchedAt;
-            return { success: true };
+            const task = mockTasks.find((item) => item.id === taskId);
+            if (task) task.dispatched_at = dispatchedAt;
+            return ok(task ? 1 : 0);
           }
 
-          return { success: true };
-        },
+          return ok();        },
       };
       return stmt;
     },
@@ -343,6 +389,7 @@ describe("Design Generation Entry Points Contract Matrix (Ticket #44)", () => {
     mockTasks = [];
     mockDesigns = [];
     mockIdempotencyKeys = [];
+    mockActiveHoldIds = new Set<string>();
     queueMessages = [];
     mockAssets = [
       {
