@@ -953,14 +953,22 @@ describe("Spec #58: AI Task Lifecycle & Idempotency Concurrency Invariants", () 
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 
-  it("concurrent mockPurchase same key: exactly 1 payment row and 1 ledger payment", async () => {
+  it("concurrent mockPurchase same key: both fulfilled, same payment ID, exactly 1 payment row and 1 ledger entry", async () => {
     const key = "race-mock-pay-key";
     const [r1, r2] = await Promise.allSettled([
       mockPurchase(env, userId, "plus", key),
       mockPurchase(env, userId, "plus", key),
     ]);
 
-    expect(r1.status === "fulfilled" || r2.status === "fulfilled").toBe(true);
+    expect(r1.status).toBe("fulfilled");
+    expect(r2.status).toBe("fulfilled");
+    if (r1.status === "fulfilled" && r2.status === "fulfilled") {
+      expect(r1.value.id).toBe(r2.value.id);
+      expect(r1.value.amount).toBe(160);
+      expect(r2.value.amount).toBe(160);
+      expect([r1.value.cached, r2.value.cached]).toContain(true);
+      expect([r1.value.cached, r2.value.cached]).toContain(false);
+    }
 
     // Exactly 1 mock_payments row
     const payments = await env.DB.prepare(
@@ -1087,6 +1095,69 @@ describe("Spec #58: AI Task Lifecycle & Idempotency Concurrency Invariants", () 
       expect(await getAvailableCredits(env, userId)).toBe(10);
     }
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent releaseHoldOnTerminal vs server expiry: exactly one terminal state, never overwrites expired to failed", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 2, "race-release-expire-key");
+
+    // Force task past expiry so reconciler races with failure callback
+    await env.DB.prepare(`UPDATE ai_tasks SET expires_at = ?1 WHERE id = ?2`)
+      .bind(Date.now() - 1, taskId).run();
+
+    await Promise.allSettled([
+      releaseHoldOnTerminal(env, taskId, "failed"),
+      expireStaleTasks(env),
+    ]);
+
+    const task = await env.DB.prepare(
+      `SELECT status FROM ai_tasks WHERE id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    const hold = await env.DB.prepare(
+      `SELECT status FROM credit_holds WHERE ref_id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    const release = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'release'`
+    ).bind(userId).first<{ cnt: number }>();
+
+    expect(hold?.status).toBe("released");
+    // Exactly 1 release ledger entry created across both racing operations
+    expect(release?.cnt).toBe(1);
+    // Terminal status is either 'failed' or 'expired', never corrupted
+    expect(["failed", "expired"]).toContain(task?.status);
+    // Balance restored to full 10
+    expect(await getAvailableCredits(env, userId)).toBe(10);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("expireStaleTasks expires stale tasks even with null hold_id or missing hold record", async () => {
+    const taskIdNoHold = crypto.randomUUID();
+    const taskIdMissingHold = crypto.randomUUID();
+    const now = Date.now();
+
+    // Task 1: hold_id is null
+    await env.DB.prepare(
+      `INSERT INTO ai_tasks (id, scene, provider, model, prompt, status, created_at, updated_at, user_id, hold_id, cost_credits, expires_at)
+       VALUES (?1, 'interior', 'fake', 'm', 'P', 'accepted', ?2, ?2, ?3, NULL, 0, ?4)`
+    ).bind(taskIdNoHold, now, userId, now - 1000).run();
+
+    // Task 2: hold_id points to non-existent hold
+    await env.DB.prepare(
+      `INSERT INTO ai_tasks (id, scene, provider, model, prompt, status, created_at, updated_at, user_id, hold_id, cost_credits, expires_at)
+       VALUES (?1, 'interior', 'fake', 'm', 'P', 'accepted', ?2, ?2, ?3, 'non-existent-hold', 1, ?4)`
+    ).bind(taskIdMissingHold, now, userId, now - 1000).run();
+
+    const expired = await expireStaleTasks(env);
+    expect(expired).toBe(2);
+
+    const task1 = await env.DB.prepare(`SELECT status, expired_at FROM ai_tasks WHERE id = ?1`).bind(taskIdNoHold).first<{ status: string; expired_at: number }>();
+    expect(task1?.status).toBe("expired");
+    expect(task1?.expired_at).toBeTruthy();
+
+    const task2 = await env.DB.prepare(`SELECT status, expired_at FROM ai_tasks WHERE id = ?1`).bind(taskIdMissingHold).first<{ status: string; expired_at: number }>();
+    expect(task2?.status).toBe("expired");
+    expect(task2?.expired_at).toBeTruthy();
   });
 });
 

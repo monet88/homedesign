@@ -319,7 +319,7 @@ export async function releaseHoldOnTerminal(
   // If hold was already released (e.g. earlier expiry), ensure task is terminal without duplicate ledger entry.
   if (hold.status === "released") {
     await env.DB.prepare(
-      `UPDATE ai_tasks SET status = ?1, updated_at = ?2 WHERE id = ?3 AND status NOT IN ('ready', 'notified')`
+      `UPDATE ai_tasks SET status = ?1, updated_at = ?2 WHERE id = ?3 AND status NOT IN ('ready', 'notified', 'failed', 'expired')`
     ).bind(taskStatus, now, taskId).run();
     return;
   }
@@ -342,7 +342,7 @@ export async function releaseHoldOnTerminal(
       `UPDATE credit_holds SET status = 'released', released_at = ?1 WHERE id = ?2 AND status = 'active'`
     ).bind(now, hold.id),
     env.DB.prepare(
-      `UPDATE ai_tasks SET status = ?1, updated_at = ?2 WHERE id = ?3 AND status NOT IN ('ready', 'notified')`
+      `UPDATE ai_tasks SET status = ?1, updated_at = ?2 WHERE id = ?3 AND status NOT IN ('ready', 'notified', 'failed', 'expired')`
     ).bind(taskStatus, now, taskId),
   ]);
 }
@@ -366,14 +366,25 @@ export async function expireStaleTasks(env: Env): Promise<number> {
 
   let expiredCount = 0;
   for (const task of stale.results ?? []) {
-    if (!task.hold_id) continue;
+    if (!task.hold_id) {
+      await env.DB.prepare(
+        `UPDATE ai_tasks SET status = 'expired', expired_at = ?1, updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'notified', 'failed', 'expired')`
+      ).bind(now, task.id).run();
+      expiredCount++;
+      continue;
+    }
     try {
       const hold = await env.DB.prepare(
         `SELECT * FROM credit_holds WHERE id = ?1`
       ).bind(task.hold_id).first<CreditHold>();
 
-      if (!hold) continue;
-
+      if (!hold) {
+        await env.DB.prepare(
+          `UPDATE ai_tasks SET status = 'expired', expired_at = ?1, updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'notified', 'failed', 'expired')`
+        ).bind(now, task.id).run();
+        expiredCount++;
+        continue;
+      }
       // If hold was settled, task completed success: do not expire
       if (hold.status === "settled") continue;
 
