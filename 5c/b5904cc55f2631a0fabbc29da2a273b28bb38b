@@ -1,0 +1,16 @@
+src/lib/ai/lifecycle.ts
+  h_17f2fa2b92da6a 137-138,245,247-250,280-287,302-306,308-312,314-316,318
+src/lib/floor-plan/floor-plan.wtest.ts
+  h_17f2fa2b92da6a 5-6,323,329-336,340,342,344-432,447,449,452-454,458,698
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "5cb5904cc55f2631a0fabbc29da2a273b28bb38b",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
