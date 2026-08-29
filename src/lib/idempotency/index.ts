@@ -69,19 +69,19 @@ export async function withIdempotency<T>(
   ).bind(userId, operation, idempotencyKey).first<IdempotencyRecord>();
 
   if (existing) {
-    if (existing.request_fingerprint === fingerprint) {
-      // Same key + same payload → cached.
-      return {
-        resultType: existing.result_type,
-        resultId: existing.result_id,
-        data: null as unknown as T,
-        cached: true,
-      };
+    if (existing.request_fingerprint !== fingerprint) {
+      // Same key + different payload → 409.
+      const err = new Error("IDEMPOTENCY_KEY_REUSED") as Error & { status?: number };
+      err.status = 409;
+      throw err;
     }
-    // Same key + different payload → 409.
-    const err = new Error("IDEMPOTENCY_KEY_REUSED") as Error & { status?: number };
-    err.status = 409;
-    throw err;
+    // Same key + same payload → cached.
+    return {
+      resultType: existing.result_type,
+      resultId: existing.result_id,
+      data: null as unknown as T,
+      cached: true,
+    };
   }
 
   // Run the operation.
@@ -95,14 +95,19 @@ export async function withIdempotency<T>(
       `INSERT INTO idempotency_keys (id, user_id, operation, idempotency_key, request_fingerprint, result_type, result_id, created_at)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
     ).bind(id, userId, operation, idempotencyKey, fingerprint, result.resultType, result.resultId, now).run();
-  } catch {
-    // Unique constraint race — another request won. Our fn() ran but the
-    // domain record is idempotent (either by ledger key or by ref index).
-    // Return the existing idempotency record.
+  } catch (err: unknown) {
+    // Unique constraint race — another concurrent request won. Check the existing record.
     const existingAfterRace = await env.DB.prepare(
       `SELECT * FROM idempotency_keys WHERE user_id = ?1 AND operation = ?2 AND idempotency_key = ?3`
     ).bind(userId, operation, idempotencyKey).first<IdempotencyRecord>();
+
     if (existingAfterRace) {
+      // Re-verify fingerprint on the racing record.
+      if (existingAfterRace.request_fingerprint !== fingerprint) {
+        const err409 = new Error("IDEMPOTENCY_KEY_REUSED") as Error & { status?: number };
+        err409.status = 409;
+        throw err409;
+      }
       return {
         resultType: existingAfterRace.result_type,
         resultId: existingAfterRace.result_id,
@@ -110,9 +115,9 @@ export async function withIdempotency<T>(
         cached: true,
       };
     }
-    // Fallback: return what we produced even though the idempotency row
-    // wasn't recorded (the domain record is still valid).
-    return { ...result, cached: false };
+
+    // Not a unique constraint race — do not swallow unexpected database errors.
+    throw err;
   }
 
   return { ...result, cached: false };

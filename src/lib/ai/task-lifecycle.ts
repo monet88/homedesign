@@ -1,8 +1,7 @@
 import type { Env } from "@/lib/bindings";
 import {
-  holdCredits,
-  settleHold,
-  releaseHold,
+  getAvailableCredits,
+  type CreditHold,
 } from "@/lib/credits/ledger";
 import {
   canonicalHash,
@@ -89,50 +88,109 @@ export async function createTaskWithHold(
   cost: number,
   idempotencyKey: string
 ): Promise<{ taskId: string; cached: boolean }> {
-  // Full canonical payload: scene + prompt + source + options + cost. Any
-  // change (including prompt) makes the fingerprint differ -> 409 on reuse.
   const payload = taskCreatePayload(taskDef, cost);
+  const fingerprint = await canonicalHash(payload);
 
-  const result = await withIdempotency(env, userId, "task_create", idempotencyKey, payload, async () => {
-    const taskId = crypto.randomUUID();
-    const now = Date.now();
-    const expiresAt = now + TASK_EXPIRY_MS;
+  // 1. Check existing idempotency key before attempting creation.
+  const existing = await env.DB.prepare(
+    `SELECT * FROM idempotency_keys WHERE user_id = ?1 AND operation = 'task_create' AND idempotency_key = ?2`
+  ).bind(userId, idempotencyKey).first<IdempotencyRecord>();
 
-    // Hold credits atomically. The unique ref index prevents double-hold.
-    const holdId = await holdCredits(env, userId, cost, "task", taskId, `Task: ${taskDef.scene}`);
-
-    // Create the task row. User_id, hold_id, cost_credits, expires_at are set.
-    await env.DB.prepare(
-      `INSERT INTO ai_tasks (id, scene, provider, model, prompt, source_key, status, created_at, updated_at, user_id, hold_id, cost_credits, expires_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'accepted', ?7, ?7, ?8, ?9, ?10, ?11)`
-    ).bind(
-      taskId,
-      taskDef.scene,
-      taskDef.provider,
-      taskDef.model,
-      taskDef.prompt,
-      taskDef.sourceKey ?? null,
-      now,
-      userId,
-      holdId,
-      cost,
-      expiresAt
-    ).run();
-
-    return {
-      resultType: "task",
-      resultId: taskId,
-      data: { taskId, cached: false },
-    };
-  });
-
-  if (result.cached) {
-    // Reconstruct from DB on cache hit.
-    const row = await env.DB.prepare(`SELECT id FROM ai_tasks WHERE id = ?1`).bind(result.resultId).first<{ id: string }>();
+  if (existing) {
+    if (existing.request_fingerprint !== fingerprint) {
+      const err = new Error("IDEMPOTENCY_KEY_REUSED") as Error & { status?: number };
+      err.status = 409;
+      throw err;
+    }
+    const row = await env.DB.prepare(`SELECT id FROM ai_tasks WHERE id = ?1`).bind(existing.result_id).first<{ id: string }>();
     if (!row) throw new Error("IDEMPOTENCY_RECORD_MISSING");
     return { taskId: row.id, cached: true };
   }
-  return result.data;
+
+  // 2. Preflight balance check.
+  const available = await getAvailableCredits(env, userId);
+  if (available < cost) {
+    throw new Error("INSUFFICIENT_CREDITS");
+  }
+
+  // 3. Atomically execute idempotency reservation + credit ledger hold + credit_holds row + ai_tasks row.
+  const taskId = crypto.randomUUID();
+  const holdId = crypto.randomUUID();
+  const ledgerEntryId = crypto.randomUUID();
+  const idempotencyId = crypto.randomUUID();
+  const now = Date.now();
+  const expiresAt = now + TASK_EXPIRY_MS;
+
+  try {
+    await env.DB.batch([
+      // A. Idempotency key (unique constraint prevents concurrent double-creation)
+      env.DB.prepare(
+        `INSERT INTO idempotency_keys (id, user_id, operation, idempotency_key, request_fingerprint, result_type, result_id, created_at)
+         VALUES (?1, ?2, 'task_create', ?3, ?4, 'task', ?5, ?6)`
+      ).bind(idempotencyId, userId, idempotencyKey, fingerprint, taskId, now),
+
+      // B. Credit ledger hold entry
+      env.DB.prepare(
+        `INSERT INTO credit_ledger (id, user_id, amount, entry_type, reason, ref_type, ref_id, created_at)
+         VALUES (?1, ?2, ?3, 'hold', ?4, 'task', ?5, ?6)`
+      ).bind(ledgerEntryId, userId, cost, `Task: ${taskDef.scene}`, taskId, now),
+
+      // C. Credit hold row (atomic available balance gate in SQLite: fails CHECK (amount > 0) if insufficient)
+      env.DB.prepare(
+        `INSERT INTO credit_holds (id, user_id, amount, status, ref_type, ref_id, ledger_hold_id, created_at)
+         SELECT
+           ?1,
+           ?2,
+           CASE
+             WHEN (
+               (SELECT COALESCE(SUM(CASE WHEN entry_type IN ('grant', 'payment') THEN amount ELSE 0 END) - SUM(CASE WHEN entry_type = 'usage' THEN amount ELSE 0 END), 0)
+                FROM credit_ledger WHERE user_id = ?2)
+               - (SELECT COALESCE(SUM(amount), 0) FROM credit_holds WHERE user_id = ?2 AND status = 'active')
+             ) >= ?3 THEN ?3
+             ELSE -1
+           END,
+           'active', 'task', ?4, ?5, ?6`
+      ).bind(holdId, userId, cost, taskId, ledgerEntryId, now),
+
+      // D. AI Task row
+      env.DB.prepare(
+        `INSERT INTO ai_tasks (id, scene, provider, model, prompt, source_key, status, created_at, updated_at, user_id, hold_id, cost_credits, expires_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'accepted', ?7, ?7, ?8, ?9, ?10, ?11)`
+      ).bind(taskId, taskDef.scene, taskDef.provider, taskDef.model, taskDef.prompt, taskDef.sourceKey ?? null, now, userId, holdId, cost, expiresAt),
+    ]);
+
+    return { taskId, cached: false };
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+
+    // If available credits constraint failed inside the atomic batch:
+    if (errMsg.includes("CHECK constraint failed") || errMsg.includes("amount > 0") || errMsg.includes("credit_holds.amount")) {
+      throw new Error("INSUFFICIENT_CREDITS");
+    }
+    // Check if error was due to concurrent idempotency race
+    const existingAfterRace = await env.DB.prepare(
+      `SELECT * FROM idempotency_keys WHERE user_id = ?1 AND operation = 'task_create' AND idempotency_key = ?2`
+    ).bind(userId, idempotencyKey).first<IdempotencyRecord>();
+
+    if (existingAfterRace) {
+      if (existingAfterRace.request_fingerprint !== fingerprint) {
+        const err409 = new Error("IDEMPOTENCY_KEY_REUSED") as Error & { status?: number };
+        err409.status = 409;
+        throw err409;
+      }
+      const row = await env.DB.prepare(`SELECT id FROM ai_tasks WHERE id = ?1`).bind(existingAfterRace.result_id).first<{ id: string }>();
+      if (!row) throw new Error("IDEMPOTENCY_RECORD_MISSING");
+      return { taskId: row.id, cached: true };
+    }
+
+    // If ref unique constraint failed on credit_holds:
+    if (errMsg.includes("credit_holds") && errMsg.includes("UNIQUE")) {
+      throw new Error("HOLD_ALREADY_ACTIVE");
+    }
+
+    // Do not swallow unexpected database errors.
+    throw err;
+  }
 }
 
 /**
@@ -142,7 +200,7 @@ export async function createTaskWithHold(
  * If either is false, the hold is NOT settled — the caller must re-check
  * when conditions change.
  *
- * Idempotent: calling settle on an already-settled hold throws HOLD_NOT_ACTIVE.
+ * Idempotent and atomic: executed in a single batch to eliminate crash windows.
  */
 export async function settleHoldOnReady(
   env: Env,
@@ -156,20 +214,50 @@ export async function settleHoldOnReady(
 
   const task = await env.DB.prepare(
     `SELECT * FROM ai_tasks WHERE id = ?1`
-  ).bind(taskId).first<{ hold_id: string | null; user_id: string | null }>();
+  ).bind(taskId).first<{ hold_id: string | null; user_id: string | null; status: string }>();
 
   if (!task || !task.hold_id) {
     throw new Error("TASK_NOT_FOUND_OR_NO_HOLD");
   }
 
-  // Settle the hold (converts to usage).
-  await settleHold(env, task.hold_id);
+  const hold = await env.DB.prepare(
+    `SELECT * FROM credit_holds WHERE id = ?1`
+  ).bind(task.hold_id).first<CreditHold>();
 
-  // Update task status to terminal success.
+  if (!hold) throw new Error("HOLD_NOT_FOUND");
+
   const now = Date.now();
-  await env.DB.prepare(
-    `UPDATE ai_tasks SET status = 'notified', updated_at = ?1 WHERE id = ?2`
-  ).bind(now, taskId).run();
+
+  // If hold was already settled:
+  if (hold.status === "settled") {
+    if (task.status !== "ready" && task.status !== "notified") {
+      // Prior partial failure between hold settle and task update: complete task transition
+      await env.DB.prepare(
+        `UPDATE ai_tasks SET status = 'notified', updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'failed', 'expired')`
+      ).bind(now, taskId).run();
+      return;
+    }
+    // Both already settled
+    throw new Error("HOLD_NOT_ACTIVE");
+  }
+
+  if (hold.status !== "active") {
+    throw new Error("HOLD_NOT_ACTIVE");
+  }
+  // Atomically: 1. update hold to settled, 2. insert usage ledger entry, 3. update task to notified.
+  const usageEntryId = crypto.randomUUID();
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE credit_holds SET status = 'settled', settled_at = ?1 WHERE id = ?2 AND status = 'active'`
+    ).bind(now, hold.id),
+    env.DB.prepare(
+      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+       VALUES (?1, ?2, 'usage', ?3, ?4, ?5, ?6, NULL, ?7)`
+    ).bind(usageEntryId, hold.user_id, hold.amount, hold.ref_type, hold.ref_type, hold.ref_id, now),
+    env.DB.prepare(
+      `UPDATE ai_tasks SET status = 'notified', updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'failed', 'expired')`
+    ).bind(now, taskId),
+  ]);
 }
 
 const TERMINAL_TASK_STATUSES: Record<string, string> = {
@@ -183,11 +271,10 @@ const TERMINAL_TASK_STATUSES: Record<string, string> = {
  * Release a hold on terminal failure: failed, canceled, validation exhausted,
  * DLQ, or server expiry. The hold is released and the task is marked terminal.
  *
- * The `reason` is a domain release reason; it is recorded via the ledger
- * `release` entry (reason column) and the task row is transitioned to the
- * canonical terminal `failed` status. Late callback after expiry: the hold is
- * already released, so settleHold throws HOLD_NOT_ACTIVE — the task does NOT
- * resurrect.
+ * Invariants:
+ *   - If task is already in terminal success ('ready' or 'notified'), late failure callbacks are ignored.
+ *   - If hold is already settled, late failure callbacks are ignored.
+ *   - Active hold release and task status update are executed in a single atomic batch.
  */
 export async function releaseHoldOnTerminal(
   env: Env,
@@ -201,71 +288,113 @@ export async function releaseHoldOnTerminal(
   if (!task) throw new Error("TASK_NOT_FOUND");
   if (!task.hold_id) throw new Error("TASK_HAS_NO_HOLD");
 
-  // Only release if the hold is still active.
-  try {
-    await releaseHold(env, task.hold_id);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : '';
-    if (msg === 'HOLD_NOT_ACTIVE' || msg === 'HOLD_NOT_FOUND') {
-      // Expected: hold already released/settled (late callback after expiry).
-      // The task is still marked terminal but the balance is already correct.
-    } else {
-      // Transient/unexpected failure: do NOT mark task terminal while an
-      // active hold may still be in place — re-throw so the caller retries.
-      throw err;
-    }
+  // If task is already in terminal success, late failure callback MUST NOT flip it to failed.
+  if (task.status === "ready" || task.status === "notified") {
+    return;
+  }
+
+  // If task is already in terminal failure/expired, no-op.
+  if (task.status === "failed" || task.status === "expired") {
+    return;
+  }
+
+  const hold = await env.DB.prepare(
+    `SELECT * FROM credit_holds WHERE id = ?1`
+  ).bind(task.hold_id).first<CreditHold>();
+
+  if (!hold) throw new Error("HOLD_NOT_FOUND");
+
+  // If hold was settled, success occurred: late failure cannot fail the task.
+  if (hold.status === "settled") {
+    return;
   }
 
   const now = Date.now();
-  // Map domain release reasons to the canonical ai_tasks terminal status.
   const taskStatus = TERMINAL_TASK_STATUSES[terminalStatus] ?? "failed";
-  await env.DB.prepare(
-    `UPDATE ai_tasks SET status = ?1, updated_at = ?2 WHERE id = ?3`
-  ).bind(taskStatus, now, taskId).run();
+
+  // If hold was already released (e.g. earlier expiry), ensure task is terminal without duplicate ledger entry.
+  if (hold.status === "released") {
+    await env.DB.prepare(
+      `UPDATE ai_tasks SET status = ?1, updated_at = ?2 WHERE id = ?3 AND status NOT IN ('ready', 'notified')`
+    ).bind(taskStatus, now, taskId).run();
+    return;
+  }
+
+  if (hold.status !== "active") {
+    return;
+  }
+
+  // Atomically: 1. mark hold released, 2. append release ledger entry, 3. mark task failed.
+  const releaseEntryId = crypto.randomUUID();
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE credit_holds SET status = 'released', released_at = ?1 WHERE id = ?2 AND status = 'active'`
+    ).bind(now, hold.id),
+    env.DB.prepare(
+      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+       VALUES (?1, ?2, 'release', ?3, ?4, ?5, ?6, NULL, ?7)`
+    ).bind(releaseEntryId, hold.user_id, hold.amount, terminalStatus, hold.ref_type, hold.ref_id, now),
+    env.DB.prepare(
+      `UPDATE ai_tasks SET status = ?1, updated_at = ?2 WHERE id = ?3 AND status NOT IN ('ready', 'notified')`
+    ).bind(taskStatus, now, taskId),
+  ]);
 }
 
 /**
  * Reconciler: expire all non-terminal tasks past their 30-minute server expiry.
  *
- * Atomically transitions each task to 'expired' and releases its hold.
- * Late callbacks after expiry do NOT resurrect the task (settleHold would
- * throw HOLD_NOT_ACTIVE on the already-released hold).
+ * Atomically transitions each task to 'expired' and releases its hold in a batch.
+ * Late callbacks after expiry do NOT resurrect the task.
  *
  * Safe to call on a schedule (e.g. every minute via cron or queue).
  */
 export async function expireStaleTasks(env: Env): Promise<number> {
   const now = Date.now();
 
-  // Find all non-terminal, non-expired tasks past their expiry.
-  // Terminal statuses: 'ready' (#7 settled success), 'notified' (settle point
-  // recorded by settleHoldOnReady), 'failed', 'expired'.
   const stale = await env.DB.prepare(
-    `SELECT id, hold_id FROM ai_tasks
+    `SELECT id, hold_id, user_id FROM ai_tasks
      WHERE status NOT IN ('ready', 'notified', 'failed', 'expired')
        AND expires_at IS NOT NULL AND expires_at < ?1`
-  ).bind(now).all<{ id: string; hold_id: string | null }>();
+  ).bind(now).all<{ id: string; hold_id: string | null; user_id: string | null }>();
 
   let expiredCount = 0;
   for (const task of stale.results ?? []) {
-    // Atomically release hold and expire task.
-    if (task.hold_id) {
-      try {
-        await releaseHold(env, task.hold_id);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : '';
-        if (msg === 'HOLD_NOT_ACTIVE' || msg === 'HOLD_NOT_FOUND') {
-          // Expected: hold already released/settled — safe to expire.
-        } else {
-          // Transient failure: skip this task so the next reconciler run
-          // retries it. Do NOT mark expired while the hold may still be active.
-          continue;
-        }
+    if (!task.hold_id) continue;
+    try {
+      const hold = await env.DB.prepare(
+        `SELECT * FROM credit_holds WHERE id = ?1`
+      ).bind(task.hold_id).first<CreditHold>();
+
+      if (!hold) continue;
+
+      // If hold was settled, task completed success: do not expire
+      if (hold.status === "settled") continue;
+
+      if (hold.status === "active") {
+        const releaseEntryId = crypto.randomUUID();
+        await env.DB.batch([
+          env.DB.prepare(
+            `UPDATE credit_holds SET status = 'released', released_at = ?1 WHERE id = ?2 AND status = 'active'`
+          ).bind(now, hold.id),
+          env.DB.prepare(
+            `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+             VALUES (?1, ?2, 'release', ?3, 'expired', ?4, ?5, NULL, ?6)`
+          ).bind(releaseEntryId, hold.user_id, hold.amount, hold.ref_type, hold.ref_id, now),
+          env.DB.prepare(
+            `UPDATE ai_tasks SET status = 'expired', expired_at = ?1, updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'notified', 'failed', 'expired')`
+          ).bind(now, task.id),
+        ]);
+        expiredCount++;
+      } else if (hold.status === "released") {
+        await env.DB.prepare(
+          `UPDATE ai_tasks SET status = 'expired', expired_at = ?1, updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'notified', 'failed', 'expired')`
+        ).bind(now, task.id).run();
+        expiredCount++;
       }
+    } catch {
+      // Transient DB error: skip this task so next reconciler run retries
+      continue;
     }
-    await env.DB.prepare(
-      `UPDATE ai_tasks SET status = 'expired', expired_at = ?1, updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'notified', 'failed', 'expired')`
-    ).bind(now, task.id).run();
-    expiredCount++;
   }
 
   return expiredCount;

@@ -798,6 +798,163 @@ describe("Ticket #46: Mock Payment Zod command validation & Credit Ledger integr
   });
 });
 
+// ── Spec #58: AI Task Lifecycle & Idempotency Concurrency Invariants ─────────
+
+describe("Spec #58: AI Task Lifecycle & Idempotency Concurrency Invariants", () => {
+  it("concurrent createTaskWithHold with identical key returns cached task and creates 1 hold", async () => {
+    const key = "concurrent-task-same-key";
+    const taskDef = {
+      scene: "interior",
+      provider: "fake",
+      model: "model-x",
+      prompt: "Modern living room",
+      sourceKey: null,
+      options: {},
+    };
+
+    // Fire two concurrent creations
+    const [res1, res2] = await Promise.all([
+      createTaskWithHold(env, userId, taskDef, 5, key),
+      createTaskWithHold(env, userId, taskDef, 5, key),
+    ]);
+
+    expect(res1.taskId).toBe(res2.taskId);
+    expect([res1.cached, res2.cached]).toContain(true);
+
+    // Verify exactly 1 hold and 1 task in database
+    const tasks = await env.DB.prepare(`SELECT COUNT(*) AS cnt FROM ai_tasks WHERE user_id = ?1`).bind(userId).first<{ cnt: number }>();
+    expect(tasks?.cnt).toBe(1);
+
+    const holds = await env.DB.prepare(`SELECT COUNT(*) AS cnt FROM credit_holds WHERE user_id = ?1 AND status = 'active'`).bind(userId).first<{ cnt: number }>();
+    expect(holds?.cnt).toBe(1);
+
+    expect(await getAvailableCredits(env, userId)).toBe(5);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent createTaskWithHold with same key but different payload rejects with 409", async () => {
+    const key = "concurrent-task-diff-payload";
+    const taskDef1 = {
+      scene: "interior",
+      provider: "fake",
+      model: "model-x",
+      prompt: "Prompt A",
+      sourceKey: null,
+      options: {},
+    };
+    const taskDef2 = {
+      scene: "interior",
+      provider: "fake",
+      model: "model-x",
+      prompt: "Prompt B",
+      sourceKey: null,
+      options: {},
+    };
+
+    const results = await Promise.allSettled([
+      createTaskWithHold(env, userId, taskDef1, 2, key),
+      createTaskWithHold(env, userId, taskDef2, 2, key),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+
+    expect(fulfilled.length).toBe(1);
+    expect(rejected.length).toBe(1);
+    expect((rejected[0] as PromiseRejectedResult).reason.message).toContain("IDEMPOTENCY_KEY_REUSED");
+
+    // Exactly 1 hold created
+    const holds = await env.DB.prepare(`SELECT COUNT(*) AS cnt FROM credit_holds WHERE user_id = ?1 AND status = 'active'`).bind(userId).first<{ cnt: number }>();
+    expect(holds?.cnt).toBe(1);
+
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent tasks competing for remaining credits: only winner gets hold, loser gets INSUFFICIENT_CREDITS", async () => {
+    // User starts with 10 credits
+    const taskDef = {
+      scene: "interior",
+      provider: "fake",
+      model: "m",
+      prompt: "P",
+      sourceKey: null,
+      options: {},
+    };
+
+    // Two concurrent requests for 10 credits each (total 20 > 10 available)
+    const results = await Promise.allSettled([
+      createTaskWithHold(env, userId, taskDef, 10, "race-credits-key-1"),
+      createTaskWithHold(env, userId, taskDef, 10, "race-credits-key-2"),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+
+    expect(fulfilled.length).toBe(1);
+    expect(rejected.length).toBe(1);
+    expect((rejected[0] as PromiseRejectedResult).reason.message).toContain("INSUFFICIENT_CREDITS");
+
+    // Available credits must be exactly 0, never negative
+    expect(await getAvailableCredits(env, userId)).toBe(0);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("settleHoldOnReady crash recovery: retried settle completes task transition without double usage", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 3, "settle-crash-key");
+
+    const task = await env.DB.prepare(`SELECT hold_id FROM ai_tasks WHERE id = ?1`).bind(taskId).first<{ hold_id: string }>();
+
+    // Simulate partial crash: hold is settled in D1, but ai_tasks status update was interrupted (remains 'accepted')
+    await env.DB.prepare(`UPDATE credit_holds SET status = 'settled', settled_at = ?1 WHERE id = ?2`).bind(Date.now(), task?.hold_id).run();
+    await env.DB.prepare(
+      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+       VALUES (?1, ?2, 'usage', 3, 'task', 'task', ?3, NULL, ?4)`
+    ).bind(crypto.randomUUID(), userId, taskId, Date.now()).run();
+
+    // Retrying settleHoldOnReady should detect already settled hold and transition task to 'notified'
+    await settleHoldOnReady(env, taskId, true, true);
+
+    const updatedTask = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`).bind(taskId).first<{ status: string }>();
+    expect(updatedTask?.status).toBe("notified");
+
+    // Verify usage entries count is exactly 1 (no duplicate usage added by retry)
+    const usageCount = await env.DB.prepare(`SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'usage'`).bind(userId).first<{ cnt: number }>();
+    expect(usageCount?.cnt).toBe(1);
+
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("late failure callback after success settlement does not flip task to failed or release settled hold", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 4, "late-fail-race-key");
+
+    // Settle success
+    await settleHoldOnReady(env, taskId, true, true);
+
+    const taskBefore = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`).bind(taskId).first<{ status: string }>();
+    expect(taskBefore?.status).toBe("notified");
+
+    // Late failure callback arrives
+    await releaseHoldOnTerminal(env, taskId, "failed");
+
+    // Status MUST remain 'notified' (not overwritten to 'failed')
+    const taskAfter = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`).bind(taskId).first<{ status: string }>();
+    expect(taskAfter?.status).toBe("notified");
+
+    // Hold MUST remain 'settled' (not released)
+    const hold = await env.DB.prepare(`SELECT status FROM credit_holds WHERE ref_id = ?1`).bind(taskId).first<{ status: string }>();
+    expect(hold?.status).toBe("settled");
+
+    // Usage remains 4, available remains 6
+    expect(await getAvailableCredits(env, userId)).toBe(6);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+});
+
+
 // ── Schema recreation for the workers-runtime harness ────────────────────────
 
 // The vitest-pool-workers harness starts from an empty DB, so tests must
