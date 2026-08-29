@@ -366,25 +366,31 @@ export async function expireStaleTasks(env: Env): Promise<number> {
 
   let expiredCount = 0;
   for (const task of stale.results ?? []) {
-    if (!task.hold_id) {
-      await env.DB.prepare(
-        `UPDATE ai_tasks SET status = 'expired', expired_at = ?1, updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'notified', 'failed', 'expired')`
-      ).bind(now, task.id).run();
-      expiredCount++;
-      continue;
-    }
     try {
+      if (!task.hold_id) {
+        const res = await env.DB.prepare(
+          `UPDATE ai_tasks SET status = 'expired', expired_at = ?1, updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'notified', 'failed', 'expired')`
+        ).bind(now, task.id).run();
+        if ((res.meta.changes ?? 0) > 0) {
+          expiredCount++;
+        }
+        continue;
+      }
+
       const hold = await env.DB.prepare(
         `SELECT * FROM credit_holds WHERE id = ?1`
       ).bind(task.hold_id).first<CreditHold>();
 
       if (!hold) {
-        await env.DB.prepare(
+        const res = await env.DB.prepare(
           `UPDATE ai_tasks SET status = 'expired', expired_at = ?1, updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'notified', 'failed', 'expired')`
         ).bind(now, task.id).run();
-        expiredCount++;
+        if ((res.meta.changes ?? 0) > 0) {
+          expiredCount++;
+        }
         continue;
       }
+
       // If hold was settled, task completed success: do not expire
       if (hold.status === "settled") continue;
 
@@ -407,10 +413,12 @@ export async function expireStaleTasks(env: Env): Promise<number> {
           expiredCount++;
         }
       } else if (hold.status === "released") {
-        await env.DB.prepare(
+        const res = await env.DB.prepare(
           `UPDATE ai_tasks SET status = 'expired', expired_at = ?1, updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'notified', 'failed', 'expired')`
         ).bind(now, task.id).run();
-        expiredCount++;
+        if ((res.meta.changes ?? 0) > 0) {
+          expiredCount++;
+        }
       }
     } catch {
       // Transient DB error: skip this task so next reconciler run retries

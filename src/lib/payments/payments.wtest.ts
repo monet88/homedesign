@@ -1097,36 +1097,44 @@ describe("Spec #58: AI Task Lifecycle & Idempotency Concurrency Invariants", () 
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 
-  it("concurrent releaseHoldOnTerminal vs server expiry: exactly one terminal state, never overwrites expired to failed", async () => {
+  it("late failure callback after server expiry does NOT overwrite task status to failed or add duplicate release entry", async () => {
     const { taskId } = await createTaskWithHold(env, userId, {
       scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
-    }, 2, "race-release-expire-key");
+    }, 2, "late-fail-after-exp-key");
 
-    // Force task past expiry so reconciler races with failure callback
+    // Force task past expiry
     await env.DB.prepare(`UPDATE ai_tasks SET expires_at = ?1 WHERE id = ?2`)
       .bind(Date.now() - 1, taskId).run();
 
-    await Promise.allSettled([
-      releaseHoldOnTerminal(env, taskId, "failed"),
-      expireStaleTasks(env),
-    ]);
+    // Reconciler runs first and expires the task
+    const expired = await expireStaleTasks(env);
+    expect(expired).toBe(1);
 
-    const task = await env.DB.prepare(
+    const taskBefore = await env.DB.prepare(
       `SELECT status FROM ai_tasks WHERE id = ?1`
     ).bind(taskId).first<{ status: string }>();
+    expect(taskBefore?.status).toBe("expired");
+
+    // Late failure callback arrives after expiry
+    await releaseHoldOnTerminal(env, taskId, "failed");
+
+    const taskAfter = await env.DB.prepare(
+      `SELECT status FROM ai_tasks WHERE id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    // Task status MUST remain 'expired', NOT overwritten to 'failed'
+    expect(taskAfter?.status).toBe("expired");
+
     const hold = await env.DB.prepare(
       `SELECT status FROM credit_holds WHERE ref_id = ?1`
     ).bind(taskId).first<{ status: string }>();
+    expect(hold?.status).toBe("released");
+
+    // Exactly 1 release ledger entry (from expiry, not duplicated by late failure)
     const release = await env.DB.prepare(
       `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'release'`
     ).bind(userId).first<{ cnt: number }>();
-
-    expect(hold?.status).toBe("released");
-    // Exactly 1 release ledger entry created across both racing operations
     expect(release?.cnt).toBe(1);
-    // Terminal status is either 'failed' or 'expired', never corrupted
-    expect(["failed", "expired"]).toContain(task?.status);
-    // Balance restored to full 10
+
     expect(await getAvailableCredits(env, userId)).toBe(10);
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
