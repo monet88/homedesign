@@ -25,39 +25,30 @@
 //     it never resurrects the task and never settles a released hold.
 
 import { getProvider } from "@/lib/ai/provider-adapter";
-import { buildExteriorPrompt, buildFloorPlanBriefPrompt, buildFloorPlanLayoutPrompt, buildFloorPlanPanoramaPrompt, buildFloorPlanRenderPrompt, buildInteriorPrompt } from "@/lib/ai/prompt";
+import { buildExteriorPrompt, buildInteriorPrompt } from "@/lib/ai/prompt";
 import {
   DesignError,
   isTerminal,
   publicErrorCode,
   toPublicStatus,
-  DEFAULT_PANORAMA_ORIENTATION,
   type DesignConfig,
   type ExteriorIntent,
-  type FloorPlanIntent,
   type InteriorIntent,
   type ProviderRequest,
   type PublicTaskStatus,
 } from "@/lib/ai/types";
-import { createBriefStageRun, completeBriefStageRun, assertRoomDesignForBrief } from "@/lib/floor-plan/brief";
 import {
-  assertNoProcessingRun,
-  assertRoomDesignForLayout,
-  assertRoomDesignForPanorama,
-  assertRoomDesignForRender,
-  completeStageRun,
-  createStageRun,
-  failStageRun,
-  getStageRunByDesignId,
-  parseRoomProposal,
-} from "@/lib/floor-plan/stages";
-import { FloorPlanError } from "@/lib/floor-plan/errors";
+  handleFloorPlanTerminal,
+  resolveFloorPlanStagePlan,
+  type ResolvedFloorPlanStagePlan,
+} from "@/lib/floor-plan";
 import type { Env } from "@/lib/bindings";
 import { ensureFreeCreditGrant, getAvailableCredits } from "@/lib/credits/ledger";
 import { presignGetUrl } from "@/lib/intake/presign";
 import { validateAsset, type AssetValidationJob } from "@/lib/intake/validator";
 import {
   createTaskWithHold,
+  preflightTaskCreateIdempotency,
   releaseHoldOnTerminal,
   settleHoldOnReady,
   expireStaleTasks,
@@ -117,17 +108,9 @@ export interface DesignRow {
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
 /** Server-side prompt build. The public API never accepts a prompt. */
-export function buildPrompt(config: DesignConfig, proposal?: import("@/lib/floor-plan/types").RoomBriefProposal | null): string {
+export function buildPrompt(config: DesignConfig): string {
   if (config.scene === "interior") return buildInteriorPrompt(config.intent as InteriorIntent);
   if (config.scene === "exterior") return buildExteriorPrompt(config.intent as ExteriorIntent);
-  if (config.scene === "floor-plan") {
-    const fp = config.intent as FloorPlanIntent;
-    if (config.stage === "brief") return buildFloorPlanBriefPrompt(fp);
-    if (config.stage === "layout") return buildFloorPlanLayoutPrompt(fp, proposal);
-    if (config.stage === "render") return buildFloorPlanRenderPrompt(fp, proposal);
-    if (config.stage === "panorama") return buildFloorPlanPanoramaPrompt(fp, proposal);
-    throw new DesignError("SCENE_NOT_IMPLEMENTED", 501, "unknown floor-plan stage");
-  }
   throw new DesignError("SCENE_NOT_IMPLEMENTED", 501, "unknown scene");
 }
 
@@ -154,92 +137,22 @@ export async function createDesign(
   rawBody: unknown
 ): Promise<CreateDesignResult> {
   assertGenerationAllowed(env);
-
   const config = validateDesignConfig(rawBody);
 
-  let floorPlanProposal: import("@/lib/floor-plan/types").RoomBriefProposal | null = null;
+  let floorPlanStagePlan: ResolvedFloorPlanStagePlan | null = null;
   let effectiveSourceAssetId = config.sourceAssetId;
-
-  if (config.scene === "floor-plan" && config.stage === "brief") {
-    const fp = config.intent as FloorPlanIntent;
-    if (!fp.roomId?.trim()) {
-      throw new DesignError("INVALID_INTENT", 400, "roomId is required for floor-plan brief");
-    }
-    try {
-      await assertRoomDesignForBrief(env, userId, fp.roomId, config.sourceAssetId, fp.marker);
-    } catch (err) {
-      if (err instanceof FloorPlanError) {
-        throw mapFloorPlanError(err);
-      }
-      throw err;
-    }
+  let prompt: string;
+  let effectiveConfig = config;
+  if (config.scene === "floor-plan") {
+    floorPlanStagePlan = await resolveFloorPlanStagePlan(env, userId, config);
+    effectiveSourceAssetId = floorPlanStagePlan.effectiveSourceAssetId;
+    prompt = floorPlanStagePlan.prompt;
+    effectiveConfig = floorPlanStagePlan.finalizedConfig;
+  } else {
+    prompt = buildPrompt(config);
   }
 
-  if (config.scene === "floor-plan" && config.stage === "layout") {
-    const fp = config.intent as FloorPlanIntent;
-    if (!fp.roomId?.trim()) {
-      throw new DesignError("INVALID_INTENT", 400, "roomId is required for floor-plan layout");
-    }
-    try {
-      const row = await assertRoomDesignForLayout(env, userId, fp.roomId, config.sourceAssetId, fp.marker);
-      await assertNoProcessingRun(env, fp.roomId, "layout");
-      floorPlanProposal = parseRoomProposal(row);
-    } catch (err) {
-      if (err instanceof FloorPlanError) throw mapFloorPlanError(err);
-      throw err;
-    }
-  }
-
-  if (config.scene === "floor-plan" && config.stage === "render") {
-    const fp = config.intent as FloorPlanIntent;
-    if (!fp.roomId?.trim()) {
-      throw new DesignError("INVALID_INTENT", 400, "roomId is required for floor-plan render");
-    }
-    try {
-      const { row, layoutRun } = await assertRoomDesignForRender(
-        env,
-        userId,
-        fp.roomId,
-        config.sourceAssetId,
-        fp.marker
-      );
-      await assertNoProcessingRun(env, fp.roomId, "render");
-      floorPlanProposal = parseRoomProposal(row);
-      (config.intent as FloorPlanIntent).layoutRunId = layoutRun.id;
-    } catch (err) {
-      if (err instanceof FloorPlanError) throw mapFloorPlanError(err);
-      throw err;
-    }
-  }
-
-  if (config.scene === "floor-plan" && config.stage === "panorama") {
-    const fp = config.intent as FloorPlanIntent;
-    if (!fp.roomId?.trim()) {
-      throw new DesignError("INVALID_INTENT", 400, "roomId is required for floor-plan panorama");
-    }
-    try {
-      const { row, renderRun, renderOutputAssetId } = await assertRoomDesignForPanorama(
-        env,
-        userId,
-        fp.roomId,
-        config.sourceAssetId,
-        fp.marker
-      );
-      await assertNoProcessingRun(env, fp.roomId, "panorama");
-      floorPlanProposal = parseRoomProposal(row);
-      (config.intent as FloorPlanIntent).renderRunId = renderRun.id;
-      (config.intent as FloorPlanIntent).panoramaOrientation = DEFAULT_PANORAMA_ORIENTATION;
-      config.options = {
-        ...config.options,
-        aspect_ratio: "2:1",
-        resolution: "4096x2048",
-      };
-      effectiveSourceAssetId = renderOutputAssetId;
-    } catch (err) {
-      if (err instanceof FloorPlanError) throw mapFloorPlanError(err);
-      throw err;
-    }
-  }
+  if (!prompt) throw new DesignError("INVALID_INTENT", 400, "empty prompt");
 
   // Authorize the source Asset: exists, owned by the caller, lifecycle `ready`.
   const asset = await env.DB.prepare(
@@ -258,39 +171,54 @@ export async function createDesign(
     throw new DesignError("SOURCE_ASSET_NOT_READY", 409, `asset lifecycle is ${asset.lifecycle}`);
   }
 
-  const prompt = buildPrompt(config, floorPlanProposal);
-  if (!prompt) throw new DesignError("INVALID_INTENT", 400, "empty prompt");
+  const taskDef = {
+    scene: effectiveConfig.providerScene,
+    provider: effectiveConfig.provider,
+    model: effectiveConfig.model,
+    prompt,
+    sourceKey: asset.storage_key,
+    options: effectiveConfig.options as Record<string, unknown>,
+  };
 
-  // Free grant is ensured on every verified task path (ADR 0002); idempotent.
-  await ensureFreeCreditGrant(env, userId);
-
-  // Credit gate BEFORE the hold. createTaskWithHold re-checks atomically.
-  const available = await getAvailableCredits(env, userId);
-  if (available < config.cost) {
-    throw new DesignError(
-      "INSUFFICIENT_CREDITS",
-      402,
-      `available ${available} < cost ${config.cost}`
-    );
-  }
-
-  // Atomic task row + Credit Hold (#5). Idempotent by (user, task_create, key).
-  let created: { taskId: string; cached: boolean };
+  // Floor Plan checks maximum-one-processing only for a genuinely new task.
+  // Same-key retries are resolved read-only first, before any credit side effect.
+  let created: { taskId: string; cached: boolean } | null = null;
   try {
-    created = await createTaskWithHold(
-      env,
-      userId,
-      {
-        scene: config.providerScene,
-        provider: config.provider,
-        model: config.model,
-        prompt,
-        sourceKey: asset.storage_key,
-        options: config.options as Record<string, unknown>,
-      },
-      config.cost,
-      config.idempotencyKey
-    );
+    if (floorPlanStagePlan) {
+      created = await preflightTaskCreateIdempotency(
+        env,
+        userId,
+        taskDef,
+        effectiveConfig.cost,
+        effectiveConfig.idempotencyKey
+      );
+      if (!created) {
+        await floorPlanStagePlan.assertCanStart();
+      }
+    }
+
+    if (!created) {
+      // Free grant is ensured on every verified new-task path (ADR 0002); idempotent.
+      await ensureFreeCreditGrant(env, userId);
+
+      // Credit gate BEFORE the hold. createTaskWithHold re-checks atomically.
+      const available = await getAvailableCredits(env, userId);
+      if (available < effectiveConfig.cost) {
+        throw new DesignError(
+          "INSUFFICIENT_CREDITS",
+          402,
+          `available ${available} < cost ${effectiveConfig.cost}`
+        );
+      }
+
+      created = await createTaskWithHold(
+        env,
+        userId,
+        taskDef,
+        effectiveConfig.cost,
+        effectiveConfig.idempotencyKey
+      );
+    }
   } catch (err) {
     const message = (err as Error).message;
     if (message === "IDEMPOTENCY_KEY_REUSED") {
@@ -311,21 +239,15 @@ export async function createDesign(
       id: taskId,
       cached: true,
       status: task?.status ?? "accepted",
-      cost: existing?.cost_credits ?? config.cost,
+      cost: existing?.cost_credits ?? effectiveConfig.cost,
       projectId: existing?.project_id ?? "",
     };
   }
 
-  // Project linkage (ADR 0005): a draft Project is created the first time a
-  // ready Source Asset is used for this kind.
-  const projectId = await ensureProject(env, userId, config, asset.id);
-
-  if (config.scene === "floor-plan" && config.stage === "brief") {
-    const fp = config.intent as FloorPlanIntent;
-    if (!fp.roomId) {
-      throw new DesignError("INVALID_INTENT", 400, "floor-plan brief requires intent.roomId");
-    }
-  }
+  // Floor Plan remains attached to the Room Design's original project even
+  // when a stage (Panorama) uses an upstream generated asset as provider input.
+  // Other scenes retain source-asset keyed project creation (ADR 0005).
+  const projectId = floorPlanStagePlan?.projectId ?? await ensureProject(env, userId, effectiveConfig, asset.id);
 
   const now = Date.now();
   await env.DB.prepare(
@@ -336,37 +258,27 @@ export async function createDesign(
     taskId,
     userId,
     projectId,
-    config.scene,
-    config.stage ?? null,
-    config.provider,
-    config.model,
-    config.providerScene,
+    effectiveConfig.scene,
+    effectiveConfig.stage ?? null,
+    effectiveConfig.provider,
+    effectiveConfig.model,
+    effectiveConfig.providerScene,
     prompt,
-    JSON.stringify(config),
+    JSON.stringify(effectiveConfig),
     asset.id,
-    config.cost,
-    config.idempotencyKey,
+    effectiveConfig.cost,
+    effectiveConfig.idempotencyKey,
     now
   ).run();
 
-  if (config.scene === "floor-plan" && config.stage === "brief") {
-    await createBriefStageRun(env, (config.intent as FloorPlanIntent).roomId!, taskId);
+  if (floorPlanStagePlan) {
+    await floorPlanStagePlan.recordStageRun(env, taskId);
   }
-  if (config.scene === "floor-plan" && config.stage === "layout") {
-    await createStageRun(env, (config.intent as FloorPlanIntent).roomId!, "layout", taskId);
-  }
-  if (config.scene === "floor-plan" && config.stage === "render") {
-    await createStageRun(env, (config.intent as FloorPlanIntent).roomId!, "render", taskId);
-  }
-  if (config.scene === "floor-plan" && config.stage === "panorama") {
-    await createStageRun(env, (config.intent as FloorPlanIntent).roomId!, "panorama", taskId);
-  }
-
   // Dispatch. The Workflow/queue instance identity IS the task id, so a
   // re-dispatch by the reconciler converges instead of duplicating work.
   await dispatchTask(env, taskId);
 
-  return { id: taskId, cached: false, status: "accepted", cost: config.cost, projectId };
+  return { id: taskId, cached: false, status: "accepted", cost: effectiveConfig.cost, projectId };
 }
 
 export async function dispatchTask(env: Env, taskId: string): Promise<void> {
@@ -688,24 +600,8 @@ export async function completeGeneration(
     `UPDATE projects SET status = 'ready', updated_at = ?2 WHERE id = ?1`
   ).bind(design.project_id, now).run();
 
-  if (design.scene === "floor-plan" && design.stage === "brief") {
-    await completeBriefStageRun(env, taskId);
-  }
-  if (
-    design.scene === "floor-plan" &&
-    (design.stage === "layout" || design.stage === "render" || design.stage === "panorama")
-  ) {
-    await completeStageRun(env, taskId);
-    if (design.stage === "panorama") {
-      const run = await getStageRunByDesignId(env, taskId);
-      if (run) {
-        await env.DB.prepare(
-          `UPDATE room_designs SET progress = 'panorama-ready', updated_at = ?2 WHERE id = ?1`
-        )
-          .bind(run.room_design_id, now)
-          .run();
-      }
-    }
+  if (design.scene === "floor-plan") {
+    await handleFloorPlanTerminal(env, taskId, "ready");
   }
 
   return { status: "ready" };
@@ -725,8 +621,8 @@ export async function failGeneration(
   terminalReason: "failed" | "canceled" | "validation-exhausted" | "dlq" = "failed"
 ): Promise<void> {
   const design = await getDesign(env, taskId);
-  if (design?.scene === "floor-plan" && design.stage) {
-    await failStageRun(env, taskId);
+  if (design?.scene === "floor-plan") {
+    await handleFloorPlanTerminal(env, taskId, "failed");
   }
   await env.DB.prepare(`UPDATE ai_tasks SET error_code = ?2, updated_at = ?3 WHERE id = ?1`)
     .bind(taskId, errorCode, Date.now())
@@ -921,22 +817,4 @@ async function setTaskStatus(env: Env, taskId: string, status: string): Promise<
 function providerErrorCode(err: unknown): string {
   const msg = (err as Error)?.message ?? "PROVIDER_ERROR";
   return /^[A-Z0-9_]+$/.test(msg) ? msg : "PROVIDER_ERROR";
-}
-
-function mapFloorPlanError(err: FloorPlanError): DesignError {
-  const codeMap: Partial<Record<FloorPlanError["code"], DesignError["code"]>> = {
-    ASSET_NOT_FOUND: "ASSET_NOT_FOUND",
-    FORBIDDEN: "FORBIDDEN",
-    SOURCE_ASSET_NOT_READY: "SOURCE_ASSET_NOT_READY",
-    INVALID_MARKER: "INVALID_INTENT",
-    MARKER_LOCKED: "INVALID_INTENT",
-    PROJECT_SOURCE_MISMATCH: "INVALID_INTENT",
-    BRIEF_NOT_CONFIRMED: "INVALID_INTENT",
-    LAYOUT_NOT_CONFIRMED: "INVALID_INTENT",
-    RENDER_NOT_CONFIRMED: "INVALID_INTENT",
-    STAGE_NOT_READY: "INVALID_INTENT",
-    STAGE_PROCESSING: "INVALID_INTENT",
-    NOT_FOUND: "ASSET_NOT_FOUND",
-  };
-  return new DesignError(codeMap[err.code] ?? "INVALID_INTENT", err.status, err.reason);
 }

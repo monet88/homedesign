@@ -1,4 +1,9 @@
 export { FloorPlanError, type FloorPlanErrorCode } from "@/lib/floor-plan/errors";
+export {
+  resolveFloorPlanStagePlan,
+  handleFloorPlanTerminal,
+  type ResolvedFloorPlanStagePlan,
+} from "@/lib/floor-plan/facade";
 export { createFloorPlanProject } from "@/lib/floor-plan/project";
 export {
   placeRoomMarker,

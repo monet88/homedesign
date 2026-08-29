@@ -45,8 +45,11 @@ import {
   placeRoomMarker,
   proposeRoomBrief,
   confirmRoomBrief,
+  confirmRoomLayout,
+  confirmRoomRender,
+  getStageRunByDesignId,
+  getRoomDesign,
 } from "@/lib/floor-plan";
-
 
 
 beforeEach(async () => {
@@ -801,6 +804,170 @@ describe("Ticket #33: Offline Generation Full Lifecycle per mode (Interior, Exte
     const summary = await getLedgerSummary(env, userId);
     expect(summary.totalUsage).toBe(3); // 1 brief + 2 layout
     expect(summary.available).toBe(7);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("Floor Plan full progression Brief -> Layout -> Render -> Panorama across refactored boundary", async () => {
+    const userId = await seedUser();
+    const sourceAssetId = await seedReadyAsset(userId);
+
+    // 1. Brief stage (cost: 1)
+    const { id: projectId } = await createFloorPlanProject(env, userId, sourceAssetId);
+    const room = await placeRoomMarker(env, userId, projectId, { x: 40, y: 60 });
+    await proposeRoomBrief(env, userId, room.id);
+
+    const briefCreated = await createDesign(env, userId, {
+      sourceAssetId,
+      scene: "floor-plan",
+      intent: { stage: "brief", roomId: room.id, marker: { x: 40, y: 60 } },
+      options: { aspect_ratio: "1:1", num_outputs: 1 },
+      idempotencyKey: `prog-brief-${room.id}`,
+    });
+    expect(briefCreated.cost).toBe(1);
+    const briefRun = await getStageRunByDesignId(env, briefCreated.id);
+    expect(briefRun?.stage).toBe("brief");
+    expect(briefRun?.status).toBe("processing");
+
+    await handleProviderNotify(env, { type: "task-dispatch", taskId: briefCreated.id });
+    await handleProviderNotify(env, { type: "provider-complete", taskId: briefCreated.id, providerTaskId: `fake-${briefCreated.id}` });
+
+    const briefTask = await getTask(env, briefCreated.id);
+    expect(briefTask?.status).toBe("ready");
+    const briefRunAfter = await getStageRunByDesignId(env, briefCreated.id);
+    expect(briefRunAfter?.status).toBe("success");
+
+    await confirmRoomBrief(env, userId, room.id);
+
+    // 2. Layout stage (cost: 2)
+    const layoutCreated = await createDesign(env, userId, {
+      sourceAssetId,
+      scene: "floor-plan",
+      intent: { stage: "layout", roomId: room.id, marker: { x: 40, y: 60 } },
+      idempotencyKey: `prog-layout-${room.id}`,
+    });
+    expect(layoutCreated.cost).toBe(2);
+    const layoutRun = await getStageRunByDesignId(env, layoutCreated.id);
+    expect(layoutRun?.stage).toBe("layout");
+    expect(layoutRun?.status).toBe("processing");
+
+    await handleProviderNotify(env, { type: "task-dispatch", taskId: layoutCreated.id });
+    await handleProviderNotify(env, { type: "provider-complete", taskId: layoutCreated.id, providerTaskId: `fake-${layoutCreated.id}` });
+
+    const layoutTask = await getTask(env, layoutCreated.id);
+    expect(layoutTask?.status).toBe("ready");
+    const layoutRunAfter = await getStageRunByDesignId(env, layoutCreated.id);
+    expect(layoutRunAfter?.status).toBe("success");
+
+    await confirmRoomLayout(env, userId, room.id);
+
+    // 3. Render stage (cost: 3)
+    const renderCreated = await createDesign(env, userId, {
+      sourceAssetId,
+      scene: "floor-plan",
+      intent: { stage: "render", roomId: room.id, marker: { x: 40, y: 60 } },
+      idempotencyKey: `prog-render-${room.id}`,
+    });
+    expect(renderCreated.cost).toBe(3);
+    const renderRun = await getStageRunByDesignId(env, renderCreated.id);
+    expect(renderRun?.stage).toBe("render");
+    expect(renderRun?.status).toBe("processing");
+
+    const renderDesignBefore = await getDesign(env, renderCreated.id);
+    const renderConfig = JSON.parse(renderDesignBefore!.config_json);
+    expect(renderConfig.intent.layoutRunId).toBe(layoutRun!.id);
+
+    await handleProviderNotify(env, { type: "task-dispatch", taskId: renderCreated.id });
+    await handleProviderNotify(env, { type: "provider-complete", taskId: renderCreated.id, providerTaskId: `fake-${renderCreated.id}` });
+
+    const renderTask = await getTask(env, renderCreated.id);
+    expect(renderTask?.status).toBe("ready");
+    const renderRunAfter = await getStageRunByDesignId(env, renderCreated.id);
+    expect(renderRunAfter?.status).toBe("success");
+
+    const confirmedRenderDesign = await getDesign(env, renderCreated.id);
+    const renderOutputAssetId = confirmedRenderDesign!.output_asset_id!;
+    expect(renderOutputAssetId).toBeTruthy();
+
+    await confirmRoomRender(env, userId, room.id);
+
+    // 4. Panorama stage (cost: 4)
+    const panoramaCreated = await createDesign(env, userId, {
+      sourceAssetId,
+      scene: "floor-plan",
+      intent: { stage: "panorama", roomId: room.id, marker: { x: 40, y: 60 } },
+      idempotencyKey: `prog-panorama-${room.id}`,
+    });
+    expect(panoramaCreated.cost).toBe(4);
+    const panoramaRun = await getStageRunByDesignId(env, panoramaCreated.id);
+    expect(panoramaRun?.stage).toBe("panorama");
+    expect(panoramaRun?.status).toBe("processing");
+
+    const panoramaDesign = await getDesign(env, panoramaCreated.id);
+    expect(panoramaDesign!.source_asset_id).toBe(renderOutputAssetId);
+    const panoramaConfig = JSON.parse(panoramaDesign!.config_json);
+    expect(panoramaConfig.options.aspect_ratio).toBe("2:1");
+    expect(panoramaConfig.options.resolution).toBe("4096x2048");
+    expect(panoramaConfig.intent.renderRunId).toBe(renderRun!.id);
+
+    await handleProviderNotify(env, { type: "task-dispatch", taskId: panoramaCreated.id });
+    await handleProviderNotify(env, { type: "provider-complete", taskId: panoramaCreated.id, providerTaskId: `fake-${panoramaCreated.id}` });
+
+    const panoramaTask = await getTask(env, panoramaCreated.id);
+    expect(panoramaTask?.status).toBe("ready");
+    const panoramaRunAfter = await getStageRunByDesignId(env, panoramaCreated.id);
+    expect(panoramaRunAfter?.status).toBe("success");
+
+    const updatedRoom = await getRoomDesign(env, userId, room.id);
+    expect(updatedRoom.progress).toBe("panorama-ready");
+
+    // Verify total credits settled (1 + 2 + 3 + 4 = 10)
+    const summary = await getLedgerSummary(env, userId);
+    expect(summary.totalUsage).toBe(10);
+    expect(summary.available).toBe(0);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("Floor Plan terminal failure leaves AI task failed, releases Credit Hold, and marks Stage Run failed", async () => {
+    const userId = await seedUser();
+    const sourceAssetId = await seedReadyAsset(userId);
+
+    const { id: projectId } = await createFloorPlanProject(env, userId, sourceAssetId);
+    const room = await placeRoomMarker(env, userId, projectId, { x: 50, y: 50 });
+    await proposeRoomBrief(env, userId, room.id);
+
+    const initialAvailable = await getAvailableCredits(env, userId); // 10
+
+    const created = await createDesign(env, userId, {
+      sourceAssetId,
+      scene: "floor-plan",
+      intent: { stage: "brief", roomId: room.id, marker: { x: 50, y: 50 } },
+      idempotencyKey: `fail-brief-${room.id}`,
+    });
+    const taskId = created.id;
+
+    expect(await getAvailableCredits(env, userId)).toBe(initialAvailable - 1);
+    await assertHoldState(taskId, "active");
+
+    const runBefore = await getStageRunByDesignId(env, taskId);
+    expect(runBefore?.status).toBe("processing");
+
+    // Fail via provider notification failure
+    await handleProviderNotify(env, { type: "task-dispatch", taskId });
+    await handleProviderNotify(env, {
+      type: "provider-failed",
+      taskId,
+      error: "SIMULATED_FAILURE",
+    });
+
+    const task = await getTask(env, taskId);
+    expect(task?.status).toBe("failed");
+    expect(task?.error_code).toBe("SIMULATED_FAILURE");
+    await assertHoldState(taskId, "released");
+
+    const runAfter = await getStageRunByDesignId(env, taskId);
+    expect(runAfter?.status).toBe("failed");
+
+    expect(await getAvailableCredits(env, userId)).toBe(initialAvailable);
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 });
