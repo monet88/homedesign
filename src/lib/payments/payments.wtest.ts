@@ -1172,6 +1172,68 @@ describe("Spec #58: AI Task Lifecycle & Idempotency Concurrency Invariants", () 
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 
+  it("expiry stale-read cannot overwrite a failed terminal winner", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 3, "barrier-fail-before-expiry-batch-key");
+
+    await env.DB.prepare(`UPDATE ai_tasks SET expires_at = ?1 WHERE id = ?2`)
+      .bind(Date.now() - 1, taskId).run();
+
+    let expiryReachedBatch!: () => void;
+    const expiryAtBatch = new Promise<void>((resolve) => {
+      expiryReachedBatch = resolve;
+    });
+    let allowExpiryBatch!: () => void;
+    const expiryMayContinue = new Promise<void>((resolve) => {
+      allowExpiryBatch = resolve;
+    });
+
+    const realDB = env.DB;
+    const barrierDB = new Proxy(realDB, {
+      get(target, prop, receiver) {
+        if (prop === "batch") {
+          return async (statements: D1PreparedStatement[]) => {
+            expiryReachedBatch();
+            await expiryMayContinue;
+            return target.batch(statements);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const barrierEnv = { ...env, DB: barrierDB } as unknown as typeof env;
+
+    // Let expiry capture the stale task + active hold, then pause immediately
+    // before its atomic release/expire batch. Failure wins while expiry holds
+    // stale pre-terminal state, which is the interleaving the CAS must protect.
+    const expiryPromise = expireStaleTasks(barrierEnv);
+    await expiryAtBatch;
+    await releaseHoldOnTerminal(env, taskId, "failed");
+
+    const winner = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`)
+      .bind(taskId).first<{ status: string }>();
+    expect(winner?.status).toBe("failed");
+
+    allowExpiryBatch();
+    const expired = await expiryPromise;
+    expect(expired).toBe(0);
+
+    const task = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`)
+      .bind(taskId).first<{ status: string }>();
+    expect(task?.status).toBe("failed");
+
+    const hold = await env.DB.prepare(`SELECT status FROM credit_holds WHERE ref_id = ?1`)
+      .bind(taskId).first<{ status: string }>();
+    expect(hold?.status).toBe("released");
+
+    const release = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'release'`
+    ).bind(userId).first<{ cnt: number }>();
+    expect(release?.cnt).toBe(1);
+    expect(await getAvailableCredits(env, userId)).toBe(10);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
   it("expireStaleTasks expires stale tasks even with null hold_id or missing hold record", async () => {
     const taskIdNoHold = crypto.randomUUID();
     const taskIdMissingHold = crypto.randomUUID();
