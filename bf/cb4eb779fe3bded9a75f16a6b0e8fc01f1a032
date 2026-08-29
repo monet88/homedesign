@@ -1,0 +1,30 @@
+src/lib/floor-plan/migration-0011.wtest.ts
+  h_17f2fa2b92da6a 1-5,7,9-10,14-55,57-121,125-126
+  h_17f2fa2b92da6a 6,8,11-13,56,122-124
+vitest.workers.config.ts
+  s_48f3af30afe4f2::t_e0fa0e0d762c90 3
+  h_17f2fa2b92da6a 6-7,20-22
+migrations/0011_floor_plan_stage_runs_processing_idx.sql
+  h_17f2fa2b92da6a 2-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "bfcb4eb779fe3bded9a75f16a6b0e8fc01f1a032",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_48f3af30afe4f2": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a03d3a-eb9a-73b1-aff4-4a58ae968eb4",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
