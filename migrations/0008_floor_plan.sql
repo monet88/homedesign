@@ -33,3 +33,4 @@ CREATE TABLE IF NOT EXISTS floor_plan_stage_runs (
 
 CREATE INDEX IF NOT EXISTS idx_fp_stage_runs_room ON floor_plan_stage_runs(room_design_id, stage);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_fp_stage_runs_design ON floor_plan_stage_runs(design_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fp_stage_runs_processing ON floor_plan_stage_runs(room_design_id, stage) WHERE status = 'processing';

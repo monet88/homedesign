@@ -26,3 +26,12 @@ export class FloorPlanError extends Error {
     this.reason = reason;
   }
 }
+
+export function isStageRunProcessingConflict(err: unknown): boolean {
+  if (!err) return false;
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    message.includes("idx_fp_stage_runs_processing") ||
+    (message.includes("unique constraint failed") && message.includes("floor_plan_stage_runs"))
+  );
+}

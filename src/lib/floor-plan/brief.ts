@@ -1,7 +1,7 @@
 // Ticket 10 — Room Brief propose + confirm + stage run linkage.
 
 import type { Env } from "@/lib/bindings";
-import { FloorPlanError } from "@/lib/floor-plan/errors";
+import { FloorPlanError, isStageRunProcessingConflict } from "@/lib/floor-plan/errors";
 import { getRoomDesign, updateRoomMarker } from "@/lib/floor-plan/markers";
 import {
   buildDesignProposal,
@@ -98,12 +98,19 @@ export async function createBriefStageRun(
   designId: string
 ): Promise<void> {
   const now = Date.now();
-  await env.DB.prepare(
-    `INSERT INTO floor_plan_stage_runs (id, room_design_id, stage, status, design_id, confirmed_at, created_at, updated_at)
-     VALUES (?1, ?2, 'brief', 'processing', ?3, NULL, ?4, ?4)`
-  )
-    .bind(designId, roomDesignId, designId, now)
-    .run();
+  try {
+    await env.DB.prepare(
+      `INSERT INTO floor_plan_stage_runs (id, room_design_id, stage, status, design_id, confirmed_at, created_at, updated_at)
+       VALUES (?1, ?2, 'brief', 'processing', ?3, NULL, ?4, ?4)`
+    )
+      .bind(designId, roomDesignId, designId, now)
+      .run();
+  } catch (err) {
+    if (isStageRunProcessingConflict(err)) {
+      throw new FloorPlanError("STAGE_PROCESSING", 409, "a brief run is already processing");
+    }
+    throw err;
+  }
 }
 
 export async function completeBriefStageRun(env: Env, designId: string): Promise<void> {

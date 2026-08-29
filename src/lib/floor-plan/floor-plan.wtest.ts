@@ -10,15 +10,19 @@ import {
   buildFloorPlanPanoramaPrompt,
 } from "@/lib/ai/prompt";
 import {
+  FloorPlanError,
   assertLayoutStageAllowed,
   assertNoProcessingRun,
   confirmRoomBrief,
   confirmRoomLayout,
   confirmRoomRender,
+  createBriefStageRun,
   createFloorPlanProject,
+  createStageRun,
   getActiveConfirmedStageRun,
   getFloorPlanProjectDetail,
   getStageRunByDesignId,
+  handleFloorPlanTerminal,
   isRoomDesignComplete,
   isStageRunStale,
   placeRoomMarker,
@@ -26,8 +30,8 @@ import {
   restoreStageRun,
   updateRoomMarker,
   addNextRoomMarker,
+  recognizeRoomRegion,
 } from "@/lib/floor-plan";
-import { recognizeRoomRegion } from "@/lib/floor-plan/recognition";
 import {
   assertCreditInvariant,
   ensureFreeCreditGrant,
@@ -275,6 +279,44 @@ describe("Brief stage lifecycle", () => {
       .first<{ c: number }>();
     expect(holds?.c).toBe(1);
     expect(runs?.c).toBe(1);
+  });
+  it("maps unique conflict directly to STAGE_PROCESSING/409 even if winner terminalizes before error classification", async () => {
+    const userId = await seedUser();
+    const sourceId = await seedReadyAsset(userId);
+    const { id: projectId } = await createFloorPlanProject(env, userId, sourceId);
+    const room = await placeRoomMarker(env, userId, projectId, { x: 25, y: 75 });
+
+    const first = await createDesign(
+      env,
+      userId,
+      stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-winner")
+    );
+
+    let caughtErr: unknown = null;
+    try {
+      await createBriefStageRun(env, room.id, "task-loser");
+    } catch (err) {
+      caughtErr = err;
+    }
+
+    await handleFloorPlanTerminal(env, first.id, "ready");
+    await expect(assertNoProcessingRun(env, room.id, "brief")).resolves.toBeUndefined();
+
+    expect(caughtErr).toBeInstanceOf(FloorPlanError);
+    expect((caughtErr as FloorPlanError).code).toBe("STAGE_PROCESSING");
+    expect((caughtErr as FloorPlanError).status).toBe(409);
+  });
+  it("maps layout stage run unique conflict directly to STAGE_PROCESSING/409", async () => {
+    const userId = await seedUser();
+    const sourceId = await seedReadyAsset(userId);
+    const { id: projectId } = await createFloorPlanProject(env, userId, sourceId);
+    const room = await placeRoomMarker(env, userId, projectId, { x: 25, y: 75 });
+    await createStageRun(env, room.id, "layout", "task-layout-winner");
+
+    await expect(createStageRun(env, room.id, "layout", "task-layout-loser")).rejects.toMatchObject({
+      code: "STAGE_PROCESSING",
+      status: 409,
+    });
   });
 });
 describe("Floor plan prompt builders", () => {
@@ -937,6 +979,10 @@ async function applyMigrations(db: D1Database) {
         design_id TEXT, confirmed_at INTEGER,
         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       )`
+    ),
+    db.prepare(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_fp_stage_runs_processing
+        ON floor_plan_stage_runs(room_design_id, stage) WHERE status = 'processing'`
     ),
     db.prepare(
       `CREATE TABLE project_shares (

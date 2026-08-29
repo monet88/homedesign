@@ -1,7 +1,7 @@
 // Ticket 15 — Layout/Render stage runs, gating, confirm, and derived lineage.
 
 import type { Env } from "@/lib/bindings";
-import { FloorPlanError } from "@/lib/floor-plan/errors";
+import { FloorPlanError, isStageRunProcessingConflict } from "@/lib/floor-plan/errors";
 import { assertLayoutAllowed } from "@/lib/floor-plan/markers";
 import { rowToView, type RoomDesignRow } from "@/lib/floor-plan/rows";
 import type { MarkerPosition, RoomBriefProposal, RoomDesignView } from "@/lib/floor-plan/types";
@@ -115,12 +115,19 @@ export async function createStageRun(
   designId: string
 ): Promise<void> {
   const now = Date.now();
-  await env.DB.prepare(
-    `INSERT INTO floor_plan_stage_runs (id, room_design_id, stage, status, design_id, confirmed_at, created_at, updated_at)
-     VALUES (?1, ?2, ?3, 'processing', ?4, NULL, ?5, ?5)`
-  )
-    .bind(designId, roomDesignId, stage, designId, now)
-    .run();
+  try {
+    await env.DB.prepare(
+      `INSERT INTO floor_plan_stage_runs (id, room_design_id, stage, status, design_id, confirmed_at, created_at, updated_at)
+       VALUES (?1, ?2, ?3, 'processing', ?4, NULL, ?5, ?5)`
+    )
+      .bind(designId, roomDesignId, stage, designId, now)
+      .run();
+  } catch (err) {
+    if (isStageRunProcessingConflict(err)) {
+      throw new FloorPlanError("STAGE_PROCESSING", 409, `a ${stage} run is already processing`);
+    }
+    throw err;
+  }
 }
 
 export async function completeStageRun(env: Env, designId: string): Promise<void> {

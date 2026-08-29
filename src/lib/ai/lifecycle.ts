@@ -39,6 +39,8 @@ import {
 } from "@/lib/ai/types";
 import {
   handleFloorPlanTerminal,
+  mapFloorPlanError,
+  isStageRunProcessingConflict,
   resolveFloorPlanStagePlan,
   type ResolvedFloorPlanStagePlan,
 } from "@/lib/floor-plan";
@@ -272,7 +274,22 @@ export async function createDesign(
   ).run();
 
   if (floorPlanStagePlan) {
-    await floorPlanStagePlan.recordStageRun(env, taskId);
+    try {
+      await floorPlanStagePlan.recordStageRun(env, taskId);
+    } catch (err) {
+      await releaseHoldOnTerminal(env, taskId, "failed");
+      if (err instanceof DesignError) {
+        throw err;
+      }
+      if (isStageRunProcessingConflict(err)) {
+        throw new DesignError(
+          "INVALID_INTENT",
+          409,
+          `a ${effectiveConfig.stage ?? "stage"} run is already processing`
+        );
+      }
+      throw err;
+    }
   }
   // Dispatch. The Workflow/queue instance identity IS the task id, so a
   // re-dispatch by the reconciler converges instead of duplicating work.

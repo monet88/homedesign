@@ -1,7 +1,8 @@
-export { FloorPlanError, type FloorPlanErrorCode } from "@/lib/floor-plan/errors";
+export { FloorPlanError, isStageRunProcessingConflict, type FloorPlanErrorCode } from "@/lib/floor-plan/errors";
 export {
   resolveFloorPlanStagePlan,
   handleFloorPlanTerminal,
+  mapFloorPlanError,
   type ResolvedFloorPlanStagePlan,
 } from "@/lib/floor-plan/facade";
 export { createFloorPlanProject } from "@/lib/floor-plan/project";

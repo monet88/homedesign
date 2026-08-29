@@ -27,7 +27,7 @@ import {
   getStageRunByDesignId,
   parseRoomProposal,
 } from "@/lib/floor-plan/stages";
-import { FloorPlanError } from "@/lib/floor-plan/errors";
+import { FloorPlanError, isStageRunProcessingConflict } from "@/lib/floor-plan/errors";
 
 export interface ResolvedFloorPlanStagePlan {
   projectId: string;
@@ -38,7 +38,7 @@ export interface ResolvedFloorPlanStagePlan {
   recordStageRun(env: Env, taskId: string): Promise<void>;
 }
 
-function mapFloorPlanError(err: FloorPlanError): DesignError {
+export function mapFloorPlanError(err: FloorPlanError): DesignError {
   const codeMap: Partial<Record<FloorPlanError["code"], DesignError["code"]>> = {
     ASSET_NOT_FOUND: "ASSET_NOT_FOUND",
     FORBIDDEN: "FORBIDDEN",
@@ -150,10 +150,20 @@ export async function resolveFloorPlanStagePlan(
       }
     },
     async recordStageRun(env: Env, taskId: string): Promise<void> {
-      if (stage === "brief") {
-        await createBriefStageRun(env, roomId, taskId);
-      } else {
-        await createStageRun(env, roomId, stage, taskId);
+      try {
+        if (stage === "brief") {
+          await createBriefStageRun(env, roomId, taskId);
+        } else {
+          await createStageRun(env, roomId, stage, taskId);
+        }
+      } catch (err) {
+        if (err instanceof FloorPlanError) {
+          throw mapFloorPlanError(err);
+        }
+        if (isStageRunProcessingConflict(err)) {
+          throw new DesignError("INVALID_INTENT", 409, `a ${stage} run is already processing`);
+        }
+        throw err;
       }
     },
   };

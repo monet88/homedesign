@@ -1098,6 +1098,10 @@ async function applyMigrations(db: D1Database) {
       )`
     ),
     db.prepare(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_fp_stage_runs_processing
+        ON floor_plan_stage_runs(room_design_id, stage) WHERE status = 'processing'`
+    ),
+    db.prepare(
       `CREATE TABLE IF NOT EXISTS project_shares (
         id TEXT PRIMARY KEY,
         project_id TEXT NOT NULL,
