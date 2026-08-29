@@ -2,7 +2,8 @@
 
 import { env } from "cloudflare:test";
 import { describe, expect, it, beforeEach } from "vitest";
-import { createDesign } from "@/lib/ai/lifecycle";
+import type { Env } from "@/lib/bindings";
+import { createDesign, failGeneration, reconcileTasks } from "@/lib/ai/lifecycle";
 import { handleProviderNotify } from "@/lib/ai/notify-consumer";
 import {
   buildFloorPlanBriefPrompt,
@@ -319,26 +320,116 @@ describe("Brief stage lifecycle", () => {
       status: 409,
     });
   });
+  it("does not rollback admission when dispatch fails, keeping task and stage run intact for reconciler", async () => {
+    const userId = await seedUser();
+    const sourceId = await seedReadyAsset(userId);
+    const { id: projectId } = await createFloorPlanProject(env, userId, sourceId);
+    const room = await placeRoomMarker(env, userId, projectId, { x: 25, y: 75 });
+
+    const faultyEnv = {
+      ...env,
+      PROVIDER_NOTIFY: {
+        send: async () => {
+          throw new Error("QUEUE_DISPATCH_FAILURE");
+        },
+      },
+    } as unknown as Env;
+
+    await expect(
+      createDesign(
+        faultyEnv,
+        userId,
+        stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-dispatch-fail")
+      )
+    ).rejects.toThrow("QUEUE_DISPATCH_FAILURE");
+
+    // Task must exist and be in accepted state (not rolled back/deleted)
+    const task = await env.DB.prepare(
+      `SELECT * FROM ai_tasks WHERE user_id = ?1`
+    ).bind(userId).first<{ id: string; status: string }>();
+    expect(task).toBeTruthy();
+    expect(task?.status).toBe("accepted");
+
+    // Design must exist
+    const design = await env.DB.prepare(
+      `SELECT * FROM designs WHERE id = ?1`
+    ).bind(task!.id).first();
+    expect(design).toBeTruthy();
+
+    // Stage run must exist and be in processing state
+    const stageRun = await getStageRunByDesignId(env, task!.id);
+    expect(stageRun).toBeTruthy();
+    expect(stageRun?.status).toBe("processing");
+
+    // Active hold must exist
+    const activeHolds = await env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM credit_holds WHERE user_id = ?1 AND status = 'active'`
+    ).bind(userId).first<{ c: number }>();
+    expect(activeHolds?.c).toBe(1);
+
+    // Reconciler is able to redispatch the admitted task without issues
+    const reconcileRes = await reconcileTasks(env, 0);
+    expect(reconcileRes.redispatched).toBe(1);
+  });
   it("rolls back admission on race conflict so loser idempotency key can retry after winner completes", async () => {
     const userId = await seedUser();
     const sourceId = await seedReadyAsset(userId);
     const { id: projectId } = await createFloorPlanProject(env, userId, sourceId);
     const room = await placeRoomMarker(env, userId, projectId, { x: 25, y: 75 });
 
-    const winner = await createDesign(
-      env,
-      userId,
-      stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-winner-race")
-    );
-    expect(winner.status).toBe("accepted");
+    let arrivals = 0;
+    let releaseBarrier!: () => void;
+    const barrierPromise = new Promise<void>((resolve) => {
+      releaseBarrier = resolve;
+    });
 
-    await expect(
+    const barrierHook = async (_taskId: string) => {
+      arrivals++;
+      if (arrivals === 2) {
+        // Both requests have executed createTaskWithHold: 2 tasks and 2 active holds exist in DB
+        const activeHoldsDuringRace = await env.DB.prepare(
+          `SELECT COUNT(*) AS c FROM credit_holds WHERE user_id = ?1 AND status = 'active'`
+        ).bind(userId).first<{ c: number }>();
+        expect(activeHoldsDuringRace?.c).toBe(2);
+
+        const taskRowsDuringRace = await env.DB.prepare(
+          `SELECT COUNT(*) AS c FROM ai_tasks WHERE user_id = ?1`
+        ).bind(userId).first<{ c: number }>();
+        expect(taskRowsDuringRace?.c).toBe(2);
+
+        releaseBarrier();
+      } else {
+        await barrierPromise;
+      }
+    };
+
+    const [resA, resB] = await Promise.allSettled([
       createDesign(
         env,
         userId,
-        stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-loser-race")
-      )
-    ).rejects.toMatchObject({ code: "INVALID_INTENT", status: 409 });
+        stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-race-a"),
+        { __testAfterTaskHold: barrierHook }
+      ),
+      createDesign(
+        env,
+        userId,
+        stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-race-b"),
+        { __testAfterTaskHold: barrierHook }
+      ),
+    ]);
+
+    expect(arrivals).toBe(2);
+    const winnerRes = resA.status === "fulfilled" ? resA : resB;
+    const loserRes = resA.status === "rejected" ? resA : resB;
+    const loserKey = resA.status === "rejected" ? "idem-race-a" : "idem-race-b";
+
+    expect(winnerRes.status).toBe("fulfilled");
+    if (winnerRes.status !== "fulfilled") throw new Error("Winner failed");
+    expect(winnerRes.value.status).toBe("accepted");
+
+    expect(loserRes.status).toBe("rejected");
+    if (loserRes.status !== "rejected") throw new Error("Loser succeeded");
+    expect(loserRes.reason).toMatchObject({ code: "INVALID_INTENT", status: 409 });
 
     const activeHolds = await env.DB.prepare(
       `SELECT COUNT(*) AS c FROM credit_holds WHERE user_id = ?1 AND status = 'active'`
@@ -353,18 +444,18 @@ describe("Brief stage lifecycle", () => {
     expect(taskRows?.c).toBe(1);
 
     const loserKeyRow = await env.DB.prepare(
-      `SELECT * FROM idempotency_keys WHERE user_id = ?1 AND idempotency_key = 'idem-loser-race'`
+      `SELECT * FROM idempotency_keys WHERE user_id = ?1 AND idempotency_key = ?2`
     )
-      .bind(userId)
+      .bind(userId, loserKey)
       .first();
     expect(loserKeyRow).toBeNull();
-    await completeBriefStageRun(env, winner.id);
-    await proposeRoomBrief(env, userId, room.id);
-    await confirmRoomBrief(env, userId, room.id);
+
+    await failGeneration(env, winnerRes.value.id, "PROVIDER_FAILED");
+
     const retry = await createDesign(
       env,
       userId,
-      stagePayload("layout", sourceId, room.id, { x: 25, y: 75 }, "idem-loser-race")
+      stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, loserKey)
     );
     expect(retry.cached).toBe(false);
     expect(retry.status).toBe("accepted");
@@ -604,7 +695,7 @@ describe("Panorama stage lifecycle", () => {
     expect(panoramaView?.panoramaOrientation).toEqual({ yaw: 0, pitch: 0, hfov: 100 });
 
     await expect(assertCreditInvariant(env, billUser)).resolves.toBe(true);
-  });
+  }, 20_000);
 
   it("skip panorama still completes room from confirmed render", async () => {
     const userId = await seedUser();

@@ -134,7 +134,8 @@ export interface CreateDesignResult {
 export async function createDesign(
   env: Env,
   userId: string,
-  rawBody: unknown
+  rawBody: unknown,
+  options?: { __testAfterTaskHold?: (taskId: string) => Promise<void> }
 ): Promise<CreateDesignResult> {
   assertGenerationAllowed(env);
   const config = validateDesignConfig(rawBody);
@@ -196,11 +197,9 @@ export async function createDesign(
         await floorPlanStagePlan.assertCanStart();
       }
     }
-
     if (!created) {
       // Free grant is ensured on every verified new-task path (ADR 0002); idempotent.
       await ensureFreeCreditGrant(env, userId);
-
       // Credit gate BEFORE the hold. createTaskWithHold re-checks atomically.
       const available = await getAvailableCredits(env, userId);
       if (available < effectiveConfig.cost) {
@@ -243,9 +242,12 @@ export async function createDesign(
       projectId: existing?.project_id ?? "",
     };
   }
+  let projectId: string;
   try {
-    const projectId = floorPlanStagePlan?.projectId ?? await ensureProject(env, userId, effectiveConfig, asset.id);
-
+    if (options?.__testAfterTaskHold) {
+      await options.__testAfterTaskHold(taskId);
+    }
+    projectId = floorPlanStagePlan?.projectId ?? await ensureProject(env, userId, effectiveConfig, asset.id);
     const now = Date.now();
     await env.DB.prepare(
       `INSERT INTO designs (id, user_id, project_id, scene, stage, provider, model, provider_scene, prompt,
@@ -271,16 +273,18 @@ export async function createDesign(
     if (floorPlanStagePlan) {
       await floorPlanStagePlan.recordStageRun(env, taskId);
     }
-
-    // Dispatch. The Workflow/queue instance identity IS the task id, so a
-    // re-dispatch by the reconciler converges instead of duplicating work.
-    await dispatchTask(env, taskId);
-
-    return { id: taskId, cached: false, status: "accepted", cost: effectiveConfig.cost, projectId };
   } catch (err) {
     await rollbackTaskAdmission(env, userId, taskId, effectiveConfig.idempotencyKey);
     throw err;
   }
+
+  // Dispatch. The Workflow/queue instance identity IS the task id, so a
+  // re-dispatch by the reconciler converges instead of duplicating work.
+  // Dispatch failure does not rollback admission: admitted task and stage run
+  // remain intact for reconciler to retry.
+  await dispatchTask(env, taskId);
+
+  return { id: taskId, cached: false, status: "accepted", cost: effectiveConfig.cost, projectId };
 }
 
 export async function dispatchTask(env: Env, taskId: string): Promise<void> {
@@ -295,18 +299,23 @@ async function rollbackTaskAdmission(
   taskId: string,
   idempotencyKey?: string
 ): Promise<void> {
-  await releaseHoldOnTerminal(env, taskId, "failed").catch(() => {});
-  await env.DB.prepare(`DELETE FROM designs WHERE id = ?1`).bind(taskId).run().catch(() => {});
-  await env.DB.prepare(`DELETE FROM ai_tasks WHERE id = ?1`).bind(taskId).run().catch(() => {});
+  await releaseHoldOnTerminal(env, taskId, "failed");
+  const cleanupStmts = [
+    env.DB.prepare(`DELETE FROM designs WHERE id = ?1`).bind(taskId),
+    env.DB.prepare(`DELETE FROM ai_tasks WHERE id = ?1`).bind(taskId),
+  ];
   if (idempotencyKey) {
-    await env.DB.prepare(
-      `DELETE FROM idempotency_keys WHERE user_id = ?1 AND operation = 'task_create' AND idempotency_key = ?2`
-    ).bind(userId, idempotencyKey).run().catch(() => {});
+    cleanupStmts.push(
+      env.DB.prepare(
+        `DELETE FROM idempotency_keys WHERE user_id = ?1 AND operation = 'task_create' AND idempotency_key = ?2`
+      ).bind(userId, idempotencyKey)
+    );
   } else {
-    await env.DB.prepare(
-      `DELETE FROM idempotency_keys WHERE result_id = ?1`
-    ).bind(taskId).run().catch(() => {});
+    cleanupStmts.push(
+      env.DB.prepare(`DELETE FROM idempotency_keys WHERE result_id = ?1`).bind(taskId)
+    );
   }
+  await env.DB.batch(cleanupStmts);
 }
 
 
