@@ -39,8 +39,6 @@ import {
 } from "@/lib/ai/types";
 import {
   handleFloorPlanTerminal,
-  mapFloorPlanError,
-  isStageRunProcessingConflict,
   resolveFloorPlanStagePlan,
   type ResolvedFloorPlanStagePlan,
 } from "@/lib/floor-plan";
@@ -245,57 +243,44 @@ export async function createDesign(
       projectId: existing?.project_id ?? "",
     };
   }
+  try {
+    const projectId = floorPlanStagePlan?.projectId ?? await ensureProject(env, userId, effectiveConfig, asset.id);
 
-  // Floor Plan remains attached to the Room Design's original project even
-  // when a stage (Panorama) uses an upstream generated asset as provider input.
-  // Other scenes retain source-asset keyed project creation (ADR 0005).
-  const projectId = floorPlanStagePlan?.projectId ?? await ensureProject(env, userId, effectiveConfig, asset.id);
+    const now = Date.now();
+    await env.DB.prepare(
+      `INSERT INTO designs (id, user_id, project_id, scene, stage, provider, model, provider_scene, prompt,
+         config_json, source_asset_id, output_asset_id, cost_credits, idempotency_key, created_at, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, ?12, ?13, ?14, ?14)`
+    ).bind(
+      taskId,
+      userId,
+      projectId,
+      effectiveConfig.scene,
+      effectiveConfig.stage ?? null,
+      effectiveConfig.provider,
+      effectiveConfig.model,
+      effectiveConfig.providerScene,
+      prompt,
+      JSON.stringify(effectiveConfig),
+      asset.id,
+      effectiveConfig.cost,
+      effectiveConfig.idempotencyKey,
+      now
+    ).run();
 
-  const now = Date.now();
-  await env.DB.prepare(
-    `INSERT INTO designs (id, user_id, project_id, scene, stage, provider, model, provider_scene, prompt,
-       config_json, source_asset_id, output_asset_id, cost_credits, idempotency_key, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, ?12, ?13, ?14, ?14)`
-  ).bind(
-    taskId,
-    userId,
-    projectId,
-    effectiveConfig.scene,
-    effectiveConfig.stage ?? null,
-    effectiveConfig.provider,
-    effectiveConfig.model,
-    effectiveConfig.providerScene,
-    prompt,
-    JSON.stringify(effectiveConfig),
-    asset.id,
-    effectiveConfig.cost,
-    effectiveConfig.idempotencyKey,
-    now
-  ).run();
-
-  if (floorPlanStagePlan) {
-    try {
+    if (floorPlanStagePlan) {
       await floorPlanStagePlan.recordStageRun(env, taskId);
-    } catch (err) {
-      await releaseHoldOnTerminal(env, taskId, "failed");
-      if (err instanceof DesignError) {
-        throw err;
-      }
-      if (isStageRunProcessingConflict(err)) {
-        throw new DesignError(
-          "INVALID_INTENT",
-          409,
-          `a ${effectiveConfig.stage ?? "stage"} run is already processing`
-        );
-      }
-      throw err;
     }
-  }
-  // Dispatch. The Workflow/queue instance identity IS the task id, so a
-  // re-dispatch by the reconciler converges instead of duplicating work.
-  await dispatchTask(env, taskId);
 
-  return { id: taskId, cached: false, status: "accepted", cost: effectiveConfig.cost, projectId };
+    // Dispatch. The Workflow/queue instance identity IS the task id, so a
+    // re-dispatch by the reconciler converges instead of duplicating work.
+    await dispatchTask(env, taskId);
+
+    return { id: taskId, cached: false, status: "accepted", cost: effectiveConfig.cost, projectId };
+  } catch (err) {
+    await rollbackTaskAdmission(env, userId, taskId, effectiveConfig.idempotencyKey);
+    throw err;
+  }
 }
 
 export async function dispatchTask(env: Env, taskId: string): Promise<void> {
@@ -304,6 +289,26 @@ export async function dispatchTask(env: Env, taskId: string): Promise<void> {
     .run();
   await env.PROVIDER_NOTIFY.send({ type: "task-dispatch", taskId });
 }
+async function rollbackTaskAdmission(
+  env: Env,
+  userId: string,
+  taskId: string,
+  idempotencyKey?: string
+): Promise<void> {
+  await releaseHoldOnTerminal(env, taskId, "failed").catch(() => {});
+  await env.DB.prepare(`DELETE FROM designs WHERE id = ?1`).bind(taskId).run().catch(() => {});
+  await env.DB.prepare(`DELETE FROM ai_tasks WHERE id = ?1`).bind(taskId).run().catch(() => {});
+  if (idempotencyKey) {
+    await env.DB.prepare(
+      `DELETE FROM idempotency_keys WHERE user_id = ?1 AND operation = 'task_create' AND idempotency_key = ?2`
+    ).bind(userId, idempotencyKey).run().catch(() => {});
+  } else {
+    await env.DB.prepare(
+      `DELETE FROM idempotency_keys WHERE result_id = ?1`
+    ).bind(taskId).run().catch(() => {});
+  }
+}
+
 
 async function ensureProject(
   env: Env,

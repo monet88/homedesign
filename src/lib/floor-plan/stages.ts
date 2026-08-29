@@ -305,7 +305,7 @@ async function confirmStageRun(
   stage: "layout" | "render",
   designId?: string
 ): Promise<RoomDesignView> {
-  const row = await loadOwnedRoomDesign(env, userId, roomDesignId);
+  await loadOwnedRoomDesign(env, userId, roomDesignId);
 
   let run: StageRunRow | null;
   if (designId) {

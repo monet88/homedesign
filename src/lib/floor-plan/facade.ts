@@ -27,7 +27,7 @@ import {
   getStageRunByDesignId,
   parseRoomProposal,
 } from "@/lib/floor-plan/stages";
-import { FloorPlanError, isStageRunProcessingConflict } from "@/lib/floor-plan/errors";
+import { FloorPlanError } from "@/lib/floor-plan/errors";
 
 export interface ResolvedFloorPlanStagePlan {
   projectId: string;
@@ -159,9 +159,6 @@ export async function resolveFloorPlanStagePlan(
       } catch (err) {
         if (err instanceof FloorPlanError) {
           throw mapFloorPlanError(err);
-        }
-        if (isStageRunProcessingConflict(err)) {
-          throw new DesignError("INVALID_INTENT", 409, `a ${stage} run is already processing`);
         }
         throw err;
       }

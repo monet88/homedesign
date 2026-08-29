@@ -16,6 +16,7 @@ import {
   confirmRoomBrief,
   confirmRoomLayout,
   confirmRoomRender,
+  completeBriefStageRun,
   createBriefStageRun,
   createFloorPlanProject,
   createStageRun,
@@ -317,6 +318,56 @@ describe("Brief stage lifecycle", () => {
       code: "STAGE_PROCESSING",
       status: 409,
     });
+  });
+  it("rolls back admission on race conflict so loser idempotency key can retry after winner completes", async () => {
+    const userId = await seedUser();
+    const sourceId = await seedReadyAsset(userId);
+    const { id: projectId } = await createFloorPlanProject(env, userId, sourceId);
+    const room = await placeRoomMarker(env, userId, projectId, { x: 25, y: 75 });
+
+    const winner = await createDesign(
+      env,
+      userId,
+      stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-winner-race")
+    );
+    expect(winner.status).toBe("accepted");
+
+    await expect(
+      createDesign(
+        env,
+        userId,
+        stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-loser-race")
+      )
+    ).rejects.toMatchObject({ code: "INVALID_INTENT", status: 409 });
+
+    const activeHolds = await env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM credit_holds WHERE user_id = ?1 AND status = 'active'`
+    )
+      .bind(userId)
+      .first<{ c: number }>();
+    expect(activeHolds?.c).toBe(1);
+
+    const taskRows = await env.DB.prepare(`SELECT COUNT(*) AS c FROM ai_tasks WHERE user_id = ?1`)
+      .bind(userId)
+      .first<{ c: number }>();
+    expect(taskRows?.c).toBe(1);
+
+    const loserKeyRow = await env.DB.prepare(
+      `SELECT * FROM idempotency_keys WHERE user_id = ?1 AND idempotency_key = 'idem-loser-race'`
+    )
+      .bind(userId)
+      .first();
+    expect(loserKeyRow).toBeNull();
+    await completeBriefStageRun(env, winner.id);
+    await proposeRoomBrief(env, userId, room.id);
+    await confirmRoomBrief(env, userId, room.id);
+    const retry = await createDesign(
+      env,
+      userId,
+      stagePayload("layout", sourceId, room.id, { x: 25, y: 75 }, "idem-loser-race")
+    );
+    expect(retry.cached).toBe(false);
+    expect(retry.status).toBe("accepted");
   });
 });
 describe("Floor plan prompt builders", () => {

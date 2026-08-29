@@ -32,6 +32,8 @@ export function isStageRunProcessingConflict(err: unknown): boolean {
   const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
   return (
     message.includes("idx_fp_stage_runs_processing") ||
-    (message.includes("unique constraint failed") && message.includes("floor_plan_stage_runs"))
+    (message.includes("unique constraint failed") &&
+      message.includes("room_design_id") &&
+      message.includes("stage"))
   );
 }
