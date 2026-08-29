@@ -1,0 +1,28 @@
+src/app/api/designs/design-api.test.ts
+  h_17f2fa2b92da6a 119,125-126,128,130,192,194-207,210-224,245,249-250,254,257,261,265-281,285,301,306-308,311,392
+src/lib/ai/lifecycle.ts
+  h_17f2fa2b92da6a 8-9,46,191-192,207-208,218-221,228-229,236,239,246,262-263,303-305,308-310
+src/lib/ai/lifecycle.wtest.ts
+  h_17f2fa2b92da6a 35,350-387
+src/lib/credits/ledger.ts
+  h_17f2fa2b92da6a 324-326,328-339,341-350,366-379,384,570
+src/lib/credits/ledger.wtest.ts
+  h_17f2fa2b92da6a 112-131
+src/lib/floor-plan/facade.ts
+  h_17f2fa2b92da6a 154-157
+src/lib/payments/core.ts
+  h_17f2fa2b92da6a 345-347,352-356,361-364,376-377,386-400,403-406,418
+src/lib/payments/payments.wtest.ts
+  h_17f2fa2b92da6a 243-280
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "f9b466b09184080f773bece6570a4a884449fb55",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
