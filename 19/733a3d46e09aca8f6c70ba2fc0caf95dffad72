@@ -1,0 +1,18 @@
+src/lib/ai/task-lifecycle.ts
+  h_17f2fa2b92da6a 1-282
+src/lib/idempotency/index.ts
+  h_17f2fa2b92da6a 1-119
+src/lib/payments/core.ts
+  h_17f2fa2b92da6a 17,19-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "19733a3d46e09aca8f6c70ba2fc0caf95dffad72",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
