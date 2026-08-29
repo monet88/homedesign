@@ -1,0 +1,16 @@
+src/lib/payments/core.ts
+  h_17f2fa2b92da6a 1,4,11
+src/lib/payments/payments.wtest.ts
+  h_17f2fa2b92da6a 19-23,29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "704d41dae1bc5ede8cccba9ae8e02a5981f47a30",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
