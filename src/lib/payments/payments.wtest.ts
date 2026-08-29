@@ -16,15 +16,17 @@ import { describe, expect, it, beforeEach } from "vitest";
 import type { Env } from "@/lib/bindings";
 import {
   mockPurchase,
+  MOCK_PACKS,
+  type MockPack,
+} from "@/lib/payments/core";
+import { canonicalHash } from "@/lib/idempotency";
+import {
   createTaskWithHold,
   settleHoldOnReady,
   releaseHoldOnTerminal,
   expireStaleTasks,
-  MOCK_PACKS,
   TASK_EXPIRY_MS,
-  canonicalHash,
-  type MockPack,
-} from "@/lib/payments/core";
+} from "@/lib/ai/task-lifecycle";
 import {
   assertCreditInvariant,
   getAvailableCredits,
@@ -795,6 +797,473 @@ describe("Ticket #46: Mock Payment Zod command validation & Credit Ledger integr
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 });
+
+// ── Spec #58: AI Task Lifecycle & Idempotency Concurrency Invariants ─────────
+
+describe("Spec #58: AI Task Lifecycle & Idempotency Concurrency Invariants", () => {
+  it("concurrent createTaskWithHold with identical key returns cached task and creates 1 hold", async () => {
+    const key = "concurrent-task-same-key";
+    const taskDef = {
+      scene: "interior",
+      provider: "fake",
+      model: "model-x",
+      prompt: "Modern living room",
+      sourceKey: null,
+      options: {},
+    };
+
+    // Fire two concurrent creations
+    const [res1, res2] = await Promise.all([
+      createTaskWithHold(env, userId, taskDef, 5, key),
+      createTaskWithHold(env, userId, taskDef, 5, key),
+    ]);
+
+    expect(res1.taskId).toBe(res2.taskId);
+    expect([res1.cached, res2.cached]).toContain(true);
+
+    // Verify exactly 1 hold and 1 task in database
+    const tasks = await env.DB.prepare(`SELECT COUNT(*) AS cnt FROM ai_tasks WHERE user_id = ?1`).bind(userId).first<{ cnt: number }>();
+    expect(tasks?.cnt).toBe(1);
+
+    const holds = await env.DB.prepare(`SELECT COUNT(*) AS cnt FROM credit_holds WHERE user_id = ?1 AND status = 'active'`).bind(userId).first<{ cnt: number }>();
+    expect(holds?.cnt).toBe(1);
+
+    expect(await getAvailableCredits(env, userId)).toBe(5);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent createTaskWithHold with same key but different payload rejects with 409", async () => {
+    const key = "concurrent-task-diff-payload";
+    const taskDef1 = {
+      scene: "interior",
+      provider: "fake",
+      model: "model-x",
+      prompt: "Prompt A",
+      sourceKey: null,
+      options: {},
+    };
+    const taskDef2 = {
+      scene: "interior",
+      provider: "fake",
+      model: "model-x",
+      prompt: "Prompt B",
+      sourceKey: null,
+      options: {},
+    };
+
+    const results = await Promise.allSettled([
+      createTaskWithHold(env, userId, taskDef1, 2, key),
+      createTaskWithHold(env, userId, taskDef2, 2, key),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+
+    expect(fulfilled.length).toBe(1);
+    expect(rejected.length).toBe(1);
+    expect((rejected[0] as PromiseRejectedResult).reason.message).toContain("IDEMPOTENCY_KEY_REUSED");
+
+    // Exactly 1 hold created
+    const holds = await env.DB.prepare(`SELECT COUNT(*) AS cnt FROM credit_holds WHERE user_id = ?1 AND status = 'active'`).bind(userId).first<{ cnt: number }>();
+    expect(holds?.cnt).toBe(1);
+
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent tasks competing for remaining credits: only winner gets hold, loser gets INSUFFICIENT_CREDITS", async () => {
+    // User starts with 10 credits
+    const taskDef = {
+      scene: "interior",
+      provider: "fake",
+      model: "m",
+      prompt: "P",
+      sourceKey: null,
+      options: {},
+    };
+
+    // Two concurrent requests for 10 credits each (total 20 > 10 available)
+    const results = await Promise.allSettled([
+      createTaskWithHold(env, userId, taskDef, 10, "race-credits-key-1"),
+      createTaskWithHold(env, userId, taskDef, 10, "race-credits-key-2"),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+
+    expect(fulfilled.length).toBe(1);
+    expect(rejected.length).toBe(1);
+    expect((rejected[0] as PromiseRejectedResult).reason.message).toContain("INSUFFICIENT_CREDITS");
+
+    // Available credits must be exactly 0, never negative
+    expect(await getAvailableCredits(env, userId)).toBe(0);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("settleHoldOnReady crash recovery: retried settle completes task transition without double usage", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 3, "settle-crash-key");
+
+    const task = await env.DB.prepare(`SELECT hold_id FROM ai_tasks WHERE id = ?1`).bind(taskId).first<{ hold_id: string }>();
+
+    // Simulate partial crash: hold is settled in D1, but ai_tasks status update was interrupted (remains 'accepted')
+    await env.DB.prepare(`UPDATE credit_holds SET status = 'settled', settled_at = ?1 WHERE id = ?2`).bind(Date.now(), task?.hold_id).run();
+    await env.DB.prepare(
+      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+       VALUES (?1, ?2, 'usage', 3, 'task', 'task', ?3, NULL, ?4)`
+    ).bind(crypto.randomUUID(), userId, taskId, Date.now()).run();
+
+    // Retrying settleHoldOnReady should detect already settled hold and transition task to 'notified'
+    await settleHoldOnReady(env, taskId, true, true);
+
+    const updatedTask = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`).bind(taskId).first<{ status: string }>();
+    expect(updatedTask?.status).toBe("notified");
+
+    // Verify usage entries count is exactly 1 (no duplicate usage added by retry)
+    const usageCount = await env.DB.prepare(`SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'usage'`).bind(userId).first<{ cnt: number }>();
+    expect(usageCount?.cnt).toBe(1);
+
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("late failure callback after success settlement does not flip task to failed or release settled hold", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 4, "late-fail-race-key");
+
+    // Settle success
+    await settleHoldOnReady(env, taskId, true, true);
+
+    const taskBefore = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`).bind(taskId).first<{ status: string }>();
+    expect(taskBefore?.status).toBe("notified");
+
+    // Late failure callback arrives
+    await releaseHoldOnTerminal(env, taskId, "failed");
+
+    // Status MUST remain 'notified' (not overwritten to 'failed')
+    const taskAfter = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`).bind(taskId).first<{ status: string }>();
+    expect(taskAfter?.status).toBe("notified");
+
+    // Hold MUST remain 'settled' (not released)
+    const hold = await env.DB.prepare(`SELECT status FROM credit_holds WHERE ref_id = ?1`).bind(taskId).first<{ status: string }>();
+    expect(hold?.status).toBe("settled");
+
+    // Usage remains 4, available remains 6
+    expect(await getAvailableCredits(env, userId)).toBe(6);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent mockPurchase same key: both fulfilled, same payment ID, exactly 1 payment row and 1 ledger entry", async () => {
+    const key = "race-mock-pay-key";
+    const [r1, r2] = await Promise.allSettled([
+      mockPurchase(env, userId, "plus", key),
+      mockPurchase(env, userId, "plus", key),
+    ]);
+
+    expect(r1.status).toBe("fulfilled");
+    expect(r2.status).toBe("fulfilled");
+    if (r1.status === "fulfilled" && r2.status === "fulfilled") {
+      expect(r1.value.id).toBe(r2.value.id);
+      expect(r1.value.amount).toBe(160);
+      expect(r2.value.amount).toBe(160);
+      expect([r1.value.cached, r2.value.cached]).toContain(true);
+      expect([r1.value.cached, r2.value.cached]).toContain(false);
+    }
+
+    // Exactly 1 mock_payments row
+    const payments = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM mock_payments WHERE user_id = ?1 AND idempotency_key = ?2`
+    ).bind(userId, key).first<{ cnt: number }>();
+    expect(payments?.cnt).toBe(1);
+
+    // Exactly 1 payment ledger entry with this grant_key
+    const ledgerEntries = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'payment' AND grant_key = ?2`
+    ).bind(userId, key).first<{ cnt: number }>();
+    expect(ledgerEntries?.cnt).toBe(1);
+
+    // Available credited exactly once: 10 free + 160 = 170
+    expect(await getAvailableCredits(env, userId)).toBe(170);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent settleHoldOnReady races produce exactly one usage entry", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 4, "race-settle-settle-key");
+
+    await Promise.allSettled([
+      settleHoldOnReady(env, taskId, true, true),
+      settleHoldOnReady(env, taskId, true, true),
+    ]);
+
+    const hold = await env.DB.prepare(
+      `SELECT status FROM credit_holds WHERE ref_id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    expect(hold?.status).toBe("settled");
+
+    const usage = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'usage'`
+    ).bind(userId).first<{ cnt: number }>();
+    expect(usage?.cnt).toBe(1);
+
+    const task = await env.DB.prepare(
+      `SELECT status FROM ai_tasks WHERE id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    expect(task?.status).toBe("notified");
+
+    expect(await getAvailableCredits(env, userId)).toBe(6);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent settle vs terminal failure: exactly one winning outcome, never failed+usage", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 5, "race-settle-fail-key");
+
+    await Promise.allSettled([
+      settleHoldOnReady(env, taskId, true, true),
+      releaseHoldOnTerminal(env, taskId, "failed"),
+    ]);
+
+    const task = await env.DB.prepare(
+      `SELECT status FROM ai_tasks WHERE id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    const hold = await env.DB.prepare(
+      `SELECT status FROM credit_holds WHERE ref_id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    const usage = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'usage'`
+    ).bind(userId).first<{ cnt: number }>();
+    const release = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'release'`
+    ).bind(userId).first<{ cnt: number }>();
+
+    // Exactly one winning terminal outcome; never failed task with charged usage.
+    if (task?.status === "notified") {
+      expect(hold?.status).toBe("settled");
+      expect(usage?.cnt).toBe(1);
+      expect(release?.cnt).toBe(0);
+      expect(await getAvailableCredits(env, userId)).toBe(5);
+    } else {
+      expect(task?.status).toBe("failed");
+      expect(hold?.status).toBe("released");
+      expect(usage?.cnt).toBe(0);
+      expect(release?.cnt).toBe(1);
+      expect(await getAvailableCredits(env, userId)).toBe(10);
+    }
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent settle vs server expiry: exactly one settlement/release outcome", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 3, "race-settle-expire-key");
+
+    // Force task past expiry so the reconciler will race with settlement
+    await env.DB.prepare(`UPDATE ai_tasks SET expires_at = ?1 WHERE id = ?2`)
+      .bind(Date.now() - 1, taskId).run();
+
+    await Promise.allSettled([
+      settleHoldOnReady(env, taskId, true, true),
+      expireStaleTasks(env),
+    ]);
+
+    const task = await env.DB.prepare(
+      `SELECT status FROM ai_tasks WHERE id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    const hold = await env.DB.prepare(
+      `SELECT status FROM credit_holds WHERE ref_id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    const usage = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'usage'`
+    ).bind(userId).first<{ cnt: number }>();
+    const release = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'release'`
+    ).bind(userId).first<{ cnt: number }>();
+
+    if (task?.status === "notified") {
+      expect(hold?.status).toBe("settled");
+      expect(usage?.cnt).toBe(1);
+      expect(release?.cnt).toBe(0);
+      expect(await getAvailableCredits(env, userId)).toBe(7);
+    } else {
+      expect(task?.status).toBe("expired");
+      expect(hold?.status).toBe("released");
+      expect(usage?.cnt).toBe(0);
+      expect(release?.cnt).toBe(1);
+      expect(await getAvailableCredits(env, userId)).toBe(10);
+    }
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("late failure callback after server expiry does NOT overwrite task status to failed or add duplicate release entry", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 2, "late-fail-after-exp-key");
+
+    // Force task past expiry
+    await env.DB.prepare(`UPDATE ai_tasks SET expires_at = ?1 WHERE id = ?2`)
+      .bind(Date.now() - 1, taskId).run();
+
+    // Reconciler runs first and expires the task
+    const expired = await expireStaleTasks(env);
+    expect(expired).toBe(1);
+
+    const taskBefore = await env.DB.prepare(
+      `SELECT status FROM ai_tasks WHERE id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    expect(taskBefore?.status).toBe("expired");
+
+    // Late failure callback arrives after expiry
+    await releaseHoldOnTerminal(env, taskId, "failed");
+
+    const taskAfter = await env.DB.prepare(
+      `SELECT status FROM ai_tasks WHERE id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    // Task status MUST remain 'expired', NOT overwritten to 'failed'
+    expect(taskAfter?.status).toBe("expired");
+
+    const hold = await env.DB.prepare(
+      `SELECT status FROM credit_holds WHERE ref_id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    expect(hold?.status).toBe("released");
+
+    // Exactly 1 release ledger entry (from expiry, not duplicated by late failure)
+    const release = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'release'`
+    ).bind(userId).first<{ cnt: number }>();
+    expect(release?.cnt).toBe(1);
+
+    expect(await getAvailableCredits(env, userId)).toBe(10);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent releaseHoldOnTerminal(failed) vs server expiry: exactly one release entry, terminal status never overwritten", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 3, "race-release-expire-key");
+
+    // Force task past expiry so the reconciler races with the failure callback
+    await env.DB.prepare(`UPDATE ai_tasks SET expires_at = ?1 WHERE id = ?2`)
+      .bind(Date.now() - 1, taskId).run();
+
+    await Promise.allSettled([
+      releaseHoldOnTerminal(env, taskId, "failed"),
+      expireStaleTasks(env),
+    ]);
+
+    const task = await env.DB.prepare(
+      `SELECT status FROM ai_tasks WHERE id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    const hold = await env.DB.prepare(
+      `SELECT status FROM credit_holds WHERE ref_id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    const release = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'release'`
+    ).bind(userId).first<{ cnt: number }>();
+
+    // Whichever terminal transition wins (failed or expired) must hold:
+    // the loser cannot overwrite it (CAS guard) and only one release entry exists.
+    expect(["failed", "expired"]).toContain(task?.status);
+    expect(hold?.status).toBe("released");
+    expect(release?.cnt).toBe(1);
+    expect(await getAvailableCredits(env, userId)).toBe(10);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("expiry stale-read cannot overwrite a failed terminal winner", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 3, "barrier-fail-before-expiry-batch-key");
+
+    await env.DB.prepare(`UPDATE ai_tasks SET expires_at = ?1 WHERE id = ?2`)
+      .bind(Date.now() - 1, taskId).run();
+
+    let expiryReachedBatch!: () => void;
+    const expiryAtBatch = new Promise<void>((resolve) => {
+      expiryReachedBatch = resolve;
+    });
+    let allowExpiryBatch!: () => void;
+    const expiryMayContinue = new Promise<void>((resolve) => {
+      allowExpiryBatch = resolve;
+    });
+
+    const realDB = env.DB;
+    const barrierDB = new Proxy(realDB, {
+      get(target, prop, receiver) {
+        if (prop === "batch") {
+          return async (statements: D1PreparedStatement[]) => {
+            expiryReachedBatch();
+            await expiryMayContinue;
+            return target.batch(statements);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const barrierEnv = { ...env, DB: barrierDB } as unknown as typeof env;
+
+    // Let expiry capture the stale task + active hold, then pause immediately
+    // before its atomic release/expire batch. Failure wins while expiry holds
+    // stale pre-terminal state, which is the interleaving the CAS must protect.
+    const expiryPromise = expireStaleTasks(barrierEnv);
+    await expiryAtBatch;
+    await releaseHoldOnTerminal(env, taskId, "failed");
+
+    const winner = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`)
+      .bind(taskId).first<{ status: string }>();
+    expect(winner?.status).toBe("failed");
+
+    allowExpiryBatch();
+    const expired = await expiryPromise;
+    expect(expired).toBe(0);
+
+    const task = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`)
+      .bind(taskId).first<{ status: string }>();
+    expect(task?.status).toBe("failed");
+
+    const hold = await env.DB.prepare(`SELECT status FROM credit_holds WHERE ref_id = ?1`)
+      .bind(taskId).first<{ status: string }>();
+    expect(hold?.status).toBe("released");
+
+    const release = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'release'`
+    ).bind(userId).first<{ cnt: number }>();
+    expect(release?.cnt).toBe(1);
+    expect(await getAvailableCredits(env, userId)).toBe(10);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+  it("expireStaleTasks expires stale tasks even with null hold_id or missing hold record", async () => {
+    const taskIdNoHold = crypto.randomUUID();
+    const taskIdMissingHold = crypto.randomUUID();
+    const now = Date.now();
+
+    // Task 1: hold_id is null
+    await env.DB.prepare(
+      `INSERT INTO ai_tasks (id, scene, provider, model, prompt, status, created_at, updated_at, user_id, hold_id, cost_credits, expires_at)
+       VALUES (?1, 'interior', 'fake', 'm', 'P', 'accepted', ?2, ?2, ?3, NULL, 0, ?4)`
+    ).bind(taskIdNoHold, now, userId, now - 1000).run();
+
+    // Task 2: hold_id points to non-existent hold
+    await env.DB.prepare(
+      `INSERT INTO ai_tasks (id, scene, provider, model, prompt, status, created_at, updated_at, user_id, hold_id, cost_credits, expires_at)
+       VALUES (?1, 'interior', 'fake', 'm', 'P', 'accepted', ?2, ?2, ?3, 'non-existent-hold', 1, ?4)`
+    ).bind(taskIdMissingHold, now, userId, now - 1000).run();
+
+    const expired = await expireStaleTasks(env);
+    expect(expired).toBe(2);
+
+    const task1 = await env.DB.prepare(`SELECT status, expired_at FROM ai_tasks WHERE id = ?1`).bind(taskIdNoHold).first<{ status: string; expired_at: number }>();
+    expect(task1?.status).toBe("expired");
+    expect(task1?.expired_at).toBeTruthy();
+
+    const task2 = await env.DB.prepare(`SELECT status, expired_at FROM ai_tasks WHERE id = ?1`).bind(taskIdMissingHold).first<{ status: string; expired_at: number }>();
+    expect(task2?.status).toBe("expired");
+    expect(task2?.expired_at).toBeTruthy();
+  });
+});
+
 
 // ── Schema recreation for the workers-runtime harness ────────────────────────
 

@@ -52,7 +52,8 @@ import {
   releaseHoldOnTerminal,
   settleHoldOnReady,
   expireStaleTasks,
-} from "@/lib/payments/core";
+  dispatchTask,
+} from "@/lib/ai/task-lifecycle";
 import { validateDesignConfig } from "@/lib/ai/config";
 import { assertGenerationAllowed } from "@/lib/env/policy";
 
@@ -281,12 +282,7 @@ export async function createDesign(
   return { id: taskId, cached: false, status: "accepted", cost: effectiveConfig.cost, projectId };
 }
 
-export async function dispatchTask(env: Env, taskId: string): Promise<void> {
-  await env.DB.prepare(`UPDATE ai_tasks SET dispatched_at = ?2 WHERE id = ?1`)
-    .bind(taskId, Date.now())
-    .run();
-  await env.PROVIDER_NOTIFY.send({ type: "task-dispatch", taskId });
-}
+export { dispatchTask };
 
 async function ensureProject(
   env: Env,
