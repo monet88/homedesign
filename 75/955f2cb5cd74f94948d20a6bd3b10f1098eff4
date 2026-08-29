@@ -1,0 +1,20 @@
+src/lib/ai/task-lifecycle.ts
+  h_17f2fa2b92da6a 3-4,92,94-97,99-105,109-193,203,217,223-227,230-260,274-277,291-309,314-340,346-347,355,358,362-392,394-396
+src/lib/idempotency/index.ts
+  h_17f2fa2b92da6a 72-76,78-84,98-99,103,105-110,118-120
+src/lib/payments/payments.wtest.ts
+  h_17f2fa2b92da6a 801-957
+tests/admin-seed.test.ts
+  h_17f2fa2b92da6a 33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "75955f2cb5cd74f94948d20a6bd3b10f1098eff4",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
