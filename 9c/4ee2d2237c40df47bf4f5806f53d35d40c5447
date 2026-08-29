@@ -1,0 +1,14 @@
+src/lib/ai/task-lifecycle.ts
+  h_17f2fa2b92da6a 137-139,250-251,338-340,385
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "9c4ee2d2237c40df47bf4f5806f53d35d40c5447",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
