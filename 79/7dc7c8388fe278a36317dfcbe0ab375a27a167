@@ -1,0 +1,24 @@
+migrations/0011_floor_plan_stage_runs_processing_idx.sql
+  h_17f2fa2b92da6a 1-4
+src/lib/ai/lifecycle.ts
+  h_17f2fa2b92da6a 246-247,249-269,271,275-283,292-311
+src/lib/floor-plan/errors.ts
+  h_17f2fa2b92da6a 35-37
+src/lib/floor-plan/facade.ts
+  h_17f2fa2b92da6a 30
+src/lib/floor-plan/floor-plan.wtest.ts
+  h_17f2fa2b92da6a 19,322-371
+src/lib/floor-plan/stages.ts
+  h_17f2fa2b92da6a 308
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "797dc7c8388fe278a36317dfcbe0ab375a27a167",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
