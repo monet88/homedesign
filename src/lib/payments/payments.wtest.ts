@@ -1139,6 +1139,39 @@ describe("Spec #58: AI Task Lifecycle & Idempotency Concurrency Invariants", () 
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 
+  it("concurrent releaseHoldOnTerminal(failed) vs server expiry: exactly one release entry, terminal status never overwritten", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 3, "race-release-expire-key");
+
+    // Force task past expiry so the reconciler races with the failure callback
+    await env.DB.prepare(`UPDATE ai_tasks SET expires_at = ?1 WHERE id = ?2`)
+      .bind(Date.now() - 1, taskId).run();
+
+    await Promise.allSettled([
+      releaseHoldOnTerminal(env, taskId, "failed"),
+      expireStaleTasks(env),
+    ]);
+
+    const task = await env.DB.prepare(
+      `SELECT status FROM ai_tasks WHERE id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    const hold = await env.DB.prepare(
+      `SELECT status FROM credit_holds WHERE ref_id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    const release = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'release'`
+    ).bind(userId).first<{ cnt: number }>();
+
+    // Whichever terminal transition wins (failed or expired) must hold:
+    // the loser cannot overwrite it (CAS guard) and only one release entry exists.
+    expect(["failed", "expired"]).toContain(task?.status);
+    expect(hold?.status).toBe("released");
+    expect(release?.cnt).toBe(1);
+    expect(await getAvailableCredits(env, userId)).toBe(10);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
   it("expireStaleTasks expires stale tasks even with null hold_id or missing hold record", async () => {
     const taskIdNoHold = crypto.randomUUID();
     const taskIdMissingHold = crypto.randomUUID();
