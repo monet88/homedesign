@@ -1,7 +1,9 @@
 /// <reference types="vitest" />
 import { fileURLToPath } from "node:url";
-import { cloudflareTest } from "@cloudflare/vitest-plugin";
+import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
+
+const migrations = await readD1Migrations("./migrations");
 
 // Vitest config for Workers-runtime tests.
 // Runs inside miniflare with real D1/R2/Queue bindings from wrangler.jsonc.
@@ -15,6 +17,9 @@ export default defineConfig({
       },
     }),
   ],
+  define: {
+    __D1_MIGRATIONS__: JSON.stringify(migrations),
+  },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
