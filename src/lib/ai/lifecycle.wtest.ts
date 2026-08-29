@@ -33,7 +33,7 @@ import {
   assertCreditInvariant,
   getActiveHoldByRef,
 } from "@/lib/credits/ledger";
-import { createTaskWithHold } from "@/lib/payments/core";
+import { createTaskWithHold } from "@/lib/ai/task-lifecycle";
 import { validPngBytes } from "@/lib/fixtures/images";
 import {
   registerProvider,
