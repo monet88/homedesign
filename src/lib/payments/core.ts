@@ -381,22 +381,40 @@ export async function settleHoldOnReady(
   if (!assetReady || !assetAttached) {
     return; // Not ready to settle — no-op, caller retries later.
   }
-
   const task = await env.DB.prepare(
     `SELECT * FROM ai_tasks WHERE id = ?1`
-  ).bind(taskId).first<{ hold_id: string | null; user_id: string | null }>();
+  ).bind(taskId).first<{ hold_id: string | null; user_id: string | null; status: string }>();
 
   if (!task || !task.hold_id) {
     throw new Error("TASK_NOT_FOUND_OR_NO_HOLD");
   }
 
-  // Settle the hold (converts to usage).
-  await settleHold(env, task.hold_id);
+  try {
+    // Settle the hold atomically via the credit ledger primitive (exactly-once guaranteed).
+    await settleHold(env, task.hold_id);
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg === "HOLD_NOT_ACTIVE") {
+      // Hold already settled (e.g. concurrent callback winner or crash before task status update).
+      const hold = await env.DB.prepare(
+        `SELECT status FROM credit_holds WHERE id = ?1`
+      ).bind(task.hold_id).first<{ status: string }>();
 
-  // Update task status to terminal success.
+      if (hold?.status === "settled" && !["notified", "ready", "failed", "expired"].includes(task.status)) {
+        const now = Date.now();
+        await env.DB.prepare(
+          `UPDATE ai_tasks SET status = 'notified', updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'failed', 'expired')`
+        ).bind(now, taskId).run();
+        return;
+      }
+    }
+    throw err;
+  }
+
+  // Update task status to notified.
   const now = Date.now();
   await env.DB.prepare(
-    `UPDATE ai_tasks SET status = 'notified', updated_at = ?1 WHERE id = ?2`
+    `UPDATE ai_tasks SET status = 'notified', updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'failed', 'expired')`
   ).bind(now, taskId).run();
 }
 
@@ -421,7 +439,7 @@ export async function releaseHoldOnTerminal(
   env: Env,
   taskId: string,
   terminalStatus: string
-): Promise<void> {
+): Promise<"released" | "settled"> {
   const task = await env.DB.prepare(
     `SELECT * FROM ai_tasks WHERE id = ?1`
   ).bind(taskId).first<{ hold_id: string | null; status: string; user_id: string | null }>();
@@ -434,9 +452,23 @@ export async function releaseHoldOnTerminal(
     await releaseHold(env, task.hold_id);
   } catch (err) {
     const msg = err instanceof Error ? err.message : '';
-    if (msg === 'HOLD_NOT_ACTIVE' || msg === 'HOLD_NOT_FOUND') {
-      // Expected: hold already released/settled (late callback after expiry).
-      // The task is still marked terminal but the balance is already correct.
+    if (msg === 'HOLD_NOT_ACTIVE') {
+      const hold = await env.DB.prepare(
+        `SELECT status FROM credit_holds WHERE id = ?1`
+      ).bind(task.hold_id).first<{ status: string }>();
+
+      if (hold?.status === 'settled') {
+        // Success settlement won the race. Do not downgrade the task to a
+        // failure terminal state; the success path/reconciler will finalize it.
+        return "settled";
+      }
+      if (hold?.status !== 'released') {
+        throw err;
+      }
+      // Another failure/expiry path already released the hold; continue and
+      // converge the task on the requested failure terminal state.
+    } else if (msg === 'HOLD_NOT_FOUND') {
+      // No hold remains to release; terminalize the task without touching credits.
     } else {
       // Transient/unexpected failure: do NOT mark task terminal while an
       // active hold may still be in place — re-throw so the caller retries.
@@ -450,6 +482,7 @@ export async function releaseHoldOnTerminal(
   await env.DB.prepare(
     `UPDATE ai_tasks SET status = ?1, updated_at = ?2 WHERE id = ?3`
   ).bind(taskStatus, now, taskId).run();
+  return "released";
 }
 
 /**
@@ -470,9 +503,11 @@ export async function expireStaleTasks(env: Env): Promise<number> {
   const stale = await env.DB.prepare(
     `SELECT id, hold_id FROM ai_tasks
      WHERE status NOT IN ('ready', 'notified', 'failed', 'expired')
-       AND expires_at IS NOT NULL AND expires_at < ?1`
+       AND expires_at IS NOT NULL AND expires_at < ?1
+       AND NOT EXISTS (
+         SELECT 1 FROM credit_holds WHERE id = ai_tasks.hold_id AND status = 'settled'
+       )`
   ).bind(now).all<{ id: string; hold_id: string | null }>();
-
   let expiredCount = 0;
   for (const task of stale.results ?? []) {
     // Atomically release hold and expire task.
@@ -481,8 +516,23 @@ export async function expireStaleTasks(env: Env): Promise<number> {
         await releaseHold(env, task.hold_id);
       } catch (err) {
         const msg = err instanceof Error ? err.message : '';
-        if (msg === 'HOLD_NOT_ACTIVE' || msg === 'HOLD_NOT_FOUND') {
-          // Expected: hold already released/settled — safe to expire.
+        if (msg === 'HOLD_NOT_ACTIVE') {
+          const hold = await env.DB.prepare(
+            `SELECT status FROM credit_holds WHERE id = ?1`
+          ).bind(task.hold_id).first<{ status: string }>();
+
+          if (hold?.status === 'settled') {
+            // Success settlement won after the stale-task scan. Do not expire
+            // or resurrect the task; the success reconciler will finalize it.
+            continue;
+          }
+          if (hold?.status !== 'released') {
+            continue;
+          }
+          // Another expiry/failure path already released the hold; it is safe
+          // for this reconciler pass to converge the task on expired.
+        } else if (msg === 'HOLD_NOT_FOUND') {
+          // Missing hold leaves no credit reservation to release; expire the task.
         } else {
           // Transient failure: skip this task so the next reconciler run
           // retries it. Do NOT mark expired while the hold may still be active.

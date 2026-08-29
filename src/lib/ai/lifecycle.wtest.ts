@@ -32,6 +32,7 @@ import {
   getLedgerSummary,
   assertCreditInvariant,
   getActiveHoldByRef,
+  settleHold,
 } from "@/lib/credits/ledger";
 import { createTaskWithHold } from "@/lib/payments/core";
 import { validPngBytes } from "@/lib/fixtures/images";
@@ -414,6 +415,35 @@ describe("AC5: Provider failure", () => {
 
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
+
+  it("provider-failed does not override a success settlement that already won", async () => {
+    const userId = await seedUser();
+    const assetId = await seedReadyAsset(userId);
+    const { id: taskId } = await createDesign(env, userId, interiorPayload(assetId, "idem-fail-after-settle"));
+    const taskBefore = await getTask(env, taskId);
+    expect(taskBefore?.hold_id).toBeTruthy();
+
+    // Reproduce the supported crash window after the Credit Hold settled but
+    // before the remaining success-side terminalization completed.
+    await settleHold(env, taskBefore!.hold_id!);
+    await env.DB.prepare(
+      `UPDATE ai_tasks SET status = 'notified', updated_at = ?1 WHERE id = ?2`
+    ).bind(Date.now(), taskId).run();
+
+    const result = await handleProviderNotify(env, {
+      type: "provider-failed",
+      taskId,
+      error: "LATE_PROVIDER_FAILURE",
+    });
+
+    expect(result.status).toBe("notified");
+    const taskAfter = await getTask(env, taskId);
+    expect(taskAfter?.status).toBe("notified");
+    expect(taskAfter?.error_code).toBeNull();
+    await assertHoldState(taskId, "settled");
+    expect(await getAvailableCredits(env, userId)).toBe(9);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
 });
 
 // ── AC6: Validation-exhausted / rejected output ──────────────────────────────
@@ -525,7 +555,7 @@ describe("AC8: Client poll window is not terminal", () => {
 
     // Simulate provider producing output and leaving task quarantined.
     await handleProviderNotify(env, { type: "task-dispatch", taskId });
-    let task = await getTask(env, taskId);
+    const task = await getTask(env, taskId);
     expect(task?.status).toBe("quarantined");
 
     // The client 120s poll window passes with no server-side effect; hold stays active.
@@ -968,6 +998,141 @@ describe("Ticket #33: Offline Generation Full Lifecycle per mode (Interior, Exte
     expect(runAfter?.status).toBe("failed");
 
     expect(await getAvailableCredits(env, userId)).toBe(initialAvailable);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+  it("reconcileTasks finalizes complete domain contract for ready task in crash window", async () => {
+    const userId = await seedUser();
+    const sourceAssetId = await seedReadyAsset(userId);
+
+    const { id: projectId } = await createFloorPlanProject(env, userId, sourceAssetId);
+    const room = await placeRoomMarker(env, userId, projectId, { x: 50, y: 50 });
+    await proposeRoomBrief(env, userId, room.id);
+
+    const created = await createDesign(env, userId, {
+      sourceAssetId,
+      scene: "floor-plan",
+      intent: { stage: "brief", roomId: room.id, marker: { x: 50, y: 50 } },
+      idempotencyKey: `crash-ready-${room.id}`,
+    });
+    const taskId = created.id;
+
+    // Complete through dispatch + notify so output asset is attached
+    await handleProviderNotify(env, { type: "task-dispatch", taskId });
+    await handleProviderNotify(env, { type: "provider-complete", taskId });
+
+    // Intentionally simulate a crash window where task was ready but project status and completed_at were reset
+    await env.DB.prepare(`UPDATE designs SET completed_at = NULL WHERE id = ?1`).bind(taskId).run();
+    await env.DB.prepare(`UPDATE projects SET status = 'draft' WHERE id = ?1`).bind(projectId).run();
+    await env.DB.prepare(`UPDATE floor_plan_stage_runs SET status = 'processing' WHERE design_id = ?1`).bind(taskId).run();
+
+    // Reconcile
+    await reconcileTasks(env, 0);
+
+    const task = await getTask(env, taskId);
+    expect(task?.status).toBe("ready");
+
+    const design = await getDesign(env, taskId);
+    expect(design?.completed_at).toBeGreaterThan(0);
+
+    const project = await env.DB.prepare(`SELECT status FROM projects WHERE id = ?1`).bind(projectId).first<{ status: string }>();
+    expect(project?.status).toBe("ready");
+
+    const run = await getStageRunByDesignId(env, taskId);
+    expect(run?.status).toBe("success");
+  });
+
+  it("recovers cleanly without double charge when crash occurs between settleHold and task notified status", async () => {
+    const userId = await seedUser();
+    const sourceAssetId = await seedReadyAsset(userId);
+
+    const created = await createDesign(env, userId, interiorPayload(sourceAssetId, "crash-settle-1"));
+    const taskId = created.id;
+
+    // Dispatch so task has output asset in quarantined
+    await handleProviderNotify(env, { type: "task-dispatch", taskId });
+
+    const taskBefore = await getTask(env, taskId);
+    const designBefore = await getDesign(env, taskId);
+    expect(taskBefore?.hold_id).toBeTruthy();
+    expect(designBefore?.output_asset_id).toBeTruthy();
+
+    // Simulate state where hold was settled (e.g. crash after settleHold before status='notified')
+    // Settle the hold manually so it becomes settled + 1 usage entry in credit_ledger
+    await settleHold(env, taskBefore!.hold_id!);
+
+    // Ensure output asset is ready + attached to project
+    await env.DB.prepare(`UPDATE assets SET lifecycle = 'ready' WHERE id = ?1`).bind(designBefore!.output_asset_id!).run();
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO project_assets (project_id, asset_id, role, created_at) VALUES (?1, ?2, 'generated', ?3)`
+    ).bind(designBefore!.project_id, designBefore!.output_asset_id!, Date.now()).run();
+
+    // Task status remains processing/accepted, design completed_at is NULL, project is draft
+    await env.DB.prepare(`UPDATE ai_tasks SET status = 'processing' WHERE id = ?1`).bind(taskId).run();
+    await env.DB.prepare(`UPDATE designs SET completed_at = NULL WHERE id = ?1`).bind(taskId).run();
+    await env.DB.prepare(`UPDATE projects SET status = 'draft' WHERE id = ?1`).bind(designBefore!.project_id).run();
+
+    // 1. Retry provider complete callback
+    const completeRes = await handleProviderNotify(env, { type: "provider-complete", taskId });
+    expect(completeRes.status).toBe("ready");
+
+    const taskAfter = await getTask(env, taskId);
+    expect(taskAfter?.status).toBe("ready");
+
+    const designAfter = await getDesign(env, taskId);
+    expect(designAfter?.completed_at).toBeGreaterThan(0);
+
+    const projectAfter = await env.DB.prepare(`SELECT status FROM projects WHERE id = ?1`).bind(designBefore!.project_id).first<{ status: string }>();
+    expect(projectAfter?.status).toBe("ready");
+
+    // Verify credit ledger has exactly 1 usage entry and credit invariant holds
+    const ledgerSummary = await getLedgerSummary(env, userId);
+    expect(ledgerSummary.totalUsage).toBe(1);
+    expect(ledgerSummary.activeHolds).toBe(0);
+    expect(await getAvailableCredits(env, userId)).toBe(9);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("reconcileTasks recovers tasks where hold is settled but task was stuck non-terminal", async () => {
+    const userId = await seedUser();
+    const sourceAssetId = await seedReadyAsset(userId);
+
+    const created = await createDesign(env, userId, interiorPayload(sourceAssetId, "crash-settle-reconcile-1"));
+    const taskId = created.id;
+
+    // Dispatch
+    await handleProviderNotify(env, { type: "task-dispatch", taskId });
+
+    const taskBefore = await getTask(env, taskId);
+    const designBefore = await getDesign(env, taskId);
+
+    await settleHold(env, taskBefore!.hold_id!);
+
+    await env.DB.prepare(`UPDATE assets SET lifecycle = 'ready' WHERE id = ?1`).bind(designBefore!.output_asset_id!).run();
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO project_assets (project_id, asset_id, role, created_at) VALUES (?1, ?2, 'generated', ?3)`
+    ).bind(designBefore!.project_id, designBefore!.output_asset_id!, Date.now()).run();
+
+    await env.DB.prepare(`UPDATE ai_tasks SET status = 'accepted' WHERE id = ?1`).bind(taskId).run();
+    await env.DB.prepare(`UPDATE designs SET completed_at = NULL WHERE id = ?1`).bind(taskId).run();
+    await env.DB.prepare(`UPDATE projects SET status = 'draft' WHERE id = ?1`).bind(designBefore!.project_id).run();
+
+    // Reconciler runs and picks up the stuck settled task
+    await reconcileTasks(env, 0);
+
+    const taskAfter = await getTask(env, taskId);
+    expect(taskAfter?.status).toBe("ready");
+
+    const designAfter = await getDesign(env, taskId);
+    expect(designAfter?.completed_at).toBeGreaterThan(0);
+
+    const projectAfter = await env.DB.prepare(`SELECT status FROM projects WHERE id = ?1`).bind(designBefore!.project_id).first<{ status: string }>();
+    expect(projectAfter?.status).toBe("ready");
+
+    // Verify credit ledger has exactly 1 usage entry
+    const ledgerSummary = await getLedgerSummary(env, userId);
+    expect(ledgerSummary.totalUsage).toBe(1);
+    expect(ledgerSummary.activeHolds).toBe(0);
+    expect(await getAvailableCredits(env, userId)).toBe(9);
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 });

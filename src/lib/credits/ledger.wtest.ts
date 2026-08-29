@@ -116,6 +116,69 @@ describe("hold / settle / release primitives (AC4)", () => {
     await expect(releaseHold(env, holdId)).rejects.toThrow("HOLD_NOT_ACTIVE");
     await expect(settleHold(env, holdId)).rejects.toThrow("HOLD_NOT_ACTIVE");
   });
+
+  it("concurrent settleHold calls on the same hold execute exactly once without duplicate usage", async () => {
+    await ensureFreeCreditGrant(env, userId);
+    const holdId = await holdCredits(env, userId, 2, "task", "task-concurrent-hold", "Render");
+    expect(await getAvailableCredits(env, userId)).toBe(8);
+
+    await Promise.allSettled(
+      Array.from({ length: 8 }, () => settleHold(env, holdId))
+    );
+
+    const summary = await getLedgerSummary(env, userId);
+    expect(summary.totalUsage).toBe(2);
+    expect(summary.available).toBe(8);
+    expect(summary.activeHolds).toBe(0);
+
+    const ledgerCount = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'usage'`
+    ).bind(userId).first<{ cnt: number }>();
+    expect(ledgerCount?.cnt).toBe(1);
+
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent settle and release choose exactly one terminal outcome", async () => {
+    await ensureFreeCreditGrant(env, userId);
+    let expectedUsage = 0;
+
+    for (const firstOutcome of ["settle", "release"] as const) {
+      const refId = `task-${firstOutcome}-first-race`;
+      const holdId = await holdCredits(env, userId, 2, "task", refId, "Render");
+
+      await Promise.allSettled(
+        Array.from({ length: 16 }, (_, index) => {
+          const shouldSettle = firstOutcome === "settle" ? index % 2 === 0 : index % 2 !== 0;
+          return shouldSettle ? settleHold(env, holdId) : releaseHold(env, holdId);
+        })
+      );
+
+      const hold = await env.DB.prepare(
+        `SELECT status FROM credit_holds WHERE id = ?1`
+      ).bind(holdId).first<{ status: "settled" | "released" }>();
+      expect(hold?.status).toMatch(/^(settled|released)$/);
+
+      const terminalEntries = await env.DB.prepare(
+        `SELECT entry_type FROM credit_ledger
+         WHERE ref_type = 'task' AND ref_id = ?1 AND entry_type IN ('usage', 'release')`
+      ).bind(refId).all<{ entry_type: "usage" | "release" }>();
+      expect(terminalEntries.results).toHaveLength(1);
+
+      if (hold?.status === "settled") {
+        expectedUsage += 2;
+        expect(terminalEntries.results?.[0]?.entry_type).toBe("usage");
+      } else {
+        expect(terminalEntries.results?.[0]?.entry_type).toBe("release");
+      }
+
+      const summary = await getLedgerSummary(env, userId);
+      expect(summary.totalUsage).toBe(expectedUsage);
+      expect(summary.available).toBe(10 - expectedUsage);
+      expect(summary.activeHolds).toBe(0);
+      await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+    }
+  });
 });
 
 describe("add / use primitives (AC4)", () => {

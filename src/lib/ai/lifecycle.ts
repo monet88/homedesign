@@ -600,50 +600,65 @@ export async function completeGeneration(
     return { status: fresh?.status ?? "unknown", skipped: "TERMINAL" };
   }
 
-  try {
-    // Settles only when both conditions hold; sets status `notified`.
-    await settleHoldOnReady(env, taskId, assetReady, assetAttached);
-  } catch (err) {
-    if ((err as Error).message === "HOLD_NOT_ACTIVE") {
-      // Hold already released (expiry) or already settled — never settle twice.
-      await recordLateCallback(env, taskId, fresh.status);
-      return { status: fresh.status, skipped: "HOLD_NOT_ACTIVE" };
+  if (fresh.status !== "notified") {
+    try {
+      // Settles only when both conditions hold; sets status `notified`.
+      await settleHoldOnReady(env, taskId, assetReady, assetAttached);
+    } catch (err) {
+      if ((err as Error).message === "HOLD_NOT_ACTIVE") {
+        // Hold already released (expiry) or already settled — never settle twice.
+        await recordLateCallback(env, taskId, fresh.status);
+        return { status: fresh.status, skipped: "HOLD_NOT_ACTIVE" };
+      }
+      await failGeneration(env, taskId, "SETTLE_FAILED");
+      return { status: "failed" };
     }
-    await failGeneration(env, taskId, "SETTLE_FAILED");
-    return { status: "failed" };
   }
-
   if (!assetReady || !assetAttached) {
     // settleHoldOnReady was a no-op; stay non-terminal so a later signal can
     // settle. The 30-min reconciler is the backstop.
     return { status: "notified", skipped: "NOT_SETTLEABLE" };
   }
 
+  await finalizeReadyTask(env, taskId);
+
+  return { status: "ready" };
+}
+
+/**
+ * Idempotently finalizes all domain side-effects for a ready AI generation task.
+ * Safe to call repeatedly on both newly completed and recovered ready tasks.
+ */
+export async function finalizeReadyTask(env: Env, taskId: string): Promise<void> {
+  const design = await getDesign(env, taskId);
+  if (!design) return;
+
   const now = Date.now();
   await env.DB.prepare(
-    `UPDATE ai_tasks SET status = 'ready', updated_at = ?2 WHERE id = ?1 AND status = 'notified'`
-  ).bind(taskId, now).run();
-  await env.DB.prepare(
-    `UPDATE designs SET completed_at = ?2, updated_at = ?2 WHERE id = ?1`
+    `UPDATE ai_tasks SET status = 'ready', updated_at = ?2 WHERE id = ?1 AND status IN ('notified', 'ready')`
   ).bind(taskId, now).run();
 
   await env.DB.prepare(
-    `UPDATE projects SET status = 'ready', updated_at = ?2 WHERE id = ?1`
-  ).bind(design.project_id, now).run();
+    `UPDATE designs SET completed_at = COALESCE(completed_at, ?2), updated_at = ?2 WHERE id = ?1`
+  ).bind(taskId, now).run();
+
+  if (design.project_id) {
+    await env.DB.prepare(
+      `UPDATE projects SET status = 'ready', updated_at = ?2 WHERE id = ?1`
+    ).bind(design.project_id, now).run();
+  }
 
   if (design.scene === "floor-plan") {
     await handleFloorPlanTerminal(env, taskId, "ready");
   }
-
-  return { status: "ready" };
 }
 
 // ── Fail (always releases the hold) ──────────────────────────────────────────
 
 /**
- * Terminal failure: record the stable error code, then release the hold via the
- * #5 contract. Safe to call twice — releaseHoldOnTerminal swallows an
- * already-released hold and the task lands on `failed` either way.
+ * Terminal failure: release the hold first, then record failure metadata only
+ * when the failure-side terminal outcome actually won. If success settlement
+ * already won, leave the task for the success path/reconciler to finalize.
  */
 export async function failGeneration(
   env: Env,
@@ -651,15 +666,11 @@ export async function failGeneration(
   errorCode: string,
   terminalReason: "failed" | "canceled" | "validation-exhausted" | "dlq" = "failed"
 ): Promise<void> {
-  const design = await getDesign(env, taskId);
-  if (design?.scene === "floor-plan") {
-    await handleFloorPlanTerminal(env, taskId, "failed");
-  }
-  await env.DB.prepare(`UPDATE ai_tasks SET error_code = ?2, updated_at = ?3 WHERE id = ?1`)
-    .bind(taskId, errorCode, Date.now())
-    .run();
   try {
-    await releaseHoldOnTerminal(env, taskId, terminalReason);
+    const releaseOutcome = await releaseHoldOnTerminal(env, taskId, terminalReason);
+    if (releaseOutcome === "settled") {
+      return;
+    }
   } catch (err) {
     const errMsg = (err as Error).message ?? '';
     if (/^TASK_/.test(errMsg)) {
@@ -674,6 +685,14 @@ export async function failGeneration(
       throw err;
     }
   }
+
+  const design = await getDesign(env, taskId);
+  if (design?.scene === "floor-plan") {
+    await handleFloorPlanTerminal(env, taskId, "failed");
+  }
+  await env.DB.prepare(`UPDATE ai_tasks SET error_code = ?2, updated_at = ?3 WHERE id = ?1`)
+    .bind(taskId, errorCode, Date.now())
+    .run();
 }
 
 /** DLQ handler for generation output: reject the Asset AND release the hold. */
@@ -719,6 +738,19 @@ export async function reconcileTasks(
   const expired = await expireStaleTasks(env);
 
   const now = Date.now();
+
+  const stuckSettled = await env.DB.prepare(
+    `SELECT t.id
+     FROM ai_tasks t
+     JOIN credit_holds h ON h.id = t.hold_id
+     WHERE t.status NOT IN ('ready', 'failed', 'expired')
+       AND h.status = 'settled'`
+  ).all<{ id: string }>();
+
+  for (const row of stuckSettled.results ?? []) {
+    await completeGeneration(env, row.id);
+  }
+
   const stuck = await env.DB.prepare(
     `SELECT id FROM ai_tasks
      WHERE status IN ('accepted', 'processing')
@@ -731,7 +763,35 @@ export async function reconcileTasks(
     await dispatchTask(env, row.id);
     redispatched++;
   }
+  const stuckNotified = await env.DB.prepare(
+    `SELECT id FROM ai_tasks
+     WHERE status = 'notified'
+       AND updated_at < ?1`
+  ).bind(now - stuckAfterMs).all<{ id: string }>();
 
+  for (const row of stuckNotified.results ?? []) {
+    await completeGeneration(env, row.id);
+  }
+
+  const stuckReadyTasks = await env.DB.prepare(
+    `SELECT t.id
+     FROM ai_tasks t
+     JOIN designs d ON d.id = t.id
+     LEFT JOIN projects p ON p.id = d.project_id
+     WHERE t.status = 'ready'
+       AND (
+         d.completed_at IS NULL
+         OR (p.id IS NOT NULL AND p.status != 'ready')
+         OR EXISTS (
+           SELECT 1 FROM floor_plan_stage_runs r
+           WHERE r.design_id = t.id AND r.status = 'processing'
+         )
+       )`
+  ).all<{ id: string }>();
+
+  for (const row of stuckReadyTasks.results ?? []) {
+    await finalizeReadyTask(env, row.id);
+  }
   return { expired, redispatched };
 }
 

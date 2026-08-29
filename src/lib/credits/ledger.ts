@@ -307,18 +307,30 @@ export async function settleHold(
   if (hold.status !== "active") throw new Error("HOLD_NOT_ACTIVE");
 
   const now = Date.now();
-  const usageEntryId = uid();
+  const usageEntryId = `usage_hold_${holdId}`;
 
-  // Batch: update hold + append usage ledger entry.
+  // Batch: claim the terminal state, then append usage only if this terminal
+  // outcome actually won. The deterministic id keeps same-operation retries
+  // exactly-once; the status predicate prevents a concurrent release winner
+  // from also receiving a usage entry.
   await env.DB.batch([
     env.DB.prepare(
       `UPDATE credit_holds SET status = 'settled', settled_at = ?1 WHERE id = ?2 AND status = 'active'`
     ).bind(now, holdId),
     env.DB.prepare(
-      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
-       VALUES (?1, ?2, 'usage', ?3, ?4, ?5, ?6, NULL, ?7)`
-    ).bind(usageEntryId, hold.user_id, hold.amount, hold.ref_type, hold.ref_type, hold.ref_id, now),
+      `INSERT OR IGNORE INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+       SELECT ?1, user_id, 'usage', amount, ref_type, ref_type, ref_id, NULL, ?2
+       FROM credit_holds
+       WHERE id = ?3 AND status = 'settled'`
+    ).bind(usageEntryId, now, holdId),
   ]);
+
+  const finalHold = await env.DB.prepare(
+    `SELECT status FROM credit_holds WHERE id = ?1`
+  ).bind(holdId).first<{ status: CreditHold["status"] }>();
+  if (finalHold?.status !== "settled") {
+    throw new Error("HOLD_NOT_ACTIVE");
+  }
 }
 
 /**
@@ -338,17 +350,26 @@ export async function releaseHold(
   if (hold.status !== "active") throw new Error("HOLD_NOT_ACTIVE");
 
   const now = Date.now();
-  const releaseEntryId = uid();
+  const releaseEntryId = `release_hold_${holdId}`;
 
   await env.DB.batch([
     env.DB.prepare(
       `UPDATE credit_holds SET status = 'released', released_at = ?1 WHERE id = ?2 AND status = 'active'`
     ).bind(now, holdId),
     env.DB.prepare(
-      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
-       VALUES (?1, ?2, 'release', ?3, ?4, ?5, ?6, NULL, ?7)`
-    ).bind(releaseEntryId, hold.user_id, hold.amount, hold.ref_type, hold.ref_type, hold.ref_id, now),
+      `INSERT OR IGNORE INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+       SELECT ?1, user_id, 'release', amount, ref_type, ref_type, ref_id, NULL, ?2
+       FROM credit_holds
+       WHERE id = ?3 AND status = 'released'`
+    ).bind(releaseEntryId, now, holdId),
   ]);
+
+  const finalHold = await env.DB.prepare(
+    `SELECT status FROM credit_holds WHERE id = ?1`
+  ).bind(holdId).first<{ status: CreditHold["status"] }>();
+  if (finalHold?.status !== "released") {
+    throw new Error("HOLD_NOT_ACTIVE");
+  }
 }
 
 // ── Query ──────────────────────────────────────────────────────────────────

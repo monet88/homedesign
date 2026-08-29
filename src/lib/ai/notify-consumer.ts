@@ -14,6 +14,7 @@ import {
   completeGeneration,
   failGeneration,
   failGenerationOnDlq,
+  getTask,
   runGeneration,
 } from "@/lib/ai/lifecycle";
 import type { ProviderNotifyMessage } from "@/lib/ai/types";
@@ -60,7 +61,8 @@ export async function handleProviderNotify(
     case "provider-failed": {
       try {
         await failGeneration(env, taskId, msg.error || "PROVIDER_FAILED");
-        return { taskId, type: msg.type, status: "failed" };
+        const task = await getTask(env, taskId);
+        return { taskId, type: msg.type, status: task?.status ?? "unknown" };
       } catch (err) {
         console.error(
           `[provider-notify] provider-failed retry: taskId=${taskId} error=${safeErrorCode(err)}`

@@ -349,6 +349,63 @@ describe("Hold released on terminal failures + expiry, no resurrect (AC4)", () =
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 
+  it("expiry does not overwrite a settlement that wins after the stale-task scan", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior",
+      provider: "fake",
+      model: "m",
+      prompt: "P",
+      sourceKey: null,
+      options: {},
+    }, 1, "task-expiry-settle-race");
+    await env.DB.prepare(
+      `UPDATE ai_tasks SET expires_at = ?1 WHERE id = ?2`
+    ).bind(Date.now() - 1, taskId).run();
+
+    const holdId = await env.DB.prepare(
+      `SELECT id FROM credit_holds WHERE ref_type = 'task' AND ref_id = ?1`
+    ).bind(taskId).first<{ id: string }>();
+    expect(holdId?.id).toBeTruthy();
+
+    // Fault injection: when expiry tries to release the active hold, simulate a
+    // concurrent success settlement winning immediately after the stale scan.
+    await env.DB.prepare(
+      `CREATE TRIGGER test_settlement_wins_expiry_race
+       BEFORE UPDATE OF status ON credit_holds
+       WHEN OLD.id = '${holdId!.id}' AND OLD.status = 'active' AND NEW.status = 'released'
+       BEGIN
+         UPDATE credit_holds
+         SET status = 'settled', settled_at = NEW.released_at
+         WHERE id = OLD.id AND status = 'active';
+         INSERT OR IGNORE INTO credit_ledger
+           (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+         VALUES
+           ('usage_hold_' || OLD.id, OLD.user_id, 'usage', OLD.amount, OLD.ref_type,
+            OLD.ref_type, OLD.ref_id, NULL, OLD.created_at);
+         SELECT RAISE(IGNORE);
+       END`
+    ).run();
+
+    const expired = await expireStaleTasks(env);
+    expect(expired).toBe(0);
+
+    const hold = await env.DB.prepare(
+      `SELECT status FROM credit_holds WHERE id = ?1`
+    ).bind(holdId!.id).first<{ status: string }>();
+    expect(hold?.status).toBe("settled");
+    const task = await env.DB.prepare(
+      `SELECT status FROM ai_tasks WHERE id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    expect(task?.status).not.toBe("expired");
+
+    const usage = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger
+       WHERE ref_type = 'task' AND ref_id = ?1 AND entry_type = 'usage'`
+    ).bind(taskId).first<{ cnt: number }>();
+    expect(usage?.cnt).toBe(1);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
   it("fresh non-terminal tasks are NOT expired by the reconciler", async () => {
     const { taskId } = await createTaskWithHold(env, userId, {
       scene: "interior",
@@ -397,6 +454,85 @@ describe("Client polling timeout 120s is NOT terminal (AC5)", () => {
     expect(summary.totalUsage).toBe(1);
     expect(summary.available).toBe(9);
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent settlement calls settle hold exactly once and do not multi-charge", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior",
+      provider: "fake",
+      model: "m",
+      prompt: "P",
+      sourceKey: null,
+      options: {},
+    }, 1, "task-concurrent-settle-1");
+    expect(await getAvailableCredits(env, userId)).toBe(9);
+
+    // 8 concurrent settlement callbacks
+    await Promise.allSettled([
+      settleHoldOnReady(env, taskId, true, true),
+      settleHoldOnReady(env, taskId, true, true),
+      settleHoldOnReady(env, taskId, true, true),
+      settleHoldOnReady(env, taskId, true, true),
+      settleHoldOnReady(env, taskId, true, true),
+      settleHoldOnReady(env, taskId, true, true),
+      settleHoldOnReady(env, taskId, true, true),
+      settleHoldOnReady(env, taskId, true, true),
+    ]);
+
+    expect(await getAvailableCredits(env, userId)).toBe(9);
+    expect(await getActiveHoldByRef(env, "task", taskId)).toBeNull();
+
+    const summary = await getLedgerSummary(env, userId);
+    expect(summary.totalUsage).toBe(1);
+    expect(summary.available).toBe(9);
+    expect(summary.activeHolds).toBe(0);
+
+    const usageRows = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'usage' AND ref_id = ?2`
+    ).bind(userId, taskId).first<{ cnt: number }>();
+    expect(usageRows?.cnt).toBe(1);
+
+    const task = await env.DB.prepare(`SELECT status FROM ai_tasks WHERE id = ?1`).bind(taskId).first<{ status: string }>();
+    expect(task?.status).toBe("notified");
+
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent success and failure callbacks keep task status aligned with the hold winner", async () => {
+    for (const firstOutcome of ["settle", "release"] as const) {
+      const { taskId } = await createTaskWithHold(env, userId, {
+        scene: "interior",
+        provider: "fake",
+        model: "m",
+        prompt: "P",
+        sourceKey: null,
+        options: {},
+      }, 1, `task-terminal-race-${firstOutcome}`);
+
+      await Promise.allSettled(
+        Array.from({ length: 8 }, (_, index) => {
+          const shouldSettle = firstOutcome === "settle" ? index % 2 === 0 : index % 2 !== 0;
+          return shouldSettle
+            ? settleHoldOnReady(env, taskId, true, true)
+            : releaseHoldOnTerminal(env, taskId, "failed");
+        })
+      );
+
+      const hold = await env.DB.prepare(
+        `SELECT status FROM credit_holds WHERE ref_type = 'task' AND ref_id = ?1`
+      ).bind(taskId).first<{ status: "settled" | "released" }>();
+      const task = await env.DB.prepare(
+        `SELECT status FROM ai_tasks WHERE id = ?1`
+      ).bind(taskId).first<{ status: string }>();
+
+      if (hold?.status === "settled") {
+        expect(task?.status).toBe("notified");
+      } else {
+        expect(hold?.status).toBe("released");
+        expect(task?.status).toBe("failed");
+      }
+      await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+    }
   });
 });
 
