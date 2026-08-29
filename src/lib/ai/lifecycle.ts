@@ -52,6 +52,7 @@ import {
   releaseHoldOnTerminal,
   settleHoldOnReady,
   expireStaleTasks,
+  type TaskAcceptanceStatements,
 } from "@/lib/payments/core";
 import { validateDesignConfig } from "@/lib/ai/config";
 import { assertGenerationAllowed } from "@/lib/env/policy";
@@ -180,6 +181,85 @@ export async function createDesign(
     options: effectiveConfig.options as Record<string, unknown>,
   };
 
+  const candidateProjectId = floorPlanStagePlan ? null : crypto.randomUUID();
+  const acceptanceStatements: TaskAcceptanceStatements = ({ taskId, now }) => {
+    if (floorPlanStagePlan) {
+      return [
+        env.DB.prepare(
+          `INSERT INTO designs (id, user_id, project_id, scene, stage, provider, model, provider_scene, prompt,
+             config_json, source_asset_id, output_asset_id, cost_credits, idempotency_key, created_at, updated_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, ?12, ?13, ?14, ?14)`
+        ).bind(
+          taskId,
+          userId,
+          floorPlanStagePlan.projectId,
+          effectiveConfig.scene,
+          effectiveConfig.stage ?? null,
+          effectiveConfig.provider,
+          effectiveConfig.model,
+          effectiveConfig.providerScene,
+          prompt,
+          JSON.stringify(effectiveConfig),
+          asset.id,
+          effectiveConfig.cost,
+          effectiveConfig.idempotencyKey,
+          now
+        ),
+        floorPlanStagePlan.prepareStageRun(env, taskId, now),
+      ];
+    }
+
+    return [
+      // D1 serializes this batch transaction, so a concurrent Design using the
+      // same source observes the project inserted by the preceding winner and
+      // reuses it. No project is committed if later acceptance statements fail.
+      env.DB.prepare(
+        `INSERT INTO projects (id, user_id, kind, name, status, source_asset_id, created_at, updated_at)
+         SELECT ?1, ?2, ?3, ?4, 'draft', ?5, ?6, ?6
+         WHERE NOT EXISTS (
+           SELECT 1 FROM projects WHERE user_id = ?2 AND kind = ?3 AND source_asset_id = ?5
+         )`
+      ).bind(
+        candidateProjectId!,
+        userId,
+        effectiveConfig.scene,
+        defaultProjectName(effectiveConfig),
+        asset.id,
+        now
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO project_assets (project_id, asset_id, role, created_at)
+         SELECT id, ?4, 'source', ?5
+         FROM projects
+         WHERE user_id = ?1 AND kind = ?2 AND source_asset_id = ?3
+         ORDER BY created_at ASC, id ASC
+         LIMIT 1`
+      ).bind(userId, effectiveConfig.scene, asset.id, asset.id, now),
+      env.DB.prepare(
+        `INSERT INTO designs (id, user_id, project_id, scene, stage, provider, model, provider_scene, prompt,
+           config_json, source_asset_id, output_asset_id, cost_credits, idempotency_key, created_at, updated_at)
+         SELECT ?1, ?2, id, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, NULL, ?11, ?12, ?13, ?13
+         FROM projects
+         WHERE user_id = ?2 AND kind = ?3 AND source_asset_id = ?10
+         ORDER BY created_at ASC, id ASC
+         LIMIT 1`
+      ).bind(
+        taskId,
+        userId,
+        effectiveConfig.scene,
+        effectiveConfig.stage ?? null,
+        effectiveConfig.provider,
+        effectiveConfig.model,
+        effectiveConfig.providerScene,
+        prompt,
+        JSON.stringify(effectiveConfig),
+        asset.id,
+        effectiveConfig.cost,
+        effectiveConfig.idempotencyKey,
+        now
+      ),
+    ];
+  };
   // Floor Plan checks maximum-one-processing only for a genuinely new task.
   // Same-key retries are resolved read-only first, before any credit side effect.
   let created: { taskId: string; cached: boolean } | null = null;
@@ -201,7 +281,7 @@ export async function createDesign(
       // Free grant is ensured on every verified new-task path (ADR 0002); idempotent.
       await ensureFreeCreditGrant(env, userId);
 
-      // Credit gate BEFORE the hold. createTaskWithHold re-checks atomically.
+      // Credit gate before the acceptance batch; idempotency + hold + task/domain writes commit atomically.
       const available = await getAvailableCredits(env, userId);
       if (available < effectiveConfig.cost) {
         throw new DesignError(
@@ -216,7 +296,8 @@ export async function createDesign(
         userId,
         taskDef,
         effectiveConfig.cost,
-        effectiveConfig.idempotencyKey
+        effectiveConfig.idempotencyKey,
+        acceptanceStatements
       );
     }
   } catch (err) {
@@ -227,52 +308,31 @@ export async function createDesign(
     if (message === "INSUFFICIENT_CREDITS") {
       throw new DesignError("INSUFFICIENT_CREDITS", 402);
     }
+    if (floorPlanStagePlan) {
+      // If the atomic batch lost the partial-unique processing-run race, the
+      // winner is now visible. Re-run the domain guard to preserve the public
+      // INVALID_INTENT / 409 contract instead of leaking a raw D1 constraint.
+      await floorPlanStagePlan.assertCanStart();
+    }
     throw err;
   }
 
   const taskId = created.taskId;
+  const design = await getDesign(env, taskId);
+  if (!design) {
+    throw new Error("TASK_ACCEPTANCE_DESIGN_MISSING");
+  }
+  const projectId = design.project_id;
 
   if (created.cached) {
-    const existing = await getDesign(env, taskId);
     const task = await getTask(env, taskId);
     return {
       id: taskId,
       cached: true,
       status: task?.status ?? "accepted",
-      cost: existing?.cost_credits ?? effectiveConfig.cost,
-      projectId: existing?.project_id ?? "",
+      cost: design.cost_credits,
+      projectId,
     };
-  }
-
-  // Floor Plan remains attached to the Room Design's original project even
-  // when a stage (Panorama) uses an upstream generated asset as provider input.
-  // Other scenes retain source-asset keyed project creation (ADR 0005).
-  const projectId = floorPlanStagePlan?.projectId ?? await ensureProject(env, userId, effectiveConfig, asset.id);
-
-  const now = Date.now();
-  await env.DB.prepare(
-    `INSERT INTO designs (id, user_id, project_id, scene, stage, provider, model, provider_scene, prompt,
-       config_json, source_asset_id, output_asset_id, cost_credits, idempotency_key, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, ?12, ?13, ?14, ?14)`
-  ).bind(
-    taskId,
-    userId,
-    projectId,
-    effectiveConfig.scene,
-    effectiveConfig.stage ?? null,
-    effectiveConfig.provider,
-    effectiveConfig.model,
-    effectiveConfig.providerScene,
-    prompt,
-    JSON.stringify(effectiveConfig),
-    asset.id,
-    effectiveConfig.cost,
-    effectiveConfig.idempotencyKey,
-    now
-  ).run();
-
-  if (floorPlanStagePlan) {
-    await floorPlanStagePlan.recordStageRun(env, taskId);
   }
   // Dispatch. The Workflow/queue instance identity IS the task id, so a
   // re-dispatch by the reconciler converges instead of duplicating work.
@@ -286,29 +346,6 @@ export async function dispatchTask(env: Env, taskId: string): Promise<void> {
     .bind(taskId, Date.now())
     .run();
   await env.PROVIDER_NOTIFY.send({ type: "task-dispatch", taskId });
-}
-
-async function ensureProject(
-  env: Env,
-  userId: string,
-  config: DesignConfig,
-  sourceAssetId: string
-): Promise<string> {
-  const existing = await env.DB.prepare(
-    `SELECT id FROM projects WHERE user_id = ?1 AND kind = ?2 AND source_asset_id = ?3`
-  ).bind(userId, config.scene, sourceAssetId).first<{ id: string }>();
-
-  if (existing) return existing.id;
-
-  const projectId = crypto.randomUUID();
-  const now = Date.now();
-  await env.DB.prepare(
-    `INSERT INTO projects (id, user_id, kind, name, status, source_asset_id, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, 'draft', ?5, ?6, ?6)`
-  ).bind(projectId, userId, config.scene, defaultProjectName(config), sourceAssetId, now).run();
-
-  await attachAsset(env, projectId, sourceAssetId, "source");
-  return projectId;
 }
 
 function defaultProjectName(config: DesignConfig): string {

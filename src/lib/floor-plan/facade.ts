@@ -14,7 +14,6 @@ import {
 import {
   assertRoomDesignForBrief,
   completeBriefStageRun,
-  createBriefStageRun,
 } from "@/lib/floor-plan/brief";
 import {
   assertNoProcessingRun,
@@ -22,7 +21,6 @@ import {
   assertRoomDesignForPanorama,
   assertRoomDesignForRender,
   completeStageRun,
-  createStageRun,
   failStageRun,
   getStageRunByDesignId,
   parseRoomProposal,
@@ -35,7 +33,7 @@ export interface ResolvedFloorPlanStagePlan {
   prompt: string;
   finalizedConfig: DesignConfig;
   assertCanStart(): Promise<void>;
-  recordStageRun(env: Env, taskId: string): Promise<void>;
+  prepareStageRun(env: Env, taskId: string, now: number): D1PreparedStatement;
 }
 
 function mapFloorPlanError(err: FloorPlanError): DesignError {
@@ -149,12 +147,12 @@ export async function resolveFloorPlanStagePlan(
         throw err;
       }
     },
-    async recordStageRun(env: Env, taskId: string): Promise<void> {
-      if (stage === "brief") {
-        await createBriefStageRun(env, roomId, taskId);
-      } else {
-        await createStageRun(env, roomId, stage, taskId);
-      }
+    prepareStageRun(env: Env, taskId: string, now: number): D1PreparedStatement {
+      return env.DB.prepare(
+        `INSERT INTO floor_plan_stage_runs (
+           id, room_design_id, stage, status, design_id, confirmed_at, created_at, updated_at
+         ) VALUES (?1, ?2, ?3, 'processing', ?1, NULL, ?4, ?4)`
+      ).bind(taskId, roomId, stage, now);
     },
   };
 }

@@ -190,6 +190,57 @@ export async function recordAdminCreditAdjustment(
  *
  * #5 (Mock Payment) calls this with entry_type 'payment'.
  */
+export interface PreparedCreditAddition {
+  entry: CreditLedgerEntry;
+  statement: D1PreparedStatement;
+}
+
+export function prepareCreditAddition(
+  env: Env,
+  userId: string,
+  amount: number,
+  reason: string,
+  opts: {
+    entryType?: "grant" | "payment";
+    idempotencyKey?: string;
+    refType?: string;
+    refId?: string;
+  } = {},
+  now = Date.now()
+): PreparedCreditAddition {
+  const id = uid();
+  const key = opts.idempotencyKey ?? null;
+  const entryType = opts.entryType ?? "payment";
+  const entry: CreditLedgerEntry = {
+    id,
+    user_id: userId,
+    entry_type: entryType,
+    amount,
+    reason,
+    ref_type: opts.refType ?? null,
+    ref_id: opts.refId ?? null,
+    grant_key: key,
+    created_at: now,
+  };
+  return {
+    entry,
+    statement: env.DB.prepare(
+      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
+    ).bind(
+      entry.id,
+      entry.user_id,
+      entry.entry_type,
+      entry.amount,
+      entry.reason,
+      entry.ref_type,
+      entry.ref_id,
+      entry.grant_key,
+      entry.created_at
+    ),
+  };
+}
+
 export async function addCredits(
   env: Env,
   userId: string,
@@ -202,27 +253,21 @@ export async function addCredits(
     refId?: string;
   } = {}
 ): Promise<CreditLedgerEntry> {
-  const id = uid();
-  const now = Date.now();
-  const key = opts.idempotencyKey ?? null;
+  const prepared = prepareCreditAddition(env, userId, amount, reason, opts);
 
   // Idempotent by (user_id, grant_key) when a key is supplied.
   try {
-    await env.DB.prepare(
-      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
-    ).bind(id, userId, opts.entryType ?? "payment", amount, reason, opts.refType ?? null, opts.refId ?? null, key, now).run();
-    return { id, user_id: userId, entry_type: opts.entryType ?? "payment", amount, reason, ref_type: opts.refType ?? null, ref_id: opts.refId ?? null, grant_key: key, created_at: now };
+    await prepared.statement.run();
+    return prepared.entry;
   } catch {
-    // Duplicate key — return the existing grant/payment instead of throwing.
+    // Duplicate key - return the existing grant/payment instead of throwing.
     const existing = await env.DB.prepare(
       `SELECT * FROM credit_ledger WHERE user_id = ?1 AND grant_key = ?2`
-    ).bind(userId, key).first<CreditLedgerEntry>();
+    ).bind(userId, prepared.entry.grant_key).first<CreditLedgerEntry>();
     if (existing) return existing;
     throw new Error("IDEMPOTENCY_KEY_CONFLICT");
   }
 }
-
 /**
  * Deduct credits as usage (a terminal successful operation). #7 settles a hold
  * (usage) instead of calling this directly; this is exposed for any direct
@@ -257,23 +302,25 @@ export async function useCredits(
  *
  * Called by #7 (Generate) on task acceptance.
  */
-export async function holdCredits(
+export interface PreparedCreditHold {
+  holdId: string;
+  statements: D1PreparedStatement[];
+}
+
+export function prepareCreditHold(
   env: Env,
   userId: string,
   amount: number,
   refType: string,
   refId: string,
-  reason: string
-): Promise<string> {
+  reason: string,
+  now = Date.now()
+): PreparedCreditHold {
   const holdId = uid();
   const ledgerEntryId = uid();
-  const now = Date.now();
-
-  // Atomic batch: hold ledger entry (negative amount) + active hold row.
-  // The unique ref index rejects a second active hold for the same task/run;
-  // because batch() is transactional, a conflict rolls the ledger entry back too.
-  try {
-    await env.DB.batch([
+  return {
+    holdId,
+    statements: [
       env.DB.prepare(
         `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
          VALUES (?1, ?2, 'hold', ?3, ?4, ?5, ?6, NULL, ?7)`
@@ -282,15 +329,32 @@ export async function holdCredits(
         `INSERT INTO credit_holds (id, user_id, amount, status, ref_type, ref_id, ledger_hold_id, created_at)
          VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, ?7)`
       ).bind(holdId, userId, amount, refType, refId, ledgerEntryId, now),
-    ]);
+    ],
+  };
+}
+
+export async function holdCredits(
+  env: Env,
+  userId: string,
+  amount: number,
+  refType: string,
+  refId: string,
+  reason: string
+): Promise<string> {
+  const prepared = prepareCreditHold(env, userId, amount, refType, refId, reason);
+
+  // Atomic batch: hold ledger entry (negative amount) + active hold row.
+  // The unique ref index rejects a second active hold for the same task/run;
+  // because batch() is transactional, a conflict rolls the ledger entry back too.
+  try {
+    await env.DB.batch(prepared.statements);
   } catch {
-    // Unique constraint violation — a hold already exists for this ref.
+    // Unique constraint violation - a hold already exists for this ref.
     throw new Error("HOLD_ALREADY_ACTIVE");
   }
 
-  return holdId;
+  return prepared.holdId;
 }
-
 /**
  * Settle a hold: mark the credit_holds row as 'settled' and append a 'usage'
  * ledger entry. Called by #7 when Generated Assets are ready + attached.

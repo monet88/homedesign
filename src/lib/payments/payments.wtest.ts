@@ -204,6 +204,42 @@ describe("Credit Hold: atomic task + hold, settle on ready+attached (AC3)", () =
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 
+  it("concurrent same-key task creation commits exactly one task and hold", async () => {
+    const taskDef = {
+      scene: "interior",
+      provider: "fake",
+      model: "gemini-2.5-flash-image",
+      prompt: "Concurrent redesign",
+      sourceKey: null,
+      options: {},
+    };
+
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        createTaskWithHold(env, userId, taskDef, 1, "task-key-concurrent")
+      )
+    );
+
+    expect(new Set(results.map((result) => result.taskId)).size).toBe(1);
+    expect(results.filter((result) => result.cached === false)).toHaveLength(1);
+
+    const tasks = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM ai_tasks WHERE user_id = ?1`
+    ).bind(userId).first<{ cnt: number }>();
+    const holds = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_holds WHERE user_id = ?1 AND status = 'active'`
+    ).bind(userId).first<{ cnt: number }>();
+    const keys = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM idempotency_keys WHERE user_id = ?1 AND operation = 'task_create' AND idempotency_key = ?2`
+    ).bind(userId, "task-key-concurrent").first<{ cnt: number }>();
+
+    expect(tasks?.cnt).toBe(1);
+    expect(holds?.cnt).toBe(1);
+    expect(keys?.cnt).toBe(1);
+    expect(await getAvailableCredits(env, userId)).toBe(9);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
   it("same task key + different payload -> 409", async () => {
     await createTaskWithHold(env, userId, {
       scene: "interior",
@@ -782,6 +818,32 @@ describe("Ticket #46: Mock Payment Zod command validation & Credit Ledger integr
     ).bind(userId, "retry-test-key-46").first<{ cnt: number }>();
     expect(paymentRows?.cnt).toBe(1);
 
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent same-key Mock Payment commits one purchase and one ledger payment", async () => {
+    const key = "concurrent-mock-payment-key";
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () => mockPurchase(env, userId, "lite", key))
+    );
+
+    expect(new Set(results.map((result) => result.id)).size).toBe(1);
+    expect(results.filter((result) => result.cached === false)).toHaveLength(1);
+
+    const purchases = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM mock_payments WHERE user_id = ?1 AND idempotency_key = ?2`
+    ).bind(userId, key).first<{ cnt: number }>();
+    const ledgerRows = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'payment' AND grant_key = ?2`
+    ).bind(userId, key).first<{ cnt: number }>();
+    const keys = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM idempotency_keys WHERE user_id = ?1 AND operation = 'mock_purchase' AND idempotency_key = ?2`
+    ).bind(userId, key).first<{ cnt: number }>();
+
+    expect(purchases?.cnt).toBe(1);
+    expect(ledgerRows?.cnt).toBe(1);
+    expect(keys?.cnt).toBe(1);
+    expect(await getAvailableCredits(env, userId)).toBe(90);
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 

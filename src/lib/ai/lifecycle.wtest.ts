@@ -314,6 +314,38 @@ describe("AC3: Idempotency", () => {
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
 
+  it("concurrent same-key createDesign callers converge on one complete Design", async () => {
+    const userId = await seedUser();
+    const assetId = await seedReadyAsset(userId);
+    const payload = interiorPayload(assetId, "idem-concurrent-design");
+
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () => createDesign(env, userId, payload))
+    );
+
+    expect(new Set(results.map((result) => result.id)).size).toBe(1);
+    expect(new Set(results.map((result) => result.projectId)).size).toBe(1);
+    expect(results[0]?.projectId).toBeTruthy();
+    expect(results.filter((result) => result.cached === false)).toHaveLength(1);
+
+    const taskId = results[0]!.id;
+    const taskRows = await env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM ai_tasks WHERE user_id = ?1`
+    ).bind(userId).first<{ c: number }>();
+    const designRows = await env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM designs WHERE id = ?1`
+    ).bind(taskId).first<{ c: number }>();
+    const activeHolds = await env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM credit_holds WHERE user_id = ?1 AND status = 'active'`
+    ).bind(userId).first<{ c: number }>();
+
+    expect(taskRows?.c).toBe(1);
+    expect(designRows?.c).toBe(1);
+    expect(activeHolds?.c).toBe(1);
+    expect(await getAvailableCredits(env, userId)).toBe(9);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
   it("same idempotencyKey + different payload returns 409 IDEMPOTENCY_KEY_REUSED", async () => {
     const userId = await seedUser();
     const assetA = await seedReadyAsset(userId);
@@ -1096,6 +1128,10 @@ async function applyMigrations(db: D1Database) {
         design_id TEXT, confirmed_at INTEGER,
         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       )`
+    ),
+    db.prepare(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_fp_stage_runs_processing
+        ON floor_plan_stage_runs(room_design_id, stage) WHERE status = 'processing'`
     ),
     db.prepare(
       `CREATE TABLE IF NOT EXISTS project_shares (

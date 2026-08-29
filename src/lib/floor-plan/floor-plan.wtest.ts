@@ -244,6 +244,48 @@ describe("Brief stage lifecycle", () => {
       .first<{ proposal_json: string | null }>();
     expect(proposal?.proposal_json).toBeTruthy();
   });
+  it("atomically admits only one concurrent Brief run with different keys", async () => {
+    const userId = await seedUser();
+    const sourceId = await seedReadyAsset(userId);
+    const { id: projectId } = await createFloorPlanProject(env, userId, sourceId);
+    const room = await placeRoomMarker(env, userId, projectId, { x: 25, y: 75 });
+
+    const results = await Promise.allSettled([
+      createDesign(env, userId, stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-brief-race-a")),
+      createDesign(env, userId, stagePayload("brief", sourceId, room.id, { x: 25, y: 75 }, "idem-brief-race-b")),
+    ]);
+
+    const fulfilled = results.filter((result) => result.status === "fulfilled");
+    const rejected = results.filter((result) => result.status === "rejected") as PromiseRejectedResult[];
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toMatchObject({ code: "INVALID_INTENT", status: 409 });
+
+    const holds = await env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM credit_holds WHERE user_id = ?1 AND status = 'active'`
+    ).bind(userId).first<{ c: number }>();
+    const tasks = await env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM ai_tasks WHERE user_id = ?1`
+    ).bind(userId).first<{ c: number }>();
+    const runs = await env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM floor_plan_stage_runs WHERE room_design_id = ?1 AND stage = 'brief' AND status = 'processing'`
+    ).bind(room.id).first<{ c: number }>();
+    const designs = await env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM designs WHERE user_id = ?1 AND stage = 'brief'`
+    ).bind(userId).first<{ c: number }>();
+    const idempotencyRows = await env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM idempotency_keys WHERE user_id = ?1 AND operation = 'task_create'`
+    ).bind(userId).first<{ c: number }>();
+
+    expect(holds?.c).toBe(1);
+    expect(tasks?.c).toBe(1);
+    expect(runs?.c).toBe(1);
+    expect(designs?.c).toBe(1);
+    expect(idempotencyRows?.c).toBe(1);
+    expect(await getAvailableCredits(env, userId)).toBe(9);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
   it("preserves Brief idempotency while rejecting a second processing run", async () => {
     const userId = await seedUser();
     const sourceId = await seedReadyAsset(userId);
@@ -937,6 +979,10 @@ async function applyMigrations(db: D1Database) {
         design_id TEXT, confirmed_at INTEGER,
         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       )`
+    ),
+    db.prepare(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_fp_stage_runs_processing
+        ON floor_plan_stage_runs(room_design_id, stage) WHERE status = 'processing'`
     ),
     db.prepare(
       `CREATE TABLE project_shares (
