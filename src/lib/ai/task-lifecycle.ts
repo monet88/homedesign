@@ -5,7 +5,6 @@ import {
 } from "@/lib/credits/ledger";
 import {
   canonicalHash,
-  withIdempotency,
   type IdempotencyRecord,
 } from "@/lib/idempotency";
 
@@ -165,7 +164,7 @@ export async function createTaskWithHold(
 
     // If available credits constraint failed inside the atomic batch:
     if (errMsg.includes("CHECK constraint failed") || errMsg.includes("amount > 0") || errMsg.includes("credit_holds.amount")) {
-      throw new Error("INSUFFICIENT_CREDITS");
+      throw new Error("INSUFFICIENT_CREDITS", { cause: err });
     }
     // Check if error was due to concurrent idempotency race
     const existingAfterRace = await env.DB.prepare(
@@ -179,13 +178,13 @@ export async function createTaskWithHold(
         throw err409;
       }
       const row = await env.DB.prepare(`SELECT id FROM ai_tasks WHERE id = ?1`).bind(existingAfterRace.result_id).first<{ id: string }>();
-      if (!row) throw new Error("IDEMPOTENCY_RECORD_MISSING");
+      if (!row) throw new Error("IDEMPOTENCY_RECORD_MISSING", { cause: err });
       return { taskId: row.id, cached: true };
     }
 
     // If ref unique constraint failed on credit_holds:
     if (errMsg.includes("credit_holds") && errMsg.includes("UNIQUE")) {
-      throw new Error("HOLD_ALREADY_ACTIVE");
+      throw new Error("HOLD_ALREADY_ACTIVE", { cause: err });
     }
 
     // Do not swallow unexpected database errors.
@@ -244,22 +243,25 @@ export async function settleHoldOnReady(
   if (hold.status !== "active") {
     throw new Error("HOLD_NOT_ACTIVE");
   }
-  // Atomically: 1. update hold to settled, 2. insert usage ledger entry, 3. update task to notified.
+  // Atomically: 1. insert usage ledger entry (only if hold still active),
+  // 2. settle hold, 3. advance task to notified.
+  // Every side effect is conditional on the hold state *inside* the batch,
+  // so a concurrent settle/release/expire makes this batch a complete no-op.
   const usageEntryId = crypto.randomUUID();
   await env.DB.batch([
     env.DB.prepare(
+      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+       SELECT ?1, user_id, 'usage', amount, ref_type, ref_type, ref_id, NULL, ?2
+       FROM credit_holds WHERE id = ?3 AND status = 'active'`
+    ).bind(usageEntryId, now, hold.id),
+    env.DB.prepare(
       `UPDATE credit_holds SET status = 'settled', settled_at = ?1 WHERE id = ?2 AND status = 'active'`
     ).bind(now, hold.id),
-    env.DB.prepare(
-      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
-       VALUES (?1, ?2, 'usage', ?3, ?4, ?5, ?6, NULL, ?7)`
-    ).bind(usageEntryId, hold.user_id, hold.amount, hold.ref_type, hold.ref_type, hold.ref_id, now),
     env.DB.prepare(
       `UPDATE ai_tasks SET status = 'notified', updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'failed', 'expired')`
     ).bind(now, taskId),
   ]);
 }
-
 const TERMINAL_TASK_STATUSES: Record<string, string> = {
   failed: "failed",
   canceled: "failed",
@@ -324,16 +326,19 @@ export async function releaseHoldOnTerminal(
     return;
   }
 
-  // Atomically: 1. mark hold released, 2. append release ledger entry, 3. mark task failed.
+  // Atomically: 1. insert release ledger entry (only if hold still active),
+  // 2. release hold, 3. mark task failed. Conditional on hold state inside the
+  // batch so a concurrent settle/expire makes this batch a complete no-op.
   const releaseEntryId = crypto.randomUUID();
   await env.DB.batch([
     env.DB.prepare(
+      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+       SELECT ?1, user_id, 'release', amount, ?2, ref_type, ref_id, NULL, ?3
+       FROM credit_holds WHERE id = ?4 AND status = 'active'`
+    ).bind(releaseEntryId, terminalStatus, now, hold.id),
+    env.DB.prepare(
       `UPDATE credit_holds SET status = 'released', released_at = ?1 WHERE id = ?2 AND status = 'active'`
     ).bind(now, hold.id),
-    env.DB.prepare(
-      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
-       VALUES (?1, ?2, 'release', ?3, ?4, ?5, ?6, NULL, ?7)`
-    ).bind(releaseEntryId, hold.user_id, hold.amount, terminalStatus, hold.ref_type, hold.ref_id, now),
     env.DB.prepare(
       `UPDATE ai_tasks SET status = ?1, updated_at = ?2 WHERE id = ?3 AND status NOT IN ('ready', 'notified')`
     ).bind(taskStatus, now, taskId),
@@ -372,19 +377,22 @@ export async function expireStaleTasks(env: Env): Promise<number> {
 
       if (hold.status === "active") {
         const releaseEntryId = crypto.randomUUID();
-        await env.DB.batch([
+        const results = await env.DB.batch([
+          env.DB.prepare(
+            `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+             SELECT ?1, user_id, 'release', amount, 'expired', ref_type, ref_id, NULL, ?2
+             FROM credit_holds WHERE id = ?3 AND status = 'active'`
+          ).bind(releaseEntryId, now, hold.id),
           env.DB.prepare(
             `UPDATE credit_holds SET status = 'released', released_at = ?1 WHERE id = ?2 AND status = 'active'`
           ).bind(now, hold.id),
           env.DB.prepare(
-            `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
-             VALUES (?1, ?2, 'release', ?3, 'expired', ?4, ?5, NULL, ?6)`
-          ).bind(releaseEntryId, hold.user_id, hold.amount, hold.ref_type, hold.ref_id, now),
-          env.DB.prepare(
             `UPDATE ai_tasks SET status = 'expired', expired_at = ?1, updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'notified', 'failed', 'expired')`
           ).bind(now, task.id),
         ]);
-        expiredCount++;
+        if ((results[2].meta.changes ?? 0) > 0) {
+          expiredCount++;
+        }
       } else if (hold.status === "released") {
         await env.DB.prepare(
           `UPDATE ai_tasks SET status = 'expired', expired_at = ?1, updated_at = ?1 WHERE id = ?2 AND status NOT IN ('ready', 'notified', 'failed', 'expired')`

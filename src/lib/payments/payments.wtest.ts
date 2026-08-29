@@ -952,6 +952,142 @@ describe("Spec #58: AI Task Lifecycle & Idempotency Concurrency Invariants", () 
     expect(await getAvailableCredits(env, userId)).toBe(6);
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
+
+  it("concurrent mockPurchase same key: exactly 1 payment row and 1 ledger payment", async () => {
+    const key = "race-mock-pay-key";
+    const [r1, r2] = await Promise.allSettled([
+      mockPurchase(env, userId, "plus", key),
+      mockPurchase(env, userId, "plus", key),
+    ]);
+
+    expect(r1.status === "fulfilled" || r2.status === "fulfilled").toBe(true);
+
+    // Exactly 1 mock_payments row
+    const payments = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM mock_payments WHERE user_id = ?1 AND idempotency_key = ?2`
+    ).bind(userId, key).first<{ cnt: number }>();
+    expect(payments?.cnt).toBe(1);
+
+    // Exactly 1 payment ledger entry with this grant_key
+    const ledgerEntries = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'payment' AND grant_key = ?2`
+    ).bind(userId, key).first<{ cnt: number }>();
+    expect(ledgerEntries?.cnt).toBe(1);
+
+    // Available credited exactly once: 10 free + 160 = 170
+    expect(await getAvailableCredits(env, userId)).toBe(170);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent settleHoldOnReady races produce exactly one usage entry", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 4, "race-settle-settle-key");
+
+    await Promise.allSettled([
+      settleHoldOnReady(env, taskId, true, true),
+      settleHoldOnReady(env, taskId, true, true),
+    ]);
+
+    const hold = await env.DB.prepare(
+      `SELECT status FROM credit_holds WHERE ref_id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    expect(hold?.status).toBe("settled");
+
+    const usage = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'usage'`
+    ).bind(userId).first<{ cnt: number }>();
+    expect(usage?.cnt).toBe(1);
+
+    const task = await env.DB.prepare(
+      `SELECT status FROM ai_tasks WHERE id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    expect(task?.status).toBe("notified");
+
+    expect(await getAvailableCredits(env, userId)).toBe(6);
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent settle vs terminal failure: exactly one winning outcome, never failed+usage", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 5, "race-settle-fail-key");
+
+    await Promise.allSettled([
+      settleHoldOnReady(env, taskId, true, true),
+      releaseHoldOnTerminal(env, taskId, "failed"),
+    ]);
+
+    const task = await env.DB.prepare(
+      `SELECT status FROM ai_tasks WHERE id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    const hold = await env.DB.prepare(
+      `SELECT status FROM credit_holds WHERE ref_id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    const usage = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'usage'`
+    ).bind(userId).first<{ cnt: number }>();
+    const release = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'release'`
+    ).bind(userId).first<{ cnt: number }>();
+
+    // Exactly one winning terminal outcome; never failed task with charged usage.
+    if (task?.status === "notified") {
+      expect(hold?.status).toBe("settled");
+      expect(usage?.cnt).toBe(1);
+      expect(release?.cnt).toBe(0);
+      expect(await getAvailableCredits(env, userId)).toBe(5);
+    } else {
+      expect(task?.status).toBe("failed");
+      expect(hold?.status).toBe("released");
+      expect(usage?.cnt).toBe(0);
+      expect(release?.cnt).toBe(1);
+      expect(await getAvailableCredits(env, userId)).toBe(10);
+    }
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
+
+  it("concurrent settle vs server expiry: exactly one settlement/release outcome", async () => {
+    const { taskId } = await createTaskWithHold(env, userId, {
+      scene: "interior", provider: "fake", model: "m", prompt: "P", sourceKey: null, options: {},
+    }, 3, "race-settle-expire-key");
+
+    // Force task past expiry so the reconciler will race with settlement
+    await env.DB.prepare(`UPDATE ai_tasks SET expires_at = ?1 WHERE id = ?2`)
+      .bind(Date.now() - 1, taskId).run();
+
+    await Promise.allSettled([
+      settleHoldOnReady(env, taskId, true, true),
+      expireStaleTasks(env),
+    ]);
+
+    const task = await env.DB.prepare(
+      `SELECT status FROM ai_tasks WHERE id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    const hold = await env.DB.prepare(
+      `SELECT status FROM credit_holds WHERE ref_id = ?1`
+    ).bind(taskId).first<{ status: string }>();
+    const usage = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'usage'`
+    ).bind(userId).first<{ cnt: number }>();
+    const release = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1 AND entry_type = 'release'`
+    ).bind(userId).first<{ cnt: number }>();
+
+    if (task?.status === "notified") {
+      expect(hold?.status).toBe("settled");
+      expect(usage?.cnt).toBe(1);
+      expect(release?.cnt).toBe(0);
+      expect(await getAvailableCredits(env, userId)).toBe(7);
+    } else {
+      expect(task?.status).toBe("expired");
+      expect(hold?.status).toBe("released");
+      expect(usage?.cnt).toBe(0);
+      expect(release?.cnt).toBe(1);
+      expect(await getAvailableCredits(env, userId)).toBe(10);
+    }
+    await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
+  });
 });
 
 
