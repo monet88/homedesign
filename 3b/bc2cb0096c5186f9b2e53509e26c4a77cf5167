@@ -1,0 +1,36 @@
+AGENTS.md
+  h_17f2fa2b92da6a 37-81
+migrations/0008_floor_plan.sql
+  h_17f2fa2b92da6a 36
+src/lib/ai/lifecycle.ts
+  h_17f2fa2b92da6a 42-43,277-292
+src/lib/ai/lifecycle.wtest.ts
+  h_17f2fa2b92da6a 1100-1103
+src/lib/floor-plan/brief.ts
+  h_17f2fa2b92da6a 4,101-113
+src/lib/floor-plan/errors.ts
+  h_17f2fa2b92da6a 29-37
+src/lib/floor-plan/facade.ts
+  h_17f2fa2b92da6a 30,41,153-166
+src/lib/floor-plan/floor-plan.wtest.ts
+  h_17f2fa2b92da6a 13,19,21,25,33,283-320,983-986
+src/lib/floor-plan/index.ts
+  h_17f2fa2b92da6a 1,5
+src/lib/floor-plan/stages.ts
+  h_17f2fa2b92da6a 4,118-130
+src/lib/library/library.wtest.ts
+  h_17f2fa2b92da6a 486-489
+src/lib/library/share.wtest.ts
+  h_17f2fa2b92da6a 705-708
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "3bbc2cb0096c5186f9b2e53509e26c4a77cf5167",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
