@@ -16,15 +16,17 @@ import { describe, expect, it, beforeEach } from "vitest";
 import type { Env } from "@/lib/bindings";
 import {
   mockPurchase,
+  MOCK_PACKS,
+  type MockPack,
+} from "@/lib/payments/core";
+import { canonicalHash } from "@/lib/idempotency";
+import {
   createTaskWithHold,
   settleHoldOnReady,
   releaseHoldOnTerminal,
   expireStaleTasks,
-  MOCK_PACKS,
   TASK_EXPIRY_MS,
-  canonicalHash,
-  type MockPack,
-} from "@/lib/payments/core";
+} from "@/lib/ai/task-lifecycle";
 import {
   assertCreditInvariant,
   getAvailableCredits,

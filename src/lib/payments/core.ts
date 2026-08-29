@@ -1,51 +1,14 @@
-// Ticket 05: Idempotency system + Mock Payment + task/hold contract (ADR 0002).
+// Mock Payment (ADR 0002).
 //
 // Provides:
-//   1. Shared idempotency helper — `withIdempotency()` — used by Mock Payment
-//      and (contract-wise) by task creation. Unique (user_id, operation, key)
-//      + canonical request fingerprint. Same key+same fingerprint returns cached
-//      record; same key+different fingerprint throws 409.
-//   2. Mock Payment — 4 packs Lite 80 / Plus 160 / Pro 320 / Max 640 credits,
+//   1. Mock Payment — 4 packs Lite 80 / Plus 160 / Pro 320 / Max 640 credits,
 //      labelled "Mock purchase — no charge", always succeeds via addCredits,
 //      banned in production.
-//   3. Task+hold atomic contract — createTaskWithHold(), settleHoldOnReady(),
-//      releaseHoldOnTerminal(), expireStaleTasks() — all built on ledger
-//      primitives from #4.
 
 import type { Env } from "@/lib/bindings";
 import { assertMockPaymentAllowed } from "@/lib/env/policy";
 import { addCredits } from "@/lib/credits/ledger";
-import {
-  canonicalStringify,
-  canonicalHash,
-  type IdempotencyRecord,
-  withIdempotency,
-} from "@/lib/idempotency";
-import {
-  TASK_EXPIRY_MS,
-  type TaskCreateDefinition,
-  preflightTaskCreateIdempotency,
-  createTaskWithHold,
-  settleHoldOnReady,
-  releaseHoldOnTerminal,
-  expireStaleTasks,
-} from "@/lib/ai/task-lifecycle";
-
-// Re-export neutral idempotency & task lifecycle for backwards compatibility
-export {
-  canonicalStringify,
-  canonicalHash,
-  type IdempotencyRecord,
-  withIdempotency,
-  TASK_EXPIRY_MS,
-  type TaskCreateDefinition,
-  preflightTaskCreateIdempotency,
-  createTaskWithHold,
-  settleHoldOnReady,
-  releaseHoldOnTerminal,
-  expireStaleTasks,
-};
-
+import { withIdempotency } from "@/lib/idempotency";
 // ── Mock Payment ─────────────────────────────────────────────────────────────
 
 export const MOCK_PACKS = {
