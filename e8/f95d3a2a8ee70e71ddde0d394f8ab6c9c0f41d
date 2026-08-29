@@ -1,0 +1,30 @@
+migrations/0011_atomic_generation_acceptance.sql
+  h_17f2fa2b92da6a 1-6
+src/lib/ai/lifecycle.ts
+  h_17f2fa2b92da6a 55,184-262,284,299-300,311-316,321-325,333-334
+src/lib/ai/lifecycle.wtest.ts
+  h_17f2fa2b92da6a 317-348,1132-1135
+src/lib/credits/ledger.ts
+  h_17f2fa2b92da6a 193-243,256,260-261,263,266,305-310,316-318,321-323,332-350,352,356
+src/lib/floor-plan/facade.ts
+  h_17f2fa2b92da6a 36,150-155
+src/lib/floor-plan/floor-plan.wtest.ts
+  h_17f2fa2b92da6a 247-288,983-986
+src/lib/library/library.wtest.ts
+  h_17f2fa2b92da6a 486-489
+src/lib/payments/core.ts
+  h_17f2fa2b92da6a 4-7,9,18-19,61,63-64,69-70,75-76,81,113-141,155-165,167-175,180-182,184-200,202-203,205-220,223-233,247-255,281-287,316-317,319-328,330-344,346-361,374-378,381-402,537
+src/lib/payments/payments.wtest.ts
+  h_17f2fa2b92da6a 207-242,824-849
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "e8f95d3a2a8ee70e71ddde0d394f8ab6c9c0f41d",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
