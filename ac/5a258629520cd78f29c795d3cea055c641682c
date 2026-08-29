@@ -1,0 +1,18 @@
+src/lib/ai/lifecycle.ts
+  h_17f2fa2b92da6a 55-56,285
+src/lib/ai/lifecycle.wtest.ts
+  h_17f2fa2b92da6a 36
+tests/admin-seed.test.ts
+  h_17f2fa2b92da6a 33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "ac5a258629520cd78f29c795d3cea055c641682c",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
