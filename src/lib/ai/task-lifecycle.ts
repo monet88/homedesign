@@ -134,7 +134,9 @@ export async function createTaskWithHold(
          VALUES (?1, ?2, ?3, 'hold', ?4, 'task', ?5, ?6)`
       ).bind(ledgerEntryId, userId, cost, `Task: ${taskDef.scene}`, taskId, now),
 
-      // C. Credit hold row (atomic available balance gate in SQLite: fails CHECK (amount > 0) if insufficient)
+      // C. Credit hold row (atomic available balance gate in SQLite: fails CHECK (amount > 0) if insufficient).
+      // Evaluates the canonical Credit Ledger balance invariant (grants+payments - usage - active holds >= cost)
+      // identical to getAvailableCredits() in src/lib/credits/ledger.ts.
       env.DB.prepare(
         `INSERT INTO credit_holds (id, user_id, amount, status, ref_type, ref_id, ledger_hold_id, created_at)
          SELECT
@@ -245,8 +247,8 @@ export async function settleHoldOnReady(
   }
   // Atomically: 1. insert usage ledger entry (only if hold still active),
   // 2. settle hold, 3. advance task to notified.
-  // Every side effect is conditional on the hold state *inside* the batch,
-  // so a concurrent settle/release/expire makes this batch a complete no-op.
+  // Side effects are conditional on hold state and task non-terminal state,
+  // making concurrent settle/release/expire safe against double-usage or resurrecting terminal failures.
   const usageEntryId = crypto.randomUUID();
   await env.DB.batch([
     env.DB.prepare(
@@ -333,9 +335,9 @@ export async function releaseHoldOnTerminal(
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
-       SELECT ?1, user_id, 'release', amount, ?2, ref_type, ref_id, NULL, ?3
-       FROM credit_holds WHERE id = ?4 AND status = 'active'`
-    ).bind(releaseEntryId, terminalStatus, now, hold.id),
+       SELECT ?1, user_id, 'release', amount, ref_type, ref_type, ref_id, NULL, ?2
+       FROM credit_holds WHERE id = ?3 AND status = 'active'`
+    ).bind(releaseEntryId, now, hold.id),
     env.DB.prepare(
       `UPDATE credit_holds SET status = 'released', released_at = ?1 WHERE id = ?2 AND status = 'active'`
     ).bind(now, hold.id),
@@ -380,7 +382,7 @@ export async function expireStaleTasks(env: Env): Promise<number> {
         const results = await env.DB.batch([
           env.DB.prepare(
             `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
-             SELECT ?1, user_id, 'release', amount, 'expired', ref_type, ref_id, NULL, ?2
+             SELECT ?1, user_id, 'release', amount, ref_type, ref_type, ref_id, NULL, ?2
              FROM credit_holds WHERE id = ?3 AND status = 'active'`
           ).bind(releaseEntryId, now, hold.id),
           env.DB.prepare(
