@@ -1,0 +1,20 @@
+src/lib/floor-plan/index.ts
+  h_17f2fa2b92da6a 40-44
+src/lib/floor-plan/lineage.ts
+  h_17f2fa2b92da6a 1-236
+src/lib/library/share.ts
+  h_17f2fa2b92da6a 5,163,165-168,308-316,320-321,367
+src/lib/library/share.wtest.ts
+  h_17f2fa2b92da6a 239-244,249,255,632-760
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "822eaa446fb036fd107c6c27214d16493c317b40",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
