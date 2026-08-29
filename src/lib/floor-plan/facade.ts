@@ -30,6 +30,7 @@ import {
 import { FloorPlanError } from "@/lib/floor-plan/errors";
 
 export interface ResolvedFloorPlanStagePlan {
+  projectId: string;
   effectiveSourceAssetId: string;
   prompt: string;
   finalizedConfig: DesignConfig;
@@ -79,14 +80,17 @@ export async function resolveFloorPlanStagePlan(
   };
   const finalizedIntent = finalizedConfig.intent as FloorPlanIntent;
 
+  let projectId: string;
   let prompt: string;
 
   try {
     if (stage === "brief") {
-      await assertRoomDesignForBrief(env, userId, roomId, config.sourceAssetId, fp.marker);
+      const row = await assertRoomDesignForBrief(env, userId, roomId, config.sourceAssetId, fp.marker);
+      projectId = row.project_id;
       prompt = buildFloorPlanBriefPrompt(finalizedIntent);
     } else if (stage === "layout") {
       const row = await assertRoomDesignForLayout(env, userId, roomId, config.sourceAssetId, fp.marker);
+      projectId = row.project_id;
       const proposal = parseRoomProposal(row);
       prompt = buildFloorPlanLayoutPrompt(finalizedIntent, proposal);
     } else if (stage === "render") {
@@ -97,6 +101,7 @@ export async function resolveFloorPlanStagePlan(
         config.sourceAssetId,
         fp.marker
       );
+      projectId = row.project_id;
       finalizedIntent.layoutRunId = layoutRun.id;
       const proposal = parseRoomProposal(row);
       prompt = buildFloorPlanRenderPrompt(finalizedIntent, proposal);
@@ -108,6 +113,7 @@ export async function resolveFloorPlanStagePlan(
         config.sourceAssetId,
         fp.marker
       );
+      projectId = row.project_id;
       finalizedIntent.renderRunId = renderRun.id;
       finalizedIntent.panoramaOrientation = DEFAULT_PANORAMA_ORIENTATION;
       finalizedConfig.options = {
@@ -129,6 +135,7 @@ export async function resolveFloorPlanStagePlan(
   }
 
   return {
+    projectId,
     effectiveSourceAssetId,
     prompt,
     finalizedConfig,

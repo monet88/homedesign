@@ -956,11 +956,12 @@ describe("Ticket #33: Offline Generation Full Lifecycle per mode (Interior, Exte
     await handleProviderNotify(env, {
       type: "provider-failed",
       taskId,
-      errorCode: "SIMULATED_FAILURE",
+      error: "SIMULATED_FAILURE",
     });
 
     const task = await getTask(env, taskId);
     expect(task?.status).toBe("failed");
+    expect(task?.error_code).toBe("SIMULATED_FAILURE");
     await assertHoldState(taskId, "released");
 
     const runAfter = await getStageRunByDesignId(env, taskId);

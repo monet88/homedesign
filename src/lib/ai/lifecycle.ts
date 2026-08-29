@@ -244,9 +244,10 @@ export async function createDesign(
     };
   }
 
-  // Project linkage (ADR 0005): a draft Project is created the first time a
-  // ready Source Asset is used for this kind.
-  const projectId = await ensureProject(env, userId, effectiveConfig, asset.id);
+  // Floor Plan remains attached to the Room Design's original project even
+  // when a stage (Panorama) uses an upstream generated asset as provider input.
+  // Other scenes retain source-asset keyed project creation (ADR 0005).
+  const projectId = floorPlanStagePlan?.projectId ?? await ensureProject(env, userId, effectiveConfig, asset.id);
 
   const now = Date.now();
   await env.DB.prepare(

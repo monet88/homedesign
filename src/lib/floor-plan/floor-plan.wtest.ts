@@ -491,6 +491,7 @@ describe("Panorama stage lifecycle", () => {
       stagePayload("panorama", src, rid, m, "panorama-run")
     );
     expect(panorama.cost).toBe(4);
+    expect(panorama.projectId).toBe(projectId);
     expect(await getAvailableCredits(env, billUser)).toBe(0);
 
     await runDesignToReady(panorama.id);
