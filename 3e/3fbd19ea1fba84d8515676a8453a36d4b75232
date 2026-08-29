@@ -1,0 +1,16 @@
+src/lib/ai/task-lifecycle.ts
+  h_17f2fa2b92da6a 370-379,385,388-390,393,416,419-421
+src/lib/payments/payments.wtest.ts
+  h_17f2fa2b92da6a 1100,1103,1105,1109-1111,1113,1116-1126,1130-1132,1137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "3e3fbd19ea1fba84d8515676a8453a36d4b75232",
+  "prompts": {},
+  "humans": {
+    "h_17f2fa2b92da6a": {
+      "author": "monet88 <minhthang421992@gmail.com>"
+    }
+  }
+}
