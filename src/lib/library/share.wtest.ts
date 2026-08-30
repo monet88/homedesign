@@ -21,7 +21,7 @@ import {
   softDeleteProject,
 } from "@/lib/library/share";
 import { deleteOwnerAsset } from "@/lib/library/assets";
-import { confirmRoomLayout, restoreStageRun } from "@/lib/floor-plan/stages";
+import { confirmRoomLayout, isFloorPlanOutputActive, restoreStageRun } from "@/lib/floor-plan";
 beforeEach(async () => {
   await applyMigrations(env.DB);
 });
@@ -236,17 +236,23 @@ async function seedFloorPlanProject(userId: string, sourceAssetId?: string) {
   return { projectId: id, sourceId };
 }
 
-async function seedRoomDesign(projectId: string, userId: string, briefConfirmed = true) {
+async function seedRoomDesign(
+  projectId: string,
+  userId: string,
+  briefConfirmed = true,
+  markerId = "marker-1"
+) {
   const id = crypto.randomUUID();
   const now = Date.now();
   await env.DB.prepare(
     `INSERT INTO room_designs (id, project_id, user_id, marker_id, marker_x, marker_y, marker_locked, brief_confirmed_at, progress, created_at, updated_at)
-     VALUES (?1, ?2, ?3, 'marker-1', 50, 50, ?4, ?5, ?6, ?7, ?7)`
+     VALUES (?1, ?2, ?3, ?4, 50, 50, ?5, ?6, ?7, ?8, ?8)`
   )
     .bind(
       id,
       projectId,
       userId,
+      markerId,
       briefConfirmed ? 1 : 0,
       briefConfirmed ? now : null,
       briefConfirmed ? "analyzed" : "draft",
@@ -267,6 +273,7 @@ async function seedFloorPlanRun(
     upstreamRunId?: string;
     assetLifecycle?: string;
     userIdOverride?: string;
+    configJsonOverride?: string;
   } = {}
 ) {
   const designId = crypto.randomUUID();
@@ -309,14 +316,14 @@ async function seedFloorPlanRun(
     },
   };
 
+  const configJson = options.configJsonOverride ?? JSON.stringify(config);
   await env.DB.prepare(
     `INSERT INTO designs (id, user_id, project_id, scene, stage, provider, model, provider_scene, prompt,
        config_json, source_asset_id, output_asset_id, cost_credits, idempotency_key, created_at, updated_at, completed_at)
      VALUES (?1, ?2, ?3, 'floor-plan', ?4, 'test', 'test', 'test', 'prompt', ?5, 'source-1', ?6, 1, ?7, ?8, ?8, ?8)`
   )
-    .bind(designId, owner, projectId, stage, JSON.stringify(config), outputAssetId, `idem-${designId}`, now)
+    .bind(designId, owner, projectId, stage, configJson, outputAssetId, `idem-${designId}`, now)
     .run();
-
   await env.DB.prepare(
     `INSERT INTO floor_plan_stage_runs (id, room_design_id, stage, status, design_id, confirmed_at, created_at, updated_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)`
@@ -621,6 +628,190 @@ describe("authorized share asset delivery security (AC 3)", () => {
     // ShareTokenAssetRef object cluster invocation
     expect(await deliverShareAsset(env, { token: "test-invalid-token", assetId: asset1 })).toBeNull();
     expect(await authorizeShareAssetDelivery(env, { token: "test-invalid-token", assetId: asset1 })).toBeNull();
+  });
+});
+describe("multi-asset batch Floor Plan lineage resolution (Spec #63 / Ticket #65)", () => {
+  it("resolves multi-room and multi-stage active lineage in batch and filters inactive outputs", async () => {
+    const userId = await seedUser();
+    const { projectId } = await seedFloorPlanProject(userId);
+    const room1 = await seedRoomDesign(projectId, userId, true, "marker-1");
+    const room2 = await seedRoomDesign(projectId, userId, true, "marker-2");
+
+    // Room 1: superseded layout (layout1a), active layout (layout1b), active render (render1), active panorama (pano1)
+    const layout1a = await seedFloorPlanRun(projectId, userId, room1, "layout", {
+      confirmedAt: 1000,
+    });
+    const layout1b = await seedFloorPlanRun(projectId, userId, room1, "layout", {
+      confirmedAt: 2000,
+    });
+    const render1 = await seedFloorPlanRun(projectId, userId, room1, "render", {
+      upstreamRunId: layout1b.stageRunId,
+      confirmedAt: 2500,
+    });
+    const pano1 = await seedFloorPlanRun(projectId, userId, room1, "panorama", {
+      upstreamRunId: render1.stageRunId,
+      status: "success",
+    });
+
+    // Room 2: active layout (layout2), stale render (render2 pointing to old layout), unconfirmed layout (layout2_unconfirmed)
+    const layout2 = await seedFloorPlanRun(projectId, userId, room2, "layout", {
+      confirmedAt: 1000,
+    });
+    const render2 = await seedFloorPlanRun(projectId, userId, room2, "render", {
+      upstreamRunId: "non-existent-layout-id",
+      confirmedAt: 1500,
+    });
+    const layout2Unconfirmed = await seedFloorPlanRun(projectId, userId, room2, "layout", {
+      status: "success",
+      confirmedAt: null,
+    });
+
+    // Selecting active assets succeeds in batch
+    const { token } = await createProjectShare(env, userId, projectId, {
+      assetIds: [layout1b.outputAssetId, render1.outputAssetId, pano1.outputAssetId, layout2.outputAssetId],
+    });
+
+    const view = await getShareViewByToken(env, token);
+    expect(view?.assets).toHaveLength(4);
+    const viewAssetIds = view?.assets.map((a) => a.id);
+    expect(viewAssetIds).toContain(layout1b.outputAssetId);
+    expect(viewAssetIds).toContain(render1.outputAssetId);
+    expect(viewAssetIds).toContain(pano1.outputAssetId);
+    expect(viewAssetIds).toContain(layout2.outputAssetId);
+
+    // Reject selecting superseded layout1a
+    await expect(
+      createProjectShare(env, userId, projectId, { assetIds: [layout1a.outputAssetId] })
+    ).rejects.toThrow("ASSET_NOT_SHAREABLE");
+
+    // Reject selecting stale render2
+    await expect(
+      createProjectShare(env, userId, projectId, { assetIds: [render2.outputAssetId] })
+    ).rejects.toThrow("ASSET_NOT_SHAREABLE");
+
+    // Reject selecting unconfirmed layout2Unconfirmed
+    await expect(
+      createProjectShare(env, userId, projectId, { assetIds: [layout2Unconfirmed.outputAssetId] })
+    ).rejects.toThrow("ASSET_NOT_SHAREABLE");
+  });
+
+  it("multi-asset share view excludes superseded and stale outputs in batch without mutating selection", async () => {
+    const userId = await seedUser();
+    const { projectId } = await seedFloorPlanProject(userId);
+    const room1 = await seedRoomDesign(projectId, userId, true, "marker-1");
+    const room2 = await seedRoomDesign(projectId, userId, true, "marker-2");
+    const layout1 = await seedFloorPlanRun(projectId, userId, room1, "layout", { confirmedAt: 1000 });
+    const render1 = await seedFloorPlanRun(projectId, userId, room1, "render", {
+      upstreamRunId: layout1.stageRunId,
+      confirmedAt: 1500,
+    });
+    const pano1 = await seedFloorPlanRun(projectId, userId, room1, "panorama", {
+      upstreamRunId: render1.stageRunId,
+      status: "success",
+    });
+
+    const layout2 = await seedFloorPlanRun(projectId, userId, room2, "layout", { confirmedAt: 1000 });
+    const render2 = await seedFloorPlanRun(projectId, userId, room2, "render", {
+      upstreamRunId: layout2.stageRunId,
+      confirmedAt: 1500,
+    });
+
+    const { token } = await createProjectShare(env, userId, projectId, {
+      assetIds: [layout1.outputAssetId, render1.outputAssetId, pano1.outputAssetId, layout2.outputAssetId, render2.outputAssetId],
+    });
+
+    const viewBefore = await getShareViewByToken(env, token);
+    expect(viewBefore?.assets).toHaveLength(5);
+
+    // Replace layout in room1 with layout1_new and confirm it
+    const layout1New = await seedFloorPlanRun(projectId, userId, room1, "layout", {
+      status: "success",
+      confirmedAt: null,
+    });
+    await confirmRoomLayout(env, userId, room1, layout1New.designId);
+
+    // Now in room1: layout1 is superseded, render1 is stale, pano1 is stale.
+    // In room2: layout2 and render2 are still active.
+    const viewAfter = await getShareViewByToken(env, token);
+    expect(viewAfter?.assets).toHaveLength(2);
+    const activeIds = viewAfter?.assets.map((a) => a.id);
+    expect(activeIds).toEqual(expect.arrayContaining([layout2.outputAssetId, render2.outputAssetId]));
+    expect(activeIds).not.toContain(layout1.outputAssetId);
+    expect(activeIds).not.toContain(render1.outputAssetId);
+    expect(activeIds).not.toContain(pano1.outputAssetId);
+  });
+
+  it("interior and exterior multi-asset share views are preserved without floor-plan lineage calls", async () => {
+    const userId = await seedUser();
+    const projectId = await seedProject(userId, { visibility: "private" });
+    const asset1 = await seedReadyAsset(userId, `ready/${crypto.randomUUID()}.png`);
+    const asset2 = await seedReadyAsset(userId, `ready/${crypto.randomUUID()}.png`);
+    await attachGenerated(projectId, asset1);
+    await attachGenerated(projectId, asset2);
+
+    const { token } = await createProjectShare(env, userId, projectId, {
+      assetIds: [asset1, asset2],
+    });
+
+    const view = await getShareViewByToken(env, token);
+    expect(view?.kind).toBe("interior");
+    expect(view?.assets).toHaveLength(2);
+    expect(view?.assets.map((a) => a.id)).toEqual(expect.arrayContaining([asset1, asset2]));
+  });
+  it("treats render/panorama with missing/malformed config or missing upstream id as non-stale (exact semantic parity)", async () => {
+    const userId = await seedUser();
+    const { projectId } = await seedFloorPlanProject(userId);
+    const room1 = await seedRoomDesign(projectId, userId, true, "marker-1");
+    const room2 = await seedRoomDesign(projectId, userId, true, "marker-2");
+    const room3 = await seedRoomDesign(projectId, userId, true, "marker-3");
+    const room4 = await seedRoomDesign(projectId, userId, true, "marker-4");
+
+    // 1. Render with missing upstream run id in intent (active confirmed run for room1)
+    const renderNoUpstream = await seedFloorPlanRun(projectId, userId, room1, "render", {
+      configJsonOverride: JSON.stringify({ scene: "floor-plan", stage: "render", intent: { stage: "render", roomId: room1 } }),
+      confirmedAt: 1000,
+    });
+
+    // 2. Render with malformed JSON in config_json (active confirmed run for room2)
+    const renderMalformed = await seedFloorPlanRun(projectId, userId, room2, "render", {
+      configJsonOverride: "INVALID_JSON{",
+      confirmedAt: 1100,
+    });
+
+    // 3. Panorama with missing upstream run id in intent
+    const panoNoUpstream = await seedFloorPlanRun(projectId, userId, room3, "panorama", {
+      configJsonOverride: JSON.stringify({ scene: "floor-plan", stage: "panorama", intent: { stage: "panorama", roomId: room3 } }),
+      status: "success",
+    });
+
+    // 4. Panorama with malformed JSON in config_json
+    const panoMalformed = await seedFloorPlanRun(projectId, userId, room4, "panorama", {
+      configJsonOverride: "{malformed_json",
+      status: "success",
+    });
+
+    // All should be considered active / shareable (exact parity with isStageRunStale returning false)
+    const { token } = await createProjectShare(env, userId, projectId, {
+      assetIds: [
+        renderNoUpstream.outputAssetId,
+        renderMalformed.outputAssetId,
+        panoNoUpstream.outputAssetId,
+        panoMalformed.outputAssetId,
+      ],
+    });
+    const view = await getShareViewByToken(env, token);
+    expect(view?.assets).toHaveLength(4);
+    const activeIds = view?.assets.map((a) => a.id);
+    expect(activeIds).toContain(renderNoUpstream.outputAssetId);
+    expect(activeIds).toContain(renderMalformed.outputAssetId);
+    expect(activeIds).toContain(panoNoUpstream.outputAssetId);
+    expect(activeIds).toContain(panoMalformed.outputAssetId);
+
+    // Verify single-output isFloorPlanOutputActive seam preserves the same non-stale semantics
+    expect(await isFloorPlanOutputActive(env, projectId, renderNoUpstream.outputAssetId)).toBe(true);
+    expect(await isFloorPlanOutputActive(env, projectId, renderMalformed.outputAssetId)).toBe(true);
+    expect(await isFloorPlanOutputActive(env, projectId, panoNoUpstream.outputAssetId)).toBe(true);
+    expect(await isFloorPlanOutputActive(env, projectId, panoMalformed.outputAssetId)).toBe(true);
   });
 });
 

@@ -38,6 +38,11 @@ export {
   restoreStageRun,
 } from "@/lib/floor-plan/stages";
 export {
+  isFloorPlanOutputActive,
+  resolveActiveFloorPlanOutputAssetIds,
+  type FloorPlanOutputRef,
+} from "@/lib/floor-plan/lineage";
+export {
   deriveProjectOverview,
   getFloorPlanProjectDetail,
   isRoomDesignComplete,

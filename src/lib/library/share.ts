@@ -2,7 +2,7 @@
 
 import type { Env } from "@/lib/bindings";
 import { presignGetUrl, type PresignCredentials } from "@/lib/intake/presign";
-import { getActiveConfirmedStageRun, isStageRunStale } from "@/lib/floor-plan/stages";
+import { isFloorPlanOutputActive, resolveActiveFloorPlanOutputAssetIds } from "@/lib/floor-plan";
 
 const PRIVATE_BUCKET = "homedesign-private";
 const SHARE_DELIVERY_TTL_SEC = 600;
@@ -133,69 +133,6 @@ export async function setProjectVisibility(
     .run();
 }
 
-export async function isFloorPlanAssetActive(
-  env: Env,
-  target: ShareAssetRef | string,
-  maybeAssetId?: string
-): Promise<boolean> {
-  const { projectId, assetId } =
-    typeof target === "string" ? { projectId: target, assetId: maybeAssetId! } : target;
-  const design = await env.DB.prepare(
-    `SELECT d.id AS design_id, d.stage AS design_stage,
-            sr.id AS stage_run_id, sr.room_design_id, sr.stage AS run_stage,
-            sr.status AS run_status
-     FROM designs d
-     LEFT JOIN floor_plan_stage_runs sr ON (sr.design_id = d.id OR sr.id = d.id)
-     WHERE d.project_id = ?1 AND d.output_asset_id = ?2`
-  )
-    .bind(projectId, assetId)
-    .first<{
-      design_id: string;
-      design_stage: string | null;
-      stage_run_id: string | null;
-      room_design_id: string | null;
-      run_stage: string | null;
-      run_status: string | null;
-    }>();
-
-  if (!design || !design.stage_run_id || !design.room_design_id) {
-    return false;
-  }
-
-  const roomDesign = await env.DB.prepare(
-    `SELECT id, project_id, brief_confirmed_at FROM room_designs WHERE id = ?1`
-  )
-    .bind(design.room_design_id)
-    .first<{ id: string; project_id: string; brief_confirmed_at: number | null }>();
-
-  if (!roomDesign || roomDesign.project_id !== projectId || !roomDesign.brief_confirmed_at) {
-    return false;
-  }
-
-  const stage = design.run_stage ?? design.design_stage;
-
-  if (stage === "layout") {
-    if (design.run_status !== "confirmed") return false;
-    const activeLayout = await getActiveConfirmedStageRun(env, design.room_design_id, "layout");
-    return activeLayout !== null && activeLayout.id === design.stage_run_id;
-  }
-
-  if (stage === "render") {
-    if (design.run_status !== "confirmed") return false;
-    const activeRender = await getActiveConfirmedStageRun(env, design.room_design_id, "render");
-    if (!activeRender || activeRender.id !== design.stage_run_id) return false;
-    const stale = await isStageRunStale(env, design.stage_run_id);
-    return !stale;
-  }
-
-  if (stage === "panorama") {
-    if (design.run_status !== "success" && design.run_status !== "confirmed") return false;
-    const stale = await isStageRunStale(env, design.stage_run_id);
-    return !stale;
-  }
-
-  return false;
-}
 
 export async function setShareSelectedAssets(
   env: Env,
@@ -223,10 +160,12 @@ export async function setShareSelectedAssets(
     if (asset.lifecycle !== "ready" || !asset.storage_key || !asset.is_generated) {
       throw new Error("ASSET_NOT_SHAREABLE");
     }
+  }
 
-    if (project.kind === "floor-plan") {
-      const active = await isFloorPlanAssetActive(env, { projectId, assetId });
-      if (!active) {
+  if (project.kind === "floor-plan") {
+    const activeIds = await resolveActiveFloorPlanOutputAssetIds(env, projectId, uniqueAssetIds);
+    for (const assetId of uniqueAssetIds) {
+      if (!activeIds.has(assetId)) {
         throw new Error("ASSET_NOT_SHAREABLE");
       }
     }
@@ -366,12 +305,20 @@ export async function getShareViewByToken(env: Env, token: string): Promise<Shar
     .all<{ id: string; mime_type: string }>();
 
   const rawAssets = assetsResult.results ?? [];
+  let activeFloorPlanAssetIds: Set<string> | null = null;
+  if (share.projectKind === "floor-plan" && rawAssets.length > 0) {
+    activeFloorPlanAssetIds = await resolveActiveFloorPlanOutputAssetIds(
+      env,
+      share.projectId,
+      rawAssets.map((r) => r.id)
+    );
+  }
+
   const validAssets: ShareViewAsset[] = [];
 
   for (const row of rawAssets) {
-    if (share.projectKind === "floor-plan") {
-      const active = await isFloorPlanAssetActive(env, { projectId: share.projectId, assetId: row.id });
-      if (!active) continue;
+    if (activeFloorPlanAssetIds && !activeFloorPlanAssetIds.has(row.id)) {
+      continue;
     }
     validAssets.push({
       id: row.id,
@@ -417,7 +364,7 @@ export async function authorizeShareAssetDelivery(
   if (!row?.storage_key) return null;
 
   if (share.projectKind === "floor-plan") {
-    const active = await isFloorPlanAssetActive(env, { projectId: share.projectId, assetId });
+    const active = await isFloorPlanOutputActive(env, share.projectId, assetId);
     if (!active) return null;
   }
 
