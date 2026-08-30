@@ -167,18 +167,18 @@ export async function resolveActiveFloorPlanOutputAssetIds(
   }
 
   function isRenderRunStaleInMemory(renderRun: StageRunInfo): boolean {
+    const upstreamLayoutRunId = parseUpstreamRunId("render", renderRun.configJson);
+    if (!upstreamLayoutRunId) return false;
     const activeLayout = activeConfirmedLayoutByRoom.get(renderRun.roomDesignId);
     if (!activeLayout) return true;
-    const upstreamLayoutRunId = parseUpstreamRunId("render", renderRun.configJson);
-    if (!upstreamLayoutRunId) return true;
     return activeLayout.id !== upstreamLayoutRunId;
   }
 
   function isPanoramaRunStaleInMemory(panoramaRun: StageRunInfo): boolean {
+    const upstreamRenderRunId = parseUpstreamRunId("panorama", panoramaRun.configJson);
+    if (!upstreamRenderRunId) return false;
     const activeRender = activeConfirmedRenderByRoom.get(panoramaRun.roomDesignId);
     if (!activeRender) return true;
-    const upstreamRenderRunId = parseUpstreamRunId("panorama", panoramaRun.configJson);
-    if (!upstreamRenderRunId) return true;
     if (activeRender.id !== upstreamRenderRunId) return true;
     return isRenderRunStaleInMemory(activeRender);
   }
