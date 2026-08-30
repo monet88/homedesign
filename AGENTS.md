@@ -10,7 +10,7 @@ Use the five default triage labels: `needs-triage`, `needs-info`, `ready-for-age
 
 ### Repository navigation and verification
 
-- Default base branch: `master` (never assume `main`).
+- Default base branch: `main`.
 - Unit tests: `src/**/*.test.ts`, `src/**/*.test.tsx`, and `tests/**/*.test.ts`.
 - Workers-runtime tests: `src/**/*.wtest.ts` and `tests/**/*.wtest.ts`.
 - Playwright E2E tests: `e2e/**/*.spec.ts`.
