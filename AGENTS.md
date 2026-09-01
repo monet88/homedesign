@@ -25,6 +25,10 @@ Start, stop, skip-login (`AUTH_BYPASS`), and localhost links: `docs/agents/local
 
 This is a single-context repo: read the root `CONTEXT.md` and relevant ADRs in `docs/adr/`. See `docs/agents/domain.md`.
 
+### Capability-aware bootstrap
+
+Before asking a question, exploring files, or using a tool, follow the short bootstrap in [`docs/agents/bootstrap.md`](docs/agents/bootstrap.md): select every applicable skill, then read each selected skill in full through a local-file reader exposed by the current runtime. Process skills run before domain or implementation skills; direct user instructions define scope and take precedence over defaults, while the pre-action skill gate remains checkable. Prefer FastCtx when its reader is exposed and choose an available fallback otherwise—never call a reader the runtime did not expose.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
