@@ -33,6 +33,10 @@ This is a single-context repo: read the root `CONTEXT.md` and relevant ADRs in `
 
 Before asking a question, exploring files, or using a tool, follow the short bootstrap in [`docs/agents/bootstrap.md`](docs/agents/bootstrap.md): select every applicable skill, then read each selected skill in full through a local-file reader exposed by the current runtime. Process skills run before domain or implementation skills; direct user instructions define scope and take precedence over defaults, while the pre-action skill gate remains checkable. Prefer FastCtx when its reader is exposed and choose an available fallback otherwise—never call a reader the runtime did not expose.
 
+### Browser and research capabilities
+
+When a task needs browser automation, library documentation, URL reading, web search, or deeper research, use the capability-conditional routing in [`docs/agents/browser-research.md`](docs/agents/browser-research.md). Check the current runtime first, investigate the local repository and project docs before external calls, prefer official primary sources, and keep direct citations for external claims.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
