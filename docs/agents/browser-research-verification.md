@@ -5,6 +5,16 @@ capability sets. Record the exposed capability names and attempted calls while
 running each scenario; an unavailable provider call is a failure, not a
 fallback.
 
+Run the deterministic dry-run from the repository root:
+
+```text
+npm run verify:browser-research
+```
+
+The verifier replays both scenarios with the same capability matrix and emits a
+JSON attempt log. A replay mismatch, unresolved route, or unavailable call is a
+failed verification rather than a silently accepted fallback.
+
 ## Scenario 1: library documentation without a provider-specific docs tool
 
 **Capabilities exposed:** local file reader, native web search/open. Context7,
@@ -51,3 +61,7 @@ attempted calls: <ordered names>
 citations: <direct URLs>
 result: PASS | FAIL
 ```
+
+The executable log uses the same fields (`capabilities`, `selectedRoute`,
+`attemptedCalls`, `unavailableCalls`, and `result`) so a real run can be audited
+without inferring which provider was selected.

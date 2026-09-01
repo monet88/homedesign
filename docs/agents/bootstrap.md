@@ -45,5 +45,10 @@ The bootstrap is complete only when the run can show:
 - the concrete reader chosen from the runtime's exposed capabilities, with no
   attempted call to an unavailable reader.
 
+The verifier resolves each selected skill to a real, non-empty `SKILL.md` and
+records its byte/line count after a full read. Set `BOOTSTRAP_SKILLS` (comma
+separated) and `SKILLS_ROOT` when exercising a different skill set; otherwise
+the standard agent skill roots are searched.
+
 Use `npm run verify:bootstrap` for the repository dry-run covering both reader
-branches.
+branches, or append `--without-fastctx` to exercise only the fallback branch.

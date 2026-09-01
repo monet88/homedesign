@@ -26,7 +26,12 @@ The checked-in verifier exercises this contract:
 npm run verify:orchestration
 ```
 
-It checks the documented payload fields and then validates the live `agent-context` registry. A missing runtime is an actionable verification failure, not evidence that an obsolete command is safe.
+It checks the documented payload fields, derives representative `worker-start`
+combinations (fresh `--agent` for isolated context and explicit `--terminal` for
+full-history context), plus a model/effort launch when those flags are exposed;
+it validates those combinations against the live
+`agent-context` registry without starting a worker. A missing runtime is an
+actionable verification failure, not evidence that an obsolete command is safe.
 
 ## Spawn payloads
 
