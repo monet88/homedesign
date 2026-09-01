@@ -20,6 +20,7 @@
     "smoke": "node scripts/smoke.mjs",
     "gate:free-first": "node scripts/free-first-gate.mjs",
     "verify:bootstrap": "node scripts/verify-agent-bootstrap.mjs",
+    "verify:orchestration": "node scripts/verify-orchestration-guidance.mjs",
     "test:e2e": "node scripts/run-e2e.mjs",
     "test:e2e:update": "node scripts/run-e2e.mjs --update-snapshots",
     "db:seed:admin": "node scripts/seed-admin.mjs",

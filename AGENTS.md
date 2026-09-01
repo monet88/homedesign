@@ -17,6 +17,10 @@ Use the five default triage labels: `needs-triage`, `needs-info`, `ready-for-age
 - For an OpenNext/Cloudflare worker build, use `npm run build:worker` instead of invoking `opennextjs-cloudflare build` directly; the wrapper performs cross-platform `.open-next` cleanup first.
 - Run local smoke/free-first gates through `npm run smoke` and `npm run gate:free-first`; the `.sh` files are CI/POSIX wrappers and may resolve to WSL bash on Windows.
 
+### Multi-agent orchestration
+
+When a task explicitly calls for multiple agents, supervised dispatch, worker lifecycle, a decision gate, or coordinator ask/reply, read [`docs/agents/orchestration.md`](docs/agents/orchestration.md) before creating or coordinating a worker. The guidance is runtime-derived and includes the authorization boundary; do not treat ordinary implementation requests as permission to create agents or external worktree/process state.
+
 ### Local UI / Next server
 
 Start, stop, skip-login (`AUTH_BYPASS`), and localhost links: `docs/agents/local-dev.md`. Use that file when the user wants to view or click the running app.
