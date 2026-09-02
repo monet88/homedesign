@@ -273,6 +273,7 @@ test.describe("Full End-to-End System Journey", () => {
       // CI runners are slower and the upload→project→marker canvas chain is
       // async; allow generous settling time.
       await expect(canvas).toBeVisible({ timeout: 60_000 });
+      await expect(canvas).toHaveAttribute("aria-disabled", "false", { timeout: 60_000 });
       await canvas.click({ position: { x: 120, y: 120 } });
 
       // Registering the room is async (marker POST → room row); give the flow a

@@ -177,18 +177,18 @@ export function FloorPlanFlow() {
     return data.data.id;
   }
 
-  const handleUploadReady = useCallback(async (assetId: string, file: File) => {
+  const handleUploadReady = useCallback(async (assetId: string, file: File, uploadedPreviewUrl: string) => {
     setSourceAssetId(assetId);
     setRoom(null);
     setProposal(null);
     setProjectDetail(null);
     setStatus(null);
     setAddingNextRoom(false);
+    setPreviewUrl(uploadedPreviewUrl || URL.createObjectURL(file));
     try {
       setBusy(true);
       const id = await ensureProject(assetId);
       setProjectId(id);
-      setPreviewUrl(URL.createObjectURL(file));
       await refreshProject(id);
     } catch (err) {
       showToast((err as Error).message, "error");
@@ -198,7 +198,7 @@ export function FloorPlanFlow() {
   }, []);
 
   async function placeMarker(clientX: number, clientY: number) {
-    if (!projectId || !canvasRef.current) return;
+    if (busy || !projectId || !canvasRef.current) return;
     if (room?.markerLocked && !addingNextRoom) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
@@ -482,11 +482,13 @@ export function FloorPlanFlow() {
         scene="floor-plan"
         sceneLabel="floor plan"
         disabled={!user || busy}
-        onReady={(assetId, file) => void handleUploadReady(assetId, file)}
+        onReady={(assetId, file, uploadedPreviewUrl) =>
+          void handleUploadReady(assetId, file, uploadedPreviewUrl)
+        }
         onError={(message) => showToast(message, "error")}
       />
 
-      {previewUrl && !busy ? (
+      {previewUrl ? (
         <section className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium">
@@ -509,6 +511,7 @@ export function FloorPlanFlow() {
             role="button"
             tabIndex={0}
             aria-label="Click to place room marker"
+            aria-disabled={busy || !projectId ? "true" : "false"}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={previewUrl} alt="Floor plan" className="block w-full select-none" draggable={false} />
