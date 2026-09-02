@@ -11,20 +11,73 @@ const check = (condition, message) => {
   if (!condition) failures.push(message);
 };
 
-// `spawn_agent` is a separate capability from Orca's worker-start command.
-// Keep its stable payload contract explicit and validate fixtures against this
-// input before inspecting the volatile worker-start registry below.
-const spawnCapabilitySchema = {
-  fields: new Set(["task_name", "message", "fork_turns", "model", "reasoning_effort"]),
-  forkTurns: (value) => value === "none" || value === "all" || (typeof value === "string" && /^[1-9]\d*$/.test(value)),
-};
+const spawnSchemaFixture = new URL("scripts/fixtures/spawn-agent-capability-schema.json", root);
 
-function validateSpawnPayload(payload, schema = spawnCapabilitySchema) {
+function schemaInput(raw) {
+  return raw?.inputSchema ?? raw?.schema ?? raw;
+}
+
+function schemaProperties(input) {
+  if (input?.properties && typeof input.properties === "object") return input.properties;
+  if (Array.isArray(input?.fields)) return Object.fromEntries(input.fields.map((field) => [field, {}]));
+  if (input?.fields && typeof input.fields === "object") return input.fields;
+  return {};
+}
+
+function loadSpawnCapabilitySchema() {
+  const configured = process.env.SPAWN_AGENT_SCHEMA_JSON?.trim() || process.env.ORCA_SPAWN_AGENT_SCHEMA_JSON?.trim();
+  const source = configured ? "SPAWN_AGENT_SCHEMA_JSON" : "scripts/fixtures/spawn-agent-capability-schema.json";
+  let raw;
+  try {
+    raw = configured ? JSON.parse(configured) : JSON.parse(readFileSync(spawnSchemaFixture, "utf8"));
+  } catch (error) {
+    failures.push(`could not parse ${source}: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+  const input = schemaInput(raw);
+  const properties = schemaProperties(input);
+  if (!input || typeof input !== "object" || Object.keys(properties).length === 0) {
+    failures.push(`${source} must describe spawn_agent object properties`);
+    return null;
+  }
+  return {
+    source,
+    properties,
+    fields: new Set(Object.keys(properties)),
+    required: new Set(Array.isArray(input.required) ? input.required : ["task_name", "message"]),
+    additionalProperties: input.additionalProperties !== false,
+    forkTurns: input.forkTurns,
+  };
+}
+
+function matchesSchema(value, spec) {
+  if (!spec || typeof spec !== "object") return true;
+  if (Array.isArray(spec.enum) && !spec.enum.includes(value)) return false;
+  if (spec.const !== undefined && value !== spec.const) return false;
+  if (spec.type === "string" && typeof value !== "string") return false;
+  if (spec.type === "object" && (value === null || typeof value !== "object" || Array.isArray(value))) return false;
+  if (typeof spec.minLength === "number" && (typeof value !== "string" || value.length < spec.minLength)) return false;
+  if (spec.pattern && (typeof value !== "string" || !new RegExp(spec.pattern).test(value))) return false;
+  if (Array.isArray(spec.anyOf) && !spec.anyOf.some((candidate) => matchesSchema(value, candidate))) return false;
+  if (Array.isArray(spec.oneOf) && spec.oneOf.filter((candidate) => matchesSchema(value, candidate)).length !== 1) return false;
+  return true;
+}
+
+function validateSpawnPayload(payload, schema) {
   const errors = [];
-  for (const key of Object.keys(payload)) if (!schema.fields.has(key)) errors.push(`unsupported field: ${key}`);
-  if (typeof payload.task_name !== "string" || payload.task_name.length === 0) errors.push("task_name is required");
-  if (typeof payload.message !== "string" || payload.message.length === 0) errors.push("message is required");
-  if (!schema.forkTurns(payload.fork_turns)) errors.push("fork_turns must be none, all, or a positive integer string");
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return ["payload must be an object"];
+  if (!schema.additionalProperties) {
+    for (const key of Object.keys(payload)) if (!schema.fields.has(key)) errors.push(`unsupported field: ${key}`);
+  }
+  for (const key of schema.required) {
+    if (!(key in payload)) errors.push(`${key} is required`);
+  }
+  for (const [key, value] of Object.entries(payload)) {
+    if (schema.fields.has(key) && !matchesSchema(value, schema.properties[key])) errors.push(`${key} does not match the current spawn_agent schema`);
+  }
+  if (schema.forkTurns && typeof schema.forkTurns === "object" && !matchesSchema(payload.fork_turns, schema.forkTurns)) {
+    errors.push("fork_turns does not match the current spawn_agent schema");
+  }
   if ("reasoning_effort" in payload && !("model" in payload)) errors.push("reasoning_effort requires model");
   return errors;
 }
@@ -81,9 +134,12 @@ const payloads = [...guide.matchAll(/<!-- schema-check: spawn-payload -->\s*```j
   }
 }).filter(Boolean);
 
+const spawnSchema = loadSpawnCapabilitySchema();
 check(payloads.length >= 2, "guidance must include isolated and full-history payload fixtures");
-for (const [index, payload] of payloads.entries()) {
-  for (const error of validateSpawnPayload(payload)) check(false, `payload ${index + 1} ${error}`);
+if (spawnSchema) {
+  for (const [index, payload] of payloads.entries()) {
+    for (const error of validateSpawnPayload(payload, spawnSchema)) check(false, `payload ${index + 1} ${error}`);
+  }
 }
 check(payloads.some((payload) => payload.fork_turns === "none"), "missing isolated-context fixture");
 check(payloads.some((payload) => payload.fork_turns === "all"), "missing full-history fixture");

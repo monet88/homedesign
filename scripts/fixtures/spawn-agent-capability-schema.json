@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spawn_agent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_name", "message"],
+  "properties": {
+    "task_name": { "type": "string", "minLength": 1 },
+    "message": { "type": "string", "minLength": 1 },
+    "fork_turns": {
+      "anyOf": [
+        { "type": "string", "enum": ["none", "all"] },
+        { "type": "string", "pattern": "^[1-9]\\d*$" }
+      ]
+    },
+    "model": { "type": "string", "minLength": 1 },
+    "reasoning_effort": { "type": "string", "minLength": 1 }
+  }
+}

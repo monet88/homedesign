@@ -33,7 +33,13 @@ it validates those combinations against the live
 `agent-context` registry without starting a worker. A missing runtime is an
 actionable verification failure, not evidence that an obsolete command is safe.
 Spawn fixtures are checked separately against the explicit `spawn_agent` payload
-schema; they are not used as worker-start command arguments.
+schema; they are not used as worker-start command arguments. The verifier loads
+the current schema from `SPAWN_AGENT_SCHEMA_JSON` (or the equivalent
+`ORCA_SPAWN_AGENT_SCHEMA_JSON` override) when supplied, otherwise it uses the
+checked-in `scripts/fixtures/spawn-agent-capability-schema.json` fixture. Keep
+that source aligned with the runtime's `spawn_agent` tool signature; the live
+`agent-context` registry below remains exclusively for `worker-start`, `check`,
+and `send` command checks.
 
 ## Spawn payloads
 
