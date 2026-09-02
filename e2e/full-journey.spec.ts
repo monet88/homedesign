@@ -401,6 +401,29 @@ test.describe("Full End-to-End System Journey", () => {
       await expect(page.getByRole("button", { name: /Generate Panorama/i })).toBeVisible();
       await expect(page.getByRole("button", { name: /Skip Panorama/i })).toBeVisible();
     });
+
+    await test.step("7. Failed replacement upload cannot reuse the previous project", async () => {
+      await page.route("**/api/floor-plan/projects", async (route) => {
+        if (route.request().method() === "POST") {
+          await route.fulfill({
+            status: 500,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "PROJECT_BOOTSTRAP_FAILED" }),
+          });
+          return;
+        }
+        await route.continue();
+      });
+
+      try {
+        await page.locator('input[type="file"]').setInputFiles(roomFixture);
+        const canvas = page.getByRole("button", { name: "Click to place room marker" });
+        await expect(canvas).toBeVisible({ timeout: 60_000 });
+        await expect(canvas).toHaveAttribute("aria-disabled", "true", { timeout: 60_000 });
+      } finally {
+        await page.unroute("**/api/floor-plan/projects");
+      }
+    });
   });
 
   test("Phase 6: Lineage-Aware Project Sharing & Anonymous Access", async ({

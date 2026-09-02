@@ -41,6 +41,7 @@ export function FloorPlanFlow() {
   const [room, setRoom] = useState<RoomDesignView | null>(null);
   const [proposal, setProposal] = useState<RoomBriefProposal | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [projectBootstrapFailed, setProjectBootstrapFailed] = useState(false);
   const [style, setStyle] = useState("Modern Warm");
   const [status, setStatus] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; variant?: "error" } | null>(null);
@@ -182,6 +183,8 @@ export function FloorPlanFlow() {
     setRoom(null);
     setProposal(null);
     setProjectDetail(null);
+    setProjectId(null);
+    setProjectBootstrapFailed(false);
     setStatus(null);
     setAddingNextRoom(false);
     setPreviewUrl(uploadedPreviewUrl || URL.createObjectURL(file));
@@ -191,6 +194,8 @@ export function FloorPlanFlow() {
       setProjectId(id);
       await refreshProject(id);
     } catch (err) {
+      setProjectId(null);
+      setProjectBootstrapFailed(true);
       showToast((err as Error).message, "error");
     } finally {
       setBusy(false);
@@ -198,7 +203,7 @@ export function FloorPlanFlow() {
   }, []);
 
   async function placeMarker(clientX: number, clientY: number) {
-    if (busy || !projectId || !canvasRef.current) return;
+    if (busy || projectBootstrapFailed || !projectId || !canvasRef.current) return;
     if (room?.markerLocked && !addingNextRoom) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
@@ -511,7 +516,7 @@ export function FloorPlanFlow() {
             role="button"
             tabIndex={0}
             aria-label="Click to place room marker"
-            aria-disabled={busy || !projectId ? "true" : "false"}
+            aria-disabled={busy || projectBootstrapFailed || !projectId ? "true" : "false"}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={previewUrl} alt="Floor plan" className="block w-full select-none" draggable={false} />
