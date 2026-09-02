@@ -41,6 +41,7 @@ export function FloorPlanFlow() {
   const [room, setRoom] = useState<RoomDesignView | null>(null);
   const [proposal, setProposal] = useState<RoomBriefProposal | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [projectBootstrapFailed, setProjectBootstrapFailed] = useState(false);
   const [style, setStyle] = useState("Modern Warm");
   const [status, setStatus] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; variant?: "error" } | null>(null);
@@ -177,20 +178,24 @@ export function FloorPlanFlow() {
     return data.data.id;
   }
 
-  const handleUploadReady = useCallback(async (assetId: string, file: File) => {
+  const handleUploadReady = useCallback(async (assetId: string, file: File, uploadedPreviewUrl: string) => {
     setSourceAssetId(assetId);
     setRoom(null);
     setProposal(null);
     setProjectDetail(null);
+    setProjectId(null);
+    setProjectBootstrapFailed(false);
     setStatus(null);
     setAddingNextRoom(false);
+    setPreviewUrl(uploadedPreviewUrl || URL.createObjectURL(file));
     try {
       setBusy(true);
       const id = await ensureProject(assetId);
       setProjectId(id);
-      setPreviewUrl(URL.createObjectURL(file));
       await refreshProject(id);
     } catch (err) {
+      setProjectId(null);
+      setProjectBootstrapFailed(true);
       showToast((err as Error).message, "error");
     } finally {
       setBusy(false);
@@ -198,7 +203,7 @@ export function FloorPlanFlow() {
   }, []);
 
   async function placeMarker(clientX: number, clientY: number) {
-    if (!projectId || !canvasRef.current) return;
+    if (busy || projectBootstrapFailed || !projectId || !canvasRef.current) return;
     if (room?.markerLocked && !addingNextRoom) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
@@ -482,11 +487,13 @@ export function FloorPlanFlow() {
         scene="floor-plan"
         sceneLabel="floor plan"
         disabled={!user || busy}
-        onReady={(assetId, file) => void handleUploadReady(assetId, file)}
+        onReady={(assetId, file, uploadedPreviewUrl) =>
+          void handleUploadReady(assetId, file, uploadedPreviewUrl)
+        }
         onError={(message) => showToast(message, "error")}
       />
 
-      {previewUrl && !busy ? (
+      {previewUrl ? (
         <section className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium">
@@ -509,6 +516,7 @@ export function FloorPlanFlow() {
             role="button"
             tabIndex={0}
             aria-label="Click to place room marker"
+            aria-disabled={busy || projectBootstrapFailed || !projectId ? "true" : "false"}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={previewUrl} alt="Floor plan" className="block w-full select-none" draggable={false} />
