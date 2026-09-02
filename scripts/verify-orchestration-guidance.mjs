@@ -25,8 +25,14 @@ function schemaProperties(input) {
 }
 
 function loadSpawnCapabilitySchema() {
-  const configured = process.env.SPAWN_AGENT_SCHEMA_JSON?.trim() || process.env.ORCA_SPAWN_AGENT_SCHEMA_JSON?.trim();
-  const source = configured ? "SPAWN_AGENT_SCHEMA_JSON" : "scripts/fixtures/spawn-agent-capability-schema.json";
+  const configuredEntries = [
+    ["SPAWN_AGENT_SCHEMA_JSON", process.env.SPAWN_AGENT_SCHEMA_JSON],
+    ["ORCA_SPAWN_AGENT_SCHEMA_JSON", process.env.ORCA_SPAWN_AGENT_SCHEMA_JSON],
+  ];
+  const [source, configured] = configuredEntries.find(([, value]) => value?.trim()) ?? [
+    "scripts/fixtures/spawn-agent-capability-schema.json",
+    null,
+  ];
   let raw;
   try {
     raw = configured ? JSON.parse(configured) : JSON.parse(readFileSync(spawnSchemaFixture, "utf8"));
