@@ -4,6 +4,9 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["task_name", "message"],
+  "dependentRequired": {
+    "reasoning_effort": ["model"]
+  },
   "properties": {
     "task_name": { "type": "string", "minLength": 1 },
     "message": { "type": "string", "minLength": 1 },
