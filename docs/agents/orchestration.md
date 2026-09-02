@@ -32,6 +32,8 @@ full-history context), plus a model/effort launch when those flags are exposed;
 it validates those combinations against the live
 `agent-context` registry without starting a worker. A missing runtime is an
 actionable verification failure, not evidence that an obsolete command is safe.
+Spawn fixtures are checked separately against the explicit `spawn_agent` payload
+schema; they are not used as worker-start command arguments.
 
 ## Spawn payloads
 

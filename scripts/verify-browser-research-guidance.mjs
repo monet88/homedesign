@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 
 const root = new URL("..", import.meta.url);
 const guide = readFileSync(new URL("docs/agents/browser-research.md", root), "utf8");
@@ -17,9 +17,42 @@ const route = (capabilities, need) => {
   return null;
 };
 
+const localFiles = [
+  new URL("../docs/agents/browser-research.md", import.meta.url),
+  new URL("../package.json", import.meta.url),
+];
+
+// These adapters are deterministic, offline stand-ins for the native runtime
+// capabilities. They preserve the same call shape and ordering as a real run.
+const nativeAdapters = {
+  inspect_local_file: (url) => {
+    const path = url.pathname;
+    const content = readFileSync(url, "utf8");
+    return { path, bytes: statSync(url).size, lines: content.split(/\r?\n/).length };
+  },
+  native_web_search: (query) => ({ query, url: query.includes("library") ? "https://nodejs.org/en/learn" : "https://www.w3.org/TR/" }),
+  native_web_open: (url) => ({ url, title: "Official reference (offline fixture)" }),
+};
+
+function validateCitations(citations, openedUrls) {
+  return citations.every((citation) => {
+    try {
+      const url = new URL(citation);
+      return url.protocol === "https:" && openedUrls.has(url.href);
+    } catch {
+      return false;
+    }
+  });
+}
+
 function runScenario(name, capabilities, needs) {
   const attemptedCalls = [];
   const missing = [];
+  const localEvidence = [];
+  const openedUrls = new Set();
+  const discoveredUrls = [];
+  const citations = [];
+  let searchIndex = 0;
   for (const need of needs) {
     const capability = route(capabilities, need);
     if (!capability) {
@@ -27,9 +60,27 @@ function runScenario(name, capabilities, needs) {
       continue;
     }
     attemptedCalls.push(capability);
+    if (need === "local") {
+      for (const file of localFiles) localEvidence.push(nativeAdapters[capability](file));
+    } else if (need === "library" || need === "search") {
+      const result = nativeAdapters[capability](need === "library" ? "library official documentation" : `primary source ${++searchIndex}`);
+      if (result.url) {
+        discoveredUrls.push(result.url);
+        citations.push(result.url);
+      }
+    } else if (need === "open") {
+      // Open the deterministic URL selected by the preceding native search.
+      const url = discoveredUrls[discoveredUrls.length - 1];
+      if (url) {
+        nativeAdapters[capability](url);
+        openedUrls.add(url);
+      }
+    }
   }
   const unavailableCalls = attemptedCalls.filter((call) => !capabilities.has(call));
-  const ok = missing.length === 0 && unavailableCalls.length === 0;
+  const citationChecks = validateCitations(citations, openedUrls);
+  const localFirst = attemptedCalls[0] === "inspect_local_file" || attemptedCalls[0] === "view_file";
+  const ok = missing.length === 0 && unavailableCalls.length === 0 && localEvidence.length > 0 && localFirst && citationChecks;
   return {
     name,
     capabilities: [...capabilities],
@@ -37,6 +88,10 @@ function runScenario(name, capabilities, needs) {
     attemptedCalls,
     unavailableCalls,
     missing,
+    localEvidence,
+    citations,
+    citationChecks,
+    localFirst,
     ok,
     result: ok ? "PASS" : "FAIL",
   };

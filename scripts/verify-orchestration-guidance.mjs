@@ -11,12 +11,31 @@ const check = (condition, message) => {
   if (!condition) failures.push(message);
 };
 
+// `spawn_agent` is a separate capability from Orca's worker-start command.
+// Keep its stable payload contract explicit and validate fixtures against this
+// input before inspecting the volatile worker-start registry below.
+const spawnCapabilitySchema = {
+  fields: new Set(["task_name", "message", "fork_turns", "model", "reasoning_effort"]),
+  forkTurns: (value) => value === "none" || value === "all" || (typeof value === "string" && /^[1-9]\d*$/.test(value)),
+};
+
+function validateSpawnPayload(payload, schema = spawnCapabilitySchema) {
+  const errors = [];
+  for (const key of Object.keys(payload)) if (!schema.fields.has(key)) errors.push(`unsupported field: ${key}`);
+  if (typeof payload.task_name !== "string" || payload.task_name.length === 0) errors.push("task_name is required");
+  if (typeof payload.message !== "string" || payload.message.length === 0) errors.push("message is required");
+  if (!schema.forkTurns(payload.fork_turns)) errors.push("fork_turns must be none, all, or a positive integer string");
+  if ("reasoning_effort" in payload && !("model" in payload)) errors.push("reasoning_effort requires model");
+  return errors;
+}
+
 function flagsFromUsage(command) {
   return new Set([...String(command?.usage ?? "").matchAll(/--([a-z][a-z0-9-]*)/gi)].map((match) => match[1]));
 }
 
 function hasFlag(command, name) {
-  return Array.isArray(command?.flags) ? command.flags.includes(name) : flagsFromUsage(command).has(name);
+  if (!Array.isArray(command?.flags)) return flagsFromUsage(command).has(name);
+  return command.flags.some((flag) => typeof flag === "string" ? flag === name : flag?.name === name || flag?.long === `--${name}`);
 }
 
 check(agents.includes("docs/agents/orchestration.md"), "AGENTS.md must point to orchestration guidance");
@@ -34,13 +53,8 @@ const payloads = [...guide.matchAll(/<!-- schema-check: spawn-payload -->\s*```j
 }).filter(Boolean);
 
 check(payloads.length >= 2, "guidance must include isolated and full-history payload fixtures");
-const allowedFields = new Set(["task_name", "message", "fork_turns", "model", "reasoning_effort"]);
 for (const [index, payload] of payloads.entries()) {
-  for (const key of Object.keys(payload)) check(allowedFields.has(key), `payload ${index + 1} uses unsupported field: ${key}`);
-  check(typeof payload.task_name === "string" && payload.task_name.length > 0, `payload ${index + 1} needs task_name`);
-  check(typeof payload.message === "string" && payload.message.length > 0, `payload ${index + 1} needs message`);
-  check(payload.fork_turns === "none" || payload.fork_turns === "all" || (typeof payload.fork_turns === "string" && /^[1-9]\d*$/.test(payload.fork_turns)), `payload ${index + 1} has invalid fork_turns`);
-  if ("reasoning_effort" in payload) check("model" in payload, `payload ${index + 1} cannot set reasoning_effort without model`);
+  for (const error of validateSpawnPayload(payload)) check(false, `payload ${index + 1} ${error}`);
 }
 check(payloads.some((payload) => payload.fork_turns === "none"), "missing isolated-context fixture");
 check(payloads.some((payload) => payload.fork_turns === "all"), "missing full-history fixture");
@@ -72,16 +86,18 @@ if (runtime.error || runtime.status !== 0) {
   if (workerStart) {
     for (const field of ["task", "worktree", "agent", "terminal", "model", "effort"]) check(hasFlag(workerStart, field), `worker-start schema is missing --${field}`);
     const notes = Array.isArray(workerStart.notes) ? workerStart.notes : [];
-    check(notes.some((note) => /--effort requires --model/i.test(note)), "worker-start schema must state model/effort coupling");
-    check(notes.some((note) => /(?:cannot|can't|neither).*combine with --terminal/i.test(note)), "worker-start schema must state terminal/model exclusivity");
+    const noteText = notes.map((note) => typeof note === "string" ? note : note?.text ?? note?.message ?? "");
+    check(noteText.some((note) => /--effort requires --model/i.test(note)), "worker-start schema must state model/effort coupling");
+    check(noteText.some((note) => /(?:cannot|can't|neither).*combine with --terminal/i.test(note)), "worker-start schema must state terminal/model exclusivity");
 
     // Exercise both representative payload shapes against the live command
     // contract.  We validate the option combinations without starting a worker.
-    const representatives = payloads.map((payload) => ({
-      task: "fixture-task",
-      worktree: "current",
-      ...(payload.fork_turns === "none" ? { agent: "codex" } : { terminal: "fixture-terminal" }),
-    }));
+    // Worker-start fixtures intentionally do not consume spawn payloads: the
+    // two command schemas evolve independently and are validated separately.
+    const representatives = [
+      { task: "fixture-task", worktree: "current", agent: "codex" },
+      { task: "fixture-task", worktree: "current", terminal: "fixture-terminal" },
+    ];
     if (hasFlag(workerStart, "model") && hasFlag(workerStart, "effort")) {
       representatives.push({ task: "fixture-task", worktree: "current", agent: "codex", model: "fixture-model", effort: "medium" });
     }

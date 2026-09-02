@@ -50,5 +50,9 @@ records its byte/line count after a full read. Set `BOOTSTRAP_SKILLS` (comma
 separated) and `SKILLS_ROOT` when exercising a different skill set; otherwise
 the standard agent skill roots are searched.
 
+Each exposed reader is represented by the same adapter interface (`read(file)`).
+The verifier invokes only the selected adapter for every skill and records
+`attemptedCalls` plus `unavailableCalls`; an unavailable reader is never probed.
+
 Use `npm run verify:bootstrap` for the repository dry-run covering both reader
 branches, or append `--without-fastctx` to exercise only the fallback branch.

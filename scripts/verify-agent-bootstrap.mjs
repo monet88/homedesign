@@ -45,25 +45,40 @@ function resolveSkillFiles(selectedSkills) {
   });
 }
 
-function chooseReader(capabilities) {
-  return readerOrder.find((reader) => capabilities.has(reader)) ?? null;
+/**
+ * All local-file readers implement this small interface.  Keeping the
+ * capability name at the adapter boundary makes it impossible for the
+ * verifier to silently call a different reader than the one it selected.
+ */
+function readerAdapters() {
+  const read = (file) => readFileSync(file, "utf8");
+  return new Map(readerOrder.map((capability) => [capability, { capability, read }]));
 }
 
-function readFullSkillFile(reader, file) {
-  if (!reader) throw new Error("cannot read a skill without a reader");
-  const content = readFileSync(file, "utf8");
+function chooseReader(capabilities, adapters) {
+  return readerOrder
+    .map((capability) => adapters.get(capability))
+    .find((adapter) => adapter && capabilities.has(adapter.capability)) ?? null;
+}
+
+function readFullSkillFile(adapter, file) {
+  if (!adapter) throw new Error("cannot read a skill without a reader");
+  const content = adapter.read(file);
   const bytes = statSync(file).size;
   if (content.trim().length === 0 || bytes === 0) throw new Error(`selected skill file is empty: ${file}`);
-  return { path: file, read: "full", bytes, lines: content.split(/\r?\n/).length };
+  return { reader: adapter.capability, path: file, read: "full", bytes, lines: content.split(/\r?\n/).length };
 }
 
 function runScenario(name, capabilities, selectedSkills, skillFiles) {
-  const reader = chooseReader(capabilities);
+  const adapters = readerAdapters();
+  const reader = chooseReader(capabilities, adapters);
   if (!reader) throw new Error(`${name}: no local-file reader is exposed`);
-  const attemptedCalls = skillFiles.map((file) => ({ reader, ...readFullSkillFile(reader, file) }));
+  // Invoke the selected adapter for every file through the common `read`
+  // interface; do not probe or call an unavailable provider first.
+  const attemptedCalls = skillFiles.map((file) => readFullSkillFile(reader, file));
   const unavailableCalls = attemptedCalls.filter((call) => !capabilities.has(call.reader));
   if (unavailableCalls.length > 0) throw new Error(`${name}: attempted an unavailable reader`);
-  return { name, selectedSkills, reader, attemptedCalls, unavailableCalls, ok: true };
+  return { name, selectedSkills, reader: reader.capability, attemptedCalls, unavailableCalls, ok: true };
 }
 
 function main() {

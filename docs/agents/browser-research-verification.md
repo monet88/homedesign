@@ -12,8 +12,11 @@ npm run verify:browser-research
 ```
 
 The verifier replays both scenarios with the same capability matrix and emits a
-JSON attempt log. A replay mismatch, unresolved route, or unavailable call is a
-failed verification rather than a silently accepted fallback.
+JSON attempt log. The replay uses offline native search/open adapters, reads
+actual repository files for local evidence, and checks that every citation is a
+direct HTTPS URL returned by an opened result. A replay mismatch, unresolved
+route, unavailable call, or citation failure is a failed verification rather
+than a silently accepted fallback.
 
 ## Scenario 1: library documentation without a provider-specific docs tool
 
