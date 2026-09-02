@@ -46,9 +46,10 @@ The bootstrap is complete only when the run can show:
   attempted call to an unavailable reader.
 
 The verifier resolves each selected skill to a real, non-empty `SKILL.md` and
-records its byte/line count after a full read. Set `BOOTSTRAP_SKILLS` (comma
-separated) and `SKILLS_ROOT` when exercising a different skill set; otherwise
-the standard agent skill roots are searched.
+records its byte/line count after a full read. The default scenarios use the
+checked-in fixture root at `scripts/fixtures/skills`, so they are self-contained
+and portable; set `BOOTSTRAP_SKILLS` (comma separated) and `SKILLS_ROOT` when
+exercising a different skill set from an explicit runtime root.
 
 Each exposed reader is represented by the same adapter interface (`read(file)`).
 The verifier invokes only the selected adapter for every skill and records

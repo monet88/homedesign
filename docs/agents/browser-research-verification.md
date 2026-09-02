@@ -11,8 +11,10 @@ Run the deterministic dry-run from the repository root:
 npm run verify:browser-research
 ```
 
-The verifier replays both scenarios with the same capability matrix and emits a
-JSON attempt log. The replay uses offline native search/open adapters, reads
+The verifier replays both scenarios with the preferred `inspect_local_file`
+reader and again with the `view_file` fallback adapter, using the same
+capability matrix for each run, and emits a JSON attempt log. The replay uses
+offline native search/open adapters, reads
 actual repository files for local evidence, and checks that every citation is a
 direct HTTPS URL returned by an opened result. A replay mismatch, unresolved
 route, unavailable call, or citation failure is a failed verification rather
@@ -35,6 +37,9 @@ answer has a direct official citation; only the local reader and native web
 capabilities appear in the attempted-call log; no Context7, Exa, Tavily, or
 `agent-browser` call is attempted.
 
+The replay also runs this scenario with only `view_file` exposed as the local
+reader, proving that the fallback adapter performs the same real file reads.
+
 ## Scenario 2: general web research without Exa/Tavily/browser
 
 **Capabilities exposed:** local file reader and native web search/open only.
@@ -50,7 +55,8 @@ absent.
 **Pass conditions:** the local-first step is visible; the attempted-call log
 contains only the local reader and native web capabilities; no Exa, Tavily,
 Context7, or `agent-browser` call is attempted; citations resolve to the pages
-that support the claims.
+that support the claims. The replay includes the same case with `view_file` as
+the local reader.
 
 ## Verification record
 

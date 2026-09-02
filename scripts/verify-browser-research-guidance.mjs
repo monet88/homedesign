@@ -24,12 +24,17 @@ const localFiles = [
 
 // These adapters are deterministic, offline stand-ins for the native runtime
 // capabilities. They preserve the same call shape and ordering as a real run.
+// `view_file` deliberately shares the local-file adapter contract so the
+// fallback is exercised as a real read, not merely recorded as a string.
+const readLocalFile = (url) => {
+  const path = url.pathname;
+  const content = readFileSync(url, "utf8");
+  return { path, bytes: statSync(url).size, lines: content.split(/\r?\n/).length };
+};
+
 const nativeAdapters = {
-  inspect_local_file: (url) => {
-    const path = url.pathname;
-    const content = readFileSync(url, "utf8");
-    return { path, bytes: statSync(url).size, lines: content.split(/\r?\n/).length };
-  },
+  inspect_local_file: readLocalFile,
+  view_file: readLocalFile,
   native_web_search: (query) => ({ query, url: query.includes("library") ? "https://nodejs.org/en/learn" : "https://www.w3.org/TR/" }),
   native_web_open: (url) => ({ url, title: "Official reference (offline fixture)" }),
 };
@@ -66,14 +71,18 @@ function runScenario(name, capabilities, needs) {
       const result = nativeAdapters[capability](need === "library" ? "library official documentation" : `primary source ${++searchIndex}`);
       if (result.url) {
         discoveredUrls.push(result.url);
-        citations.push(result.url);
       }
     } else if (need === "open") {
-      // Open the deterministic URL selected by the preceding native search.
-      const url = discoveredUrls[discoveredUrls.length - 1];
-      if (url) {
-        nativeAdapters[capability](url);
-        openedUrls.add(url);
+      // Open every URL returned by the preceding native searches. A citation
+      // is valid only after its corresponding result has actually been opened.
+      if (discoveredUrls.length === 0) {
+        missing.push("open-result");
+      } else {
+        for (const url of new Set(discoveredUrls)) {
+          nativeAdapters[capability](url);
+          openedUrls.add(url);
+          citations.push(url);
+        }
       }
     }
   }
@@ -107,11 +116,15 @@ check(/direct URL/i.test(guide), "guide must require direct citations");
 check(scenarios.includes("Scenario 1") && scenarios.includes("Scenario 2"), "verification must cover both requested scenarios");
 check(/no Context7, Exa, Tavily, or\s*`agent-browser` call is attempted/i.test(scenarios), "scenarios must prove provider-conditional fallback");
 check(/native web search/i.test(scenarios), "scenarios must define a usable native fallback");
+check(/view_file.*fallback adapter/i.test(scenarios), "scenarios must cover the view_file local-reader fallback");
 
 const scenarioCapabilities = new Set(["inspect_local_file", "native_web_search", "native_web_open"]);
+const fallbackScenarioCapabilities = new Set(["view_file", "native_web_search", "native_web_open"]);
 const scenarioRuns = [
   runScenario("library-docs-native-fallback", scenarioCapabilities, ["local", "library", "open"]),
   runScenario("general-research-native-fallback", scenarioCapabilities, ["local", "search", "search", "open"]),
+  runScenario("library-docs-view-file-fallback", fallbackScenarioCapabilities, ["local", "library", "open"]),
+  runScenario("general-research-view-file-fallback", fallbackScenarioCapabilities, ["local", "search", "search", "open"]),
 ];
 // Running the same capability matrix twice must produce byte-for-byte stable
 // routing and attempt logs; this keeps the verification exercise deterministic.

@@ -7,12 +7,13 @@
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const defaultSelectedSkills = ["diagnosing-bugs", "domain-modeling"];
 const readerOrder = ["inspect_local_file", "view_file", "read_file"];
+const bundledFixtureRoot = fileURLToPath(new URL("./fixtures/skills/", import.meta.url));
 
 function selectedSkillsFromEnvironment() {
   const value = process.env.BOOTSTRAP_SKILLS?.trim();
@@ -26,13 +27,11 @@ function candidateSkillRoots() {
   const explicit = [process.env.SKILLS_ROOT, process.env.CODEX_SKILLS_ROOT, process.env.AGENTS_SKILLS_ROOT]
     .filter(Boolean)
     .map((root) => (isAbsolute(root) ? root : resolve(process.cwd(), root)));
-  return [...new Set([
-    ...explicit,
-    resolve(process.cwd(), "skills"),
-    resolve(process.cwd(), ".agents", "skills"),
-    join(homedir(), ".agents", "skills"),
-    "C:\\Users\\monet\\.agents\\skills",
-  ])];
+  // Keep the dry-run self-contained: a clean checkout must not depend on the
+  // operator's home directory or a workstation-specific absolute path. Runtime
+  // roots remain opt-in through the environment, while the bundled fixtures
+  // provide deterministic, real SKILL.md files for the default scenarios.
+  return [...new Set([...explicit, bundledFixtureRoot])];
 }
 
 function resolveSkillFiles(selectedSkills) {

@@ -38,6 +38,35 @@ function hasFlag(command, name) {
   return command.flags.some((flag) => typeof flag === "string" ? flag === name : flag?.name === name || flag?.long === `--${name}`);
 }
 
+function valueSpecFromUsage(command, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = String(command?.usage ?? "").match(new RegExp(`--${escaped}(?:\\s+<([^>]+)>|\\s+\\[([^\\]]+)\\])?`));
+  return match?.[1] ?? match?.[2] ?? null;
+}
+
+function validateRepresentativeValues(command, candidate) {
+  const errors = [];
+  for (const [name, value] of Object.entries(candidate)) {
+    if (!hasFlag(command, name)) {
+      errors.push(`unsupported --${name}`);
+      continue;
+    }
+    const valueSpec = valueSpecFromUsage(command, name);
+    if (!valueSpec) {
+      errors.push(`live schema does not describe a value for --${name}`);
+      continue;
+    }
+    const choices = valueSpec.split("|").map((choice) => choice.trim()).filter(Boolean);
+    if (choices.length > 1 && !choices.includes(String(value))) {
+      errors.push(`--${name} value ${JSON.stringify(value)} is outside live choices ${choices.join("|")}`);
+    }
+    if (choices.length <= 1 && (typeof value !== "string" || value.length === 0)) {
+      errors.push(`--${name} requires a non-empty value`);
+    }
+  }
+  return errors;
+}
+
 check(agents.includes("docs/agents/orchestration.md"), "AGENTS.md must point to orchestration guidance");
 check(guide.includes("orca agent-context --json"), "guidance must name the live schema discovery command");
 check(guide.includes("--wait") && guide.includes("--timeout-ms"), "guidance must preserve bounded event-driven waits");
@@ -84,6 +113,7 @@ if (runtime.error || runtime.status !== 0) {
   check(checkCommand, "live schema is missing orchestration check");
   check(send, "live schema is missing orchestration send");
   if (workerStart) {
+    check(workerStart.argumentMode === "parsed", "worker-start schema must expose parsed argument mode");
     for (const field of ["task", "worktree", "agent", "terminal", "model", "effort"]) check(hasFlag(workerStart, field), `worker-start schema is missing --${field}`);
     const notes = Array.isArray(workerStart.notes) ? workerStart.notes : [];
     const noteText = notes.map((note) => typeof note === "string" ? note : note?.text ?? note?.message ?? "");
@@ -102,7 +132,7 @@ if (runtime.error || runtime.status !== 0) {
       representatives.push({ task: "fixture-task", worktree: "current", agent: "codex", model: "fixture-model", effort: "medium" });
     }
     for (const [index, candidate] of representatives.entries()) {
-      for (const key of Object.keys(candidate)) check(hasFlag(workerStart, key), `representative payload ${index + 1} uses unsupported --${key}`);
+      for (const error of validateRepresentativeValues(workerStart, candidate)) check(false, `representative payload ${index + 1} ${error}`);
       check(typeof candidate.task === "string" && candidate.task.length > 0, `representative payload ${index + 1} needs task`);
       check(Boolean(candidate.agent) !== Boolean(candidate.terminal), `representative payload ${index + 1} must choose exactly one of agent or terminal`);
       check(!(candidate.model && candidate.terminal), `representative payload ${index + 1} cannot combine model with terminal`);
