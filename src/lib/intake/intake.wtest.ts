@@ -2,6 +2,7 @@
 // intent → pending-upload → finalize → quarantined → validate → ready|rejected.
 // Exercises real D1 + R2 + Queue bindings through the ASSET_VALIDATE consumer.
 import { env, SELF } from "cloudflare:test";
+import type { Env } from "@/lib/bindings";
 import { describe, expect, it, beforeEach } from "vitest";
 import {
   validPngBytes,
@@ -55,6 +56,29 @@ async function applyMigrations(db: D1Database) {
       `CREATE TABLE IF NOT EXISTS queue_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT, queue TEXT NOT NULL,
         body TEXT NOT NULL, received_at INTEGER NOT NULL
+      )`
+    ),
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS user (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
+        emailVerified INTEGER NOT NULL DEFAULT 0, role TEXT NOT NULL DEFAULT 'user',
+        createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL
+      )`
+    ),
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS credit_ledger (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
+        entry_type TEXT NOT NULL CHECK (entry_type IN ('grant','payment','hold','usage','release')),
+        amount INTEGER NOT NULL, balance_after INTEGER NOT NULL,
+        ref_type TEXT, ref_id TEXT, grant_key TEXT UNIQUE,
+        created_at INTEGER NOT NULL
+      )`
+    ),
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS credit_holds (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL, amount INTEGER NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active','settled','released')),
+        task_id TEXT, created_at INTEGER NOT NULL, settled_at INTEGER
       )`
     ),
   ]);
@@ -144,6 +168,30 @@ describe("intake pipeline — quotas (AC5)", () => {
     }
     const quota = await checkQuota(env, USER);
     expect(quota.ok).toBe(true);
+  });
+
+  it("enforces zero-credit workload gating in demo environment (ADR 0008, Issue #72)", async () => {
+    const demoEnv = { ...env, ENVIRONMENT: "demo" } as unknown as Env;
+    const USER = nextUser();
+    // User starts with 0 credits in demo. Upload intent creation must fail with quota exceeded.
+    await expect(
+      createUploadIntent(demoEnv, { userId: USER, name: "demo.png", mimeType: "image/png", size: 100 })
+    ).rejects.toThrow(/zero-credit workload gating in demo/);
+
+    // Admin grants 5 credits to user
+    const now = Date.now();
+    await env.DB.prepare(
+      `INSERT INTO user (id, name, email, emailVerified, role, createdAt, updatedAt)
+       VALUES (?1, 'Demo User', ?2, 1, 'user', ?3, ?3)`
+    ).bind(USER, `${USER}@example.com`, now).run();
+    await env.DB.prepare(
+      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, balance_after, ref_type, created_at)
+       VALUES ('grant-1', ?1, 'grant', 5, 5, 'admin_adjustment', ?2)`
+    ).bind(USER, now).run();
+
+    // Now upload intent succeeds
+    const intent = await createUploadIntent(demoEnv, { userId: USER, name: "demo.png", mimeType: "image/png", size: 100 });
+    expect(intent.assetId).toBeDefined();
   });
 });
 
@@ -804,4 +852,4 @@ describe("asset intake & finalize command validation (Ticket #45)", () => {
     expect(res.ok).toBe(true);
     expect(await getAssetLifecycle(env, intent.assetId)).toBe("quarantined");
   });
-});
+});

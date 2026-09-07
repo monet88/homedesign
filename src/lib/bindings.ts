@@ -1,4 +1,4 @@
-// Cloudflare Worker bindings for HomeDesign (ADR 0006 runtime topology).
+// Cloudflare Worker bindings for HomeDesign (ADR 0006 runtime topology, Issue #72).
 // These are the real bindings declared in wrangler.jsonc and exercised by the
 // workers-runtime test harness (vitest-pool-workers / miniflare) and wrangler dev.
 
@@ -19,11 +19,17 @@ export interface Env {
   // Vars
   ENVIRONMENT: string;
 
-  // AI Provider (Ticket #21 / ADR 0007)
+  // AI Provider (Ticket #21 / ADR 0007 / Issue #72)
   AI_API_BASE_URL?: string;
   AI_API_KEY?: string;
   AI_DEFAULT_MODEL?: string;
   AI_OFFLINE?: string;
+
+  // Daily provider submissions limit (Issue #72 / ADR 0008). Default 50 in demo.
+  DEMO_DAILY_PROVIDER_LIMIT?: string;
+
+  // Explicit private bucket name override (Issue #72, ADR 0008).
+  R2_PRIVATE_BUCKET_NAME?: string;
 
   // R2 S3 API credentials for presigned upload URLs (ADR 0003). Set per
   // environment as secrets; local defaults live in wrangler.jsonc vars.
@@ -31,14 +37,15 @@ export interface Env {
   R2_ACCESS_KEY_ID?: string;
   R2_SECRET_ACCESS_KEY?: string;
 
-  // Auth (ADR 0001): required names, values per environment, never committed.
-  // Local defaults live in wrangler.jsonc vars / .dev.vars; production values
+  // Auth (ADR 0001 / Issue #72): required names, values per environment, never committed.
+  // Local defaults live in wrangler.jsonc vars / .dev.vars; production/demo values
   // come from secrets.required + env-specific vars.
   BETTER_AUTH_URL: string;
   BETTER_AUTH_SECRET: string;
   EMAIL_DELIVERY_MODE?: string;
   GOOGLE_CLIENT_ID?: string;
-  /** Local-only: skip login for UI testing. Ignored when ENVIRONMENT=production. */
+  GOOGLE_CLIENT_SECRET?: string;
+  /** Local-only: skip login for UI testing. Ignored when ENVIRONMENT=production or demo. */
   AUTH_BYPASS?: string;
   /** Capability secret for authorized outbox access in non-production environments. */
   OUTBOX_ACCESS_SECRET?: string;

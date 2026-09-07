@@ -16,17 +16,18 @@ describe("wrangler environment isolation (ADR 0006)", () => {
     expect(wrangler).toMatch(/"compatibility_date":\s*"2026-08-24"/);
   });
 
-  it("declares four deployed environments with distinct resource names", () => {
-    for (const env of ["development", "preview", "staging", "production"] as const) {
+  it("declares deployed environments with distinct resource names", () => {
+    for (const env of ["development", "preview", "staging", "production", "demo"] as const) {
       expect(wrangler).toContain(`"${env}"`);
     }
     expect(wrangler).toMatch(/"database_name":\s*"hd-dev"/);
     expect(wrangler).toMatch(/"database_name":\s*"hd-staging"/);
     expect(wrangler).toMatch(/"database_name":\s*"hd-prod"/);
+    expect(wrangler).toMatch(/"database_name":\s*"hd-demo"/);
   });
 
   it("remote environments use provisioned placeholders, not shared local id", () => {
-    for (const marker of ["__PROVISIONED_DEV__", "__PROVISIONED_STAGING__", "__PROVISIONED_PROD__"]) {
+    for (const marker of ["__PROVISIONED_DEV__", "__PROVISIONED_STAGING__", "__PROVISIONED_PROD__", "__PROVISIONED_DEMO__"]) {
       expect(wrangler).toContain(marker);
     }
     const remoteSection = wrangler.split('"env"')[1] ?? "";
@@ -38,6 +39,15 @@ describe("wrangler environment isolation (ADR 0006)", () => {
     expect(wrangler).toMatch(/"EMAIL_DELIVERY_MODE":\s*"production"/);
     const prodBlock = wrangler.split('"production"')[1] ?? "";
     expect(prodBlock).not.toMatch(/AUTH_BYPASS["\s:]*[1t]/i);
+  });
+
+  it("demo sets ENVIRONMENT=demo and Custom Domain route", () => {
+    expect(wrangler).toMatch(/"ENVIRONMENT":\s*"demo"/);
+    expect(wrangler).toMatch(/"BETTER_AUTH_URL":\s*"https:\/\/homedesign\.monet\.uno"/);
+    expect(wrangler).toMatch(/"pattern":\s*"homedesign\.monet\.uno"/);
+    expect(wrangler).toMatch(/"custom_domain":\s*true/);
+    const demoBlock = wrangler.split('"demo"')[1] ?? "";
+    expect(demoBlock).not.toMatch(/AUTH_BYPASS["\s:]*[1t]/i);
   });
 
   it("documents required secret names in wrangler comments (no values committed)", () => {

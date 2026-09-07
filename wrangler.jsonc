@@ -287,6 +287,64 @@
           "service": "homedesign-prod"
         }
       ]
+    },
+    "demo": {
+      "name": "homedesign-demo",
+      "routes": [
+        {
+          "pattern": "homedesign.monet.uno",
+          "custom_domain": true
+        }
+      ],
+      "vars": {
+        "ENVIRONMENT": "demo",
+        "BETTER_AUTH_URL": "https://homedesign.monet.uno",
+        "HD_PRIVATE_BUCKET_NAME": "hd-demo-private"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hd-demo",
+          "database_id": "__PROVISIONED_DEMO__",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "NEXT_INC_CACHE_R2_BUCKET",
+          "bucket_name": "hd-demo-next-cache"
+        },
+        {
+          "binding": "HD_PRIVATE",
+          "bucket_name": "hd-demo-private"
+        },
+        {
+          "binding": "HD_PUBLIC",
+          "bucket_name": "hd-demo-public"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ASSET_VALIDATE",
+            "queue": "hd-demo-asset-validate"
+          },
+          {
+            "binding": "PROVIDER_NOTIFY",
+            "queue": "hd-demo-provider-notify"
+          }
+        ],
+        "consumers": [
+          { "queue": "hd-demo-asset-validate", "max_batch_size": 10, "max_batch_timeout": 5 },
+          { "queue": "hd-demo-provider-notify", "max_batch_size": 10, "max_batch_timeout": 5 }
+        ]
+      },
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "homedesign-demo"
+        }
+      ]
     }
   }
 }

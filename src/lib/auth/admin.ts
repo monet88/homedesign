@@ -85,6 +85,38 @@ export const seedAdminDatabase = {
   },
 };
 
+/**
+ * Public Demo role-only admin promotion (ADR 0008, Issue #72).
+ * Idempotently promotes the exact configured admin account to role 'admin'.
+ * Leaves credit balance completely unchanged (no automatic 99,999 credits grant).
+ * Does not create or touch password credentials.
+ */
+export async function bootstrapDemoAdmin(
+  db: AuthEnv["DB"],
+  adminEmail: string
+): Promise<{ promoted: boolean; userId?: string; email: string }> {
+  const normalizedEmail = adminEmail.trim().toLowerCase();
+  const now = Date.now();
+
+  const user = await db
+    .prepare("SELECT id, role FROM user WHERE email = ?1")
+    .bind(normalizedEmail)
+    .first<{ id: string; role: string }>();
+
+  if (!user) {
+    return { promoted: false, email: normalizedEmail };
+  }
+
+  if (user.role !== "admin") {
+    await db
+      .prepare("UPDATE user SET role = 'admin', updatedAt = ?2 WHERE id = ?1")
+      .bind(user.id, now)
+      .run();
+  }
+
+  return { promoted: true, userId: user.id, email: normalizedEmail };
+}
+
 export type AdminAuthResult =
   | {
       authorized: true;

@@ -25,6 +25,7 @@
     "test:e2e": "node scripts/run-e2e.mjs",
     "test:e2e:update": "node scripts/run-e2e.mjs --update-snapshots",
     "db:seed:admin": "node scripts/seed-admin.mjs",
+    "db:bootstrap:demo-admin": "node scripts/seed-admin.mjs --demo",
     "lint": "eslint ."
   },
   "dependencies": {

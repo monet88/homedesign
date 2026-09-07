@@ -1,6 +1,6 @@
 import { authorizeVerified } from "@/lib/ai/http";
 import { presignGetUrl, type PresignCredentials } from "@/lib/intake/presign";
-
+import { getPrivateBucketName } from "@/lib/env/policy";
 // `GET /api/assets/[id]/download` (ticket #14 AC5).
 // Authenticated (verified user only). Authorizes ownership, then either:
 //   1. Redirects to a short-lived R2 S3 presigned GET URL when credentials exist.
@@ -9,7 +9,6 @@ import { presignGetUrl, type PresignCredentials } from "@/lib/intake/presign";
 //
 // The browser never receives a raw object key or an arbitrary URL.
 
-const PRIVATE_BUCKET = "homedesign-private";
 const SIGNED_TTL_SEC = 600;
 
 export async function GET(request: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -53,7 +52,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     creds.secretAccessKey
   ) {
     const signed = await presignGetUrl(creds, {
-      bucket: PRIVATE_BUCKET,
+      bucket: getPrivateBucketName(env),
       key: row.storage_key,
       expiresInSec: SIGNED_TTL_SEC,
     });

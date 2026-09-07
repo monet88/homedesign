@@ -7,7 +7,8 @@ import type { Env } from "@/lib/bindings";
 import type { AssetLifecycle } from "@/lib/fixtures/images";
 import { INTAKE_EXPIRY_MS } from "@/lib/intake/expiry";
 import { MAX_UPLOAD_BYTES, VALID_UPLOAD_MIMES } from "@/lib/fixtures/images";
-
+import { isDemo } from "@/lib/env/policy";
+import { getAvailableCredits } from "@/lib/credits/ledger";
 // --- Types ---
 
 export interface UploadIntentInput {
@@ -118,6 +119,14 @@ export async function createUploadIntent(
   env: Env,
   input: UploadIntentInput
 ): Promise<UploadIntent> {
+  // Zero-credit workload gating for Demo environment (ADR 0008, Issue #72)
+  if (isDemo(env)) {
+    const available = await getAvailableCredits(env, input.userId);
+    if (available <= 0) {
+      throw new Error("quota exceeded: zero-credit workload gating in demo");
+    }
+  }
+
   // Input validation
   if (!VALID_UPLOAD_MIMES.includes(input.mimeType as (typeof VALID_UPLOAD_MIMES)[number])) {
     throw new Error(`unsupported mime type: ${input.mimeType}`);
@@ -131,7 +140,6 @@ export async function createUploadIntent(
   if (!quota.ok) {
     throw new Error(`quota exceeded: ${quota.reason}`);
   }
-
   const assetId = crypto.randomUUID();
   const key = `quarantine/${assetId}`;
   const now = Date.now();

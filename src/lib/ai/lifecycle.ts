@@ -55,9 +55,8 @@ import {
   dispatchTask,
 } from "@/lib/ai/task-lifecycle";
 import { validateDesignConfig } from "@/lib/ai/config";
-import { assertGenerationAllowed } from "@/lib/env/policy";
-
-const PRIVATE_BUCKET = "homedesign-private";
+import { assertGenerationAllowed, getPrivateBucketName } from "@/lib/env/policy";
+import { claimDemoProviderSubmission } from "@/lib/ai/demo-usage";
 /** Short-lived private access handed to the provider adapter (never to a browser). */
 const SOURCE_ACCESS_TTL_SEC = 600;
 /** Initial attempt + 3 retries, then validation-exhausted (ADR 0003). */
@@ -353,6 +352,13 @@ export async function runGeneration(
 
   await setTaskStatus(env, taskId, "processing");
 
+  // Concurrency-safe Bangkok-time daily provider submission cap for Demo (ADR 0008, Issue #72)
+  const submissionAllowed = await claimDemoProviderSubmission(env);
+  if (!submissionAllowed) {
+    await failGeneration(env, taskId, "DEMO_DAILY_PROVIDER_LIMIT_EXCEEDED");
+    return { status: "failed" };
+  }
+
   const provider = getProvider(task.provider, env);
   const req = await buildProviderRequest(env, task);
 
@@ -459,7 +465,7 @@ async function resolveSourceAccess(env: Env, key: string): Promise<string> {
         accessKeyId: env.R2_ACCESS_KEY_ID,
         secretAccessKey: env.R2_SECRET_ACCESS_KEY,
       },
-      { bucket: PRIVATE_BUCKET, key, expiresInSec: SOURCE_ACCESS_TTL_SEC }
+      { bucket: getPrivateBucketName(env), key, expiresInSec: SOURCE_ACCESS_TTL_SEC }
     );
     return signed.url;
   }

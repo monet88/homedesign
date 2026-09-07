@@ -3,8 +3,8 @@
 import type { Env } from "@/lib/bindings";
 import { presignGetUrl, type PresignCredentials } from "@/lib/intake/presign";
 import { isFloorPlanOutputActive, resolveActiveFloorPlanOutputAssetIds } from "@/lib/floor-plan";
+import { getPrivateBucketName } from "@/lib/env/policy";
 
-const PRIVATE_BUCKET = "homedesign-private";
 const SHARE_DELIVERY_TTL_SEC = 600;
 
 export interface ShareViewAsset {
@@ -394,7 +394,7 @@ export async function deliverShareAsset(
     creds.secretAccessKey
   ) {
     const signed = await presignGetUrl(creds, {
-      bucket: PRIVATE_BUCKET,
+      bucket: getPrivateBucketName(env),
       key: authorized.storageKey,
       expiresInSec: SHARE_DELIVERY_TTL_SEC,
     });

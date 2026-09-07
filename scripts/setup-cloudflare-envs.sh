@@ -10,7 +10,7 @@ else
   BOLD=""; DIM=""; RESET=""; BLUE=""; GREEN=""; YELLOW=""
 fi
 
-TOTAL_STAGES=4
+TOTAL_STAGES=5
 _STAGE_INDEX=0
 ENV_FILE="${ENV_FILE:-.env.cloudflare-wizard}"
 WRITTEN_ENV=(); WRITTEN_SECRET=(); SKIPPED=()
@@ -36,7 +36,7 @@ set_secret() {
 }
 finish() { _clear; printf '\n✓ Wizard complete\n'; (( ${#SKIPPED[@]} )) && warn "Manual: ${SKIPPED[*]}"; }
 
-banner "HomeDesign — four Cloudflare accounts (dev / preview / staging / production)"
+banner "HomeDesign — Cloudflare environments (dev / preview / staging / production / demo)"
 
 stage "Development account (homedesign-dev)"
 say "Create/use the development Cloudflare account. Least-privilege API token for D1/R2/Queues/Workers."
@@ -72,4 +72,13 @@ write_env CLOUDFLARE_PROD_ACCOUNT_ID "$CLOUDFLARE_PROD_ACCOUNT_ID"
 set_secret CLOUDFLARE_PROD_API_TOKEN "$CLOUDFLARE_PROD_API_TOKEN"
 note "Production: Mock Payment / Free Grant / email sign-up / generation OFF until policy accepted."
 
+stage "Public Demo environment (homedesign-demo at homedesign.monet.uno)"
+say "Public Demo attaches Worker to custom domain homedesign.monet.uno with isolated hd-demo-* resources."
+open_url "https://dash.cloudflare.com/profile/api-tokens"
+ask CLOUDFLARE_DEMO_ACCOUNT_ID "Demo account ID (zone monet.uno owner)"
+ask_secret CLOUDFLARE_DEMO_API_TOKEN "Demo API token"
+write_env CLOUDFLARE_DEMO_ACCOUNT_ID "$CLOUDFLARE_DEMO_ACCOUNT_ID"
+set_secret CLOUDFLARE_DEMO_API_TOKEN "$CLOUDFLARE_DEMO_API_TOKEN"
+note "Public Demo: Google-only auth, zero credits on start, 50 actual provider submissions/day cap."
+note "Run dry-run: bash scripts/demo-provision.sh --dry-run"
 finish

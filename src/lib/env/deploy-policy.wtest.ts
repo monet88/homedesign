@@ -9,9 +9,14 @@ import { ensureFreeCreditGrant, getAvailableCredits } from "@/lib/credits/ledger
 import { mockPurchase } from "@/lib/payments/core";
 import { handleAuthRequest } from "@/lib/auth/server";
 import { validPngBytes } from "@/lib/fixtures/images";
+import { getPrivateBucketName } from "@/lib/env/policy";
 
 function prodEnv(): Env {
   return { ...(env as unknown as Env), ENVIRONMENT: "production" };
+}
+
+function demoEnv(): Env {
+  return { ...(env as unknown as Env), ENVIRONMENT: "demo" };
 }
 
 let userId: string;
@@ -87,6 +92,80 @@ describe("production policy matrix", () => {
     expect(res.status).toBe(403);
     const body = await res.json<{ error: string }>();
     expect(body.error).toBe("EMAIL_SIGNUP_BANNED_IN_PRODUCTION");
+  });
+});
+
+describe("demo policy matrix (ADR 0008, Issue #72)", () => {
+  it("free grant is a no-op in demo", async () => {
+    const d = demoEnv();
+    const granted = await ensureFreeCreditGrant(d, userId);
+    expect(granted).toBe(false);
+    expect(await getAvailableCredits(d, userId)).toBe(0);
+  });
+
+  it("mock payment returns 403 in demo", async () => {
+    await expect(mockPurchase(demoEnv(), userId, "lite", "k1")).rejects.toThrow(
+      "MOCK_PAYMENT_BANNED_IN_DEMO"
+    );
+  });
+
+  it("email sign-up is banned in demo", async () => {
+    const res = await handleAuthRequest(
+      {
+        ...(env as unknown as Env),
+        ENVIRONMENT: "demo",
+        BETTER_AUTH_SECRET: "test-secret-that-is-long-enough-32-chars",
+        BETTER_AUTH_URL: "https://homedesign.monet.uno",
+        GOOGLE_CLIENT_ID: "demo-client-id",
+        GOOGLE_CLIENT_SECRET: "demo-client-secret",
+      },
+      new Request("https://homedesign.monet.uno/api/auth/sign-up/email", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "new@example.com",
+          password: "password123",
+          name: "New User",
+        }),
+      })
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe("EMAIL_SIGNUP_BANNED_IN_DEMO");
+  });
+
+  it("email sign-in is banned in demo", async () => {
+    const res = await handleAuthRequest(
+      {
+        ...(env as unknown as Env),
+        ENVIRONMENT: "demo",
+        BETTER_AUTH_SECRET: "test-secret-that-is-long-enough-32-chars",
+        BETTER_AUTH_URL: "https://homedesign.monet.uno",
+        GOOGLE_CLIENT_ID: "demo-client-id",
+        GOOGLE_CLIENT_SECRET: "demo-client-secret",
+      },
+      new Request("https://homedesign.monet.uno/api/auth/sign-in/email", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "someone@example.com",
+          password: "password123",
+        }),
+      })
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe("EMAIL_SIGNIN_BANNED_IN_DEMO");
+  });
+
+  it("resolves private bucket name per environment (Issue #72, ADR 0008)", () => {
+    expect(getPrivateBucketName({ ENVIRONMENT: "demo" })).toBe("hd-demo-private");
+    expect(getPrivateBucketName({ ENVIRONMENT: "staging" })).toBe("hd-staging-private");
+    expect(getPrivateBucketName({ ENVIRONMENT: "production" })).toBe("hd-prod-private");
+    expect(getPrivateBucketName({ ENVIRONMENT: "preview" })).toBe("hd-preview-private");
+    expect(getPrivateBucketName({ ENVIRONMENT: "development" })).toBe("hd-dev-private");
+    expect(getPrivateBucketName({ ENVIRONMENT: "local" })).toBe("homedesign-private");
+    expect(getPrivateBucketName({ ENVIRONMENT: "demo", HD_PRIVATE_BUCKET_NAME: "custom-private" })).toBe("custom-private");
   });
 });
 
