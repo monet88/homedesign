@@ -7,7 +7,7 @@ import type { Env } from "@/lib/bindings";
 import { createDesign } from "@/lib/ai/lifecycle";
 import { ensureFreeCreditGrant, getAvailableCredits } from "@/lib/credits/ledger";
 import { mockPurchase } from "@/lib/payments/core";
-import { handleAuthRequest } from "@/lib/auth/server";
+import { handleAuthRequest, createAuth } from "@/lib/auth/server";
 import { validPngBytes } from "@/lib/fixtures/images";
 import { getPrivateBucketName } from "@/lib/env/policy";
 
@@ -157,6 +157,28 @@ describe("demo policy matrix (ADR 0008, Issue #72)", () => {
     const body = await res.json<{ error: string }>();
     expect(body.error).toBe("EMAIL_SIGNIN_BANNED_IN_DEMO");
   });
+  it("requires distinct GOOGLE_CLIENT_SECRET for demo and fails closed when missing or identical", () => {
+    const baseDemo = {
+      ...(env as unknown as Env),
+      ENVIRONMENT: "demo",
+      BETTER_AUTH_SECRET: "test-secret-that-is-long-enough-32-chars",
+      BETTER_AUTH_URL: "https://homedesign.monet.uno",
+      GOOGLE_CLIENT_ID: "client-id-123",
+    };
+
+    // Missing GOOGLE_CLIENT_SECRET in demo must throw
+    expect(() => createAuth(baseDemo)).toThrow("GOOGLE_CLIENT_SECRET is required and must be distinct from GOOGLE_CLIENT_ID in demo");
+
+    // GOOGLE_CLIENT_SECRET identical to GOOGLE_CLIENT_ID in demo must throw
+    expect(() =>
+      createAuth({ ...baseDemo, GOOGLE_CLIENT_SECRET: "client-id-123" })
+    ).toThrow("GOOGLE_CLIENT_SECRET is required and must be distinct from GOOGLE_CLIENT_ID in demo");
+
+    // Valid distinct GOOGLE_CLIENT_SECRET succeeds
+    const validAuth = createAuth({ ...baseDemo, GOOGLE_CLIENT_SECRET: "distinct-secret-456" });
+    expect(validAuth).toBeDefined();
+  });
+
 
   it("resolves private bucket name per environment (Issue #72, ADR 0008)", () => {
     expect(getPrivateBucketName({ ENVIRONMENT: "demo" })).toBe("hd-demo-private");

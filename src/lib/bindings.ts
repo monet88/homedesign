@@ -29,8 +29,7 @@ export interface Env {
   DEMO_DAILY_PROVIDER_LIMIT?: string;
 
   // Explicit private bucket name override (Issue #72, ADR 0008).
-  R2_PRIVATE_BUCKET_NAME?: string;
-
+  HD_PRIVATE_BUCKET_NAME?: string;
   // R2 S3 API credentials for presigned upload URLs (ADR 0003). Set per
   // environment as secrets; local defaults live in wrangler.jsonc vars.
   R2_ACCOUNT_ID?: string;

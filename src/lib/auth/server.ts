@@ -148,6 +148,25 @@ export function requireVerifiedUser(session: { user: { emailVerified: boolean } 
 export function createAuth(env: AuthEnv) {
   const emailDeliveryMode = env.EMAIL_DELIVERY_MODE?.toLowerCase() ?? "test-outbox";
 
+  let googleProvider: { clientId: string; clientSecret: string } | undefined;
+  if (env.GOOGLE_CLIENT_ID) {
+    const secret = env.GOOGLE_CLIENT_SECRET?.trim();
+    if (isDemo(env)) {
+      if (!secret || secret === env.GOOGLE_CLIENT_ID.trim()) {
+        throw new Error("GOOGLE_CLIENT_SECRET is required and must be distinct from GOOGLE_CLIENT_ID in demo");
+      }
+      googleProvider = {
+        clientId: env.GOOGLE_CLIENT_ID,
+        clientSecret: secret,
+      };
+    } else {
+      googleProvider = {
+        clientId: env.GOOGLE_CLIENT_ID,
+        clientSecret: secret || env.GOOGLE_CLIENT_ID,
+      };
+    }
+  }
+
   return betterAuth({
     appName: "HomeDesign Clone",
     baseURL: env.BETTER_AUTH_URL,
@@ -182,12 +201,7 @@ export function createAuth(env: AuthEnv) {
       },
     },
     socialProviders: {
-      google: env.GOOGLE_CLIENT_ID
-        ? {
-            clientId: env.GOOGLE_CLIENT_ID,
-            clientSecret: env.GOOGLE_CLIENT_SECRET || env.GOOGLE_CLIENT_ID,
-          }
-        : undefined,
+      google: googleProvider,
     },
     plugins: [
       oneTap({

@@ -140,3 +140,33 @@ describe("free-first gate script", () => {
     expect(gate).toContain("Total Upload:");
   });
 });
+
+describe("demo-provision script (ADR 0008 / Issue #72)", () => {
+  it("implements capability preflight, idempotent creation, CORS, dry-run and secret guards", () => {
+    const script = read("scripts/demo-provision.sh");
+
+    expect(script).toContain("CLOUDFLARE_API_TOKEN");
+    expect(script).toContain("npx wrangler whoami");
+    expect(script).toContain("npx wrangler d1 list");
+    expect(script).toContain("npx wrangler r2 bucket list");
+    expect(script).toContain("npx wrangler queues list");
+    expect(script).toContain("hd-demo-private");
+    expect(script).toContain("https://homedesign.monet.uno");
+    expect(script).toContain("--dry-run");
+    expect(script).toContain("npm run build:worker");
+    expect(script).toContain("npm run gate:free-first");
+    expect(script).not.toContain("password");
+  });
+});
+
+describe("playwright config (Issue #72)", () => {
+  it("supports remote demo base-URL override, disables webServer remotely, and supports runtime storage state", () => {
+    const config = read("playwright.config.ts");
+
+    expect(config).toContain("process.env.PLAYWRIGHT_BASE_URL");
+    expect(config).toContain("process.env.DEMO_BASE_URL");
+    expect(config).toContain("process.env.PLAYWRIGHT_STORAGE_STATE");
+    expect(config).toContain("storageState: authStorageState || undefined");
+    expect(config).toMatch(/webServer:\s*isRemote\s*\?\s*undefined/);
+  });
+});
