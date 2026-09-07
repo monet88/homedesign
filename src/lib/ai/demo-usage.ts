@@ -19,8 +19,19 @@ export function getDemoDailyProviderLimit(env?: { DEMO_DAILY_PROVIDER_LIMIT?: st
   if (raw === undefined || raw === null) {
     return DEFAULT_DEMO_DAILY_PROVIDER_LIMIT;
   }
-  const parsed = typeof raw === "number" ? raw : parseInt(String(raw).trim(), 10);
-  if (Number.isNaN(parsed) || !Number.isFinite(parsed) || parsed <= 0) {
+  if (typeof raw === "number") {
+    if (Number.isInteger(raw) && raw > 0) {
+      return raw;
+    }
+    return DEFAULT_DEMO_DAILY_PROVIDER_LIMIT;
+  }
+  const str = String(raw).trim();
+  // Strict positive integer: digits only, must not start with 0 unless length is 1 (and > 0 so no 0)
+  if (!/^[1-9]\d*$/.test(str)) {
+    return DEFAULT_DEMO_DAILY_PROVIDER_LIMIT;
+  }
+  const parsed = Number(str);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     return DEFAULT_DEMO_DAILY_PROVIDER_LIMIT;
   }
   return parsed;

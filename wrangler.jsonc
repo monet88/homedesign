@@ -299,7 +299,8 @@
       "vars": {
         "ENVIRONMENT": "demo",
         "BETTER_AUTH_URL": "https://homedesign.monet.uno",
-        "HD_PRIVATE_BUCKET_NAME": "hd-demo-private"
+        "HD_PRIVATE_BUCKET_NAME": "hd-demo-private",
+        "DEMO_DAILY_PROVIDER_LIMIT": "50"
       },
       "d1_databases": [
         {

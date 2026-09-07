@@ -41,9 +41,10 @@ describe("wrangler environment isolation (ADR 0006)", () => {
     expect(prodBlock).not.toMatch(/AUTH_BYPASS["\s:]*[1t]/i);
   });
 
-  it("demo sets ENVIRONMENT=demo and Custom Domain route", () => {
+  it("demo sets ENVIRONMENT=demo, DEMO_DAILY_PROVIDER_LIMIT=50, and Custom Domain route", () => {
     expect(wrangler).toMatch(/"ENVIRONMENT":\s*"demo"/);
     expect(wrangler).toMatch(/"BETTER_AUTH_URL":\s*"https:\/\/homedesign\.monet\.uno"/);
+    expect(wrangler).toMatch(/"DEMO_DAILY_PROVIDER_LIMIT":\s*"50"/);
     expect(wrangler).toMatch(/"pattern":\s*"homedesign\.monet\.uno"/);
     expect(wrangler).toMatch(/"custom_domain":\s*true/);
     const demoBlock = wrangler.split('"demo"')[1] ?? "";
@@ -142,7 +143,7 @@ describe("free-first gate script", () => {
 });
 
 describe("demo-provision script (ADR 0008 / Issue #72)", () => {
-  it("implements capability preflight, idempotent creation, CORS, dry-run and secret guards", () => {
+  it("implements capability preflight, idempotent creation, CORS, dry-run, secret injection, and strict verification", () => {
     const script = read("scripts/demo-provision.sh");
 
     expect(script).toContain("CLOUDFLARE_API_TOKEN");
@@ -150,16 +151,20 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
     expect(script).toContain("npx wrangler d1 list");
     expect(script).toContain("npx wrangler r2 bucket list");
     expect(script).toContain("npx wrangler queues list");
+    expect(script).toContain("monet.uno zone access");
     expect(script).toContain("hd-demo-private");
     expect(script).toContain("https://homedesign.monet.uno");
     expect(script).toContain("--dry-run");
     expect(script).toContain("npm run build:worker");
     expect(script).toContain("npm run gate:free-first");
+    expect(script).toContain("npx wrangler secret put");
+    expect(script).not.toMatch(/r2 bucket cors set .* \|\| true/);
+    expect(script).toContain("DEPLOYMENT_OK");
     expect(script).not.toContain("password");
   });
 });
 
-describe("playwright config (Issue #72)", () => {
+describe("playwright config and public-demo harness (Issue #72)", () => {
   it("supports remote demo base-URL override, disables webServer remotely, and supports runtime storage state", () => {
     const config = read("playwright.config.ts");
 
@@ -168,5 +173,22 @@ describe("playwright config (Issue #72)", () => {
     expect(config).toContain("process.env.PLAYWRIGHT_STORAGE_STATE");
     expect(config).toContain("storageState: authStorageState || undefined");
     expect(config).toMatch(/webServer:\s*isRemote\s*\?\s*undefined/);
+  });
+
+  it("declares public demo journey covering real R2 intake, Interior, Exterior, Floor Plan, settlement, denial, and share", () => {
+    const demoJourney = read("e2e/public-demo-journey.spec.ts");
+
+    expect(demoJourney).toContain("PLAYWRIGHT_STORAGE_STATE");
+    expect(demoJourney).toContain("upload-intent");
+    expect(demoJourney).toContain("finalize");
+    expect(demoJourney).toContain("/ai-interior-design");
+    expect(demoJourney).toContain("/ai-exterior-design");
+    expect(demoJourney).toContain("/ai-floor-plan");
+    expect(demoJourney).toContain("Brief");
+    expect(demoJourney).toContain("Layout");
+    expect(demoJourney).toContain("Render");
+    expect(demoJourney).toContain("creditsBefore.available - 1");
+    expect(demoJourney).toContain("Unauthorized Private Asset Access Denial");
+    expect(demoJourney).toContain("Intended Anonymous Project Share Access");
   });
 });

@@ -195,11 +195,16 @@ describe("getDemoDailyProviderLimit", () => {
     expect(getDemoDailyProviderLimit({ DEMO_DAILY_PROVIDER_LIMIT: 42 })).toBe(42);
   });
 
-  it("fails safe to 50 on invalid/negative/non-numeric values and never disables cap", () => {
+  it("fails safe to 50 on invalid/negative/non-numeric/malformed values and never disables cap", () => {
     expect(getDemoDailyProviderLimit({ DEMO_DAILY_PROVIDER_LIMIT: "0" })).toBe(50);
     expect(getDemoDailyProviderLimit({ DEMO_DAILY_PROVIDER_LIMIT: "-10" })).toBe(50);
     expect(getDemoDailyProviderLimit({ DEMO_DAILY_PROVIDER_LIMIT: "invalid" })).toBe(50);
     expect(getDemoDailyProviderLimit({ DEMO_DAILY_PROVIDER_LIMIT: "NaN" })).toBe(50);
+    expect(getDemoDailyProviderLimit({ DEMO_DAILY_PROVIDER_LIMIT: "500oops" })).toBe(50);
+    expect(getDemoDailyProviderLimit({ DEMO_DAILY_PROVIDER_LIMIT: "50.5" })).toBe(50);
+    expect(getDemoDailyProviderLimit({ DEMO_DAILY_PROVIDER_LIMIT: 50.5 })).toBe(50);
+    expect(getDemoDailyProviderLimit({ DEMO_DAILY_PROVIDER_LIMIT: -5 })).toBe(50);
+    expect(getDemoDailyProviderLimit({ DEMO_DAILY_PROVIDER_LIMIT: 0 })).toBe(50);
   });
 });
 
@@ -355,12 +360,18 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     const task51 = await getTask(demoEnv, design51.id);
     expect(task51?.status).toBe("failed");
     expect(task51?.error_code).toBe("DEMO_DAILY_LIMIT_REACHED");
-
     // Verify Credit Hold is released exactly once and balance is restored
     const hold51 = await getActiveHoldByRef(demoEnv, "ai_task", design51.id);
     expect(hold51).toBeNull(); // no active hold remaining
 
-    // User's available credits restored for design51 (100 - 1 = 99)
+    // Explicitly verify exactly one release entry in credit_ledger for design51 hold
+    const releaseEntries = await env.DB.prepare(
+      `SELECT * FROM credit_ledger WHERE user_id = ?1 AND ref_id = ?2 AND entry_type = 'release'`
+    ).bind(userId, design51.id).all();
+    expect(releaseEntries.results).toHaveLength(1);
+    expect(releaseEntries.results[0]?.amount).toBe(1);
+    expect(releaseEntries.results[0]?.reason).toBe("task");
+    expect(releaseEntries.results[0]?.ref_type).toBe("task");
     expect(await getAvailableCredits(demoEnv, userId)).toBe(99);
     await expect(assertCreditInvariant(demoEnv, userId)).resolves.toBe(true);
 
@@ -425,5 +436,108 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     expect(hold).toBeNull();
     expect(await getAvailableCredits(demoEnv, userId)).toBe(50);
     await expect(assertCreditInvariant(demoEnv, userId)).resolves.toBe(true);
+  });
+
+  it("proves each outbound submit retry attempt consumes a separate slot towards daily cap", async () => {
+    const demoEnv = {
+      ...env,
+      ENVIRONMENT: "demo",
+      DEMO_DAILY_PROVIDER_LIMIT: "3", // limit = 3
+    } as unknown as Env;
+
+    const userId = "user-retry-test";
+    const assetId = "asset-retry-test";
+    await setupUserAndAsset(userId, assetId);
+    await recordAdminCreditAdjustment(demoEnv, userId, 10, "Testing credits", "admin-id");
+
+    const now = new Date();
+    // Initial usage is 0
+    let usage = await getDemoProviderUsage(demoEnv, now);
+    expect(usage.currentUsage).toBe(0);
+
+    let submitAttempts = 0;
+    const mockProvider: ProviderAdapter = {
+      name: "fake",
+      submit: vi.fn(async (): Promise<ProviderSubmitResult> => {
+        submitAttempts++;
+        if (submitAttempts === 1) {
+          // First attempt fails transiently at provider API level
+          return { ok: false, error: "PROVIDER_TRANSIENT_ERROR" };
+        }
+        return { ok: true, providerTaskId: `retry-task-${submitAttempts}` };
+      }),
+      fetchOutput: vi.fn(async () => null),
+      healthCheck: vi.fn(async () => ({
+        status: "healthy" as const,
+        latencyMs: 0,
+        models: ["fake-model"],
+        endpoint: "fake://health",
+      })),
+    };
+    registerProvider(mockProvider);
+
+    // 1. First task attempt: runs generation, claims 1 slot, provider.submit returns transient error
+    const design1 = await createDesign(demoEnv, userId, {
+      sourceAssetId: assetId,
+      scene: "interior",
+      intent: { mode: "redesign", roomType: "living-room", style: "modern" },
+      idempotencyKey: "retry-idem-1",
+    });
+
+    const res1 = await runGeneration(demoEnv, design1.id);
+    expect(res1.status).toBe("failed");
+    expect(submitAttempts).toBe(1);
+
+    // Even though provider returned error, 1 actual outbound submission attempt was consumed
+    usage = await getDemoProviderUsage(demoEnv, now);
+    expect(usage.currentUsage).toBe(1);
+
+    // 2. Retry / re-dispatch attempt: a new or re-dispatched runGeneration claims a 2nd slot
+    // Reset task to processing to simulate reconciler / queue retry
+    await env.DB.prepare(`UPDATE ai_tasks SET status = 'accepted' WHERE id = ?1`).bind(design1.id).run();
+    // Re-hold credits if needed or test with second design
+    const design2 = await createDesign(demoEnv, userId, {
+      sourceAssetId: assetId,
+      scene: "interior",
+      intent: { mode: "redesign", roomType: "living-room", style: "modern" },
+      idempotencyKey: "retry-idem-2",
+    });
+
+    const res2 = await runGeneration(demoEnv, design2.id);
+    expect(["processing", "quarantined"]).toContain(res2.status);
+    expect(submitAttempts).toBe(2);
+
+    // 2 slots now consumed
+    usage = await getDemoProviderUsage(demoEnv, now);
+    expect(usage.currentUsage).toBe(2);
+
+    // 3. Third submit attempt consumes slot 3 (reaching 3/3 cap)
+    const design3 = await createDesign(demoEnv, userId, {
+      sourceAssetId: assetId,
+      scene: "interior",
+      intent: { mode: "redesign", roomType: "bedroom", style: "modern" },
+      idempotencyKey: "retry-idem-3",
+    });
+    const res3 = await runGeneration(demoEnv, design3.id);
+    expect(["processing", "quarantined"]).toContain(res3.status);
+    expect(submitAttempts).toBe(3);
+
+    usage = await getDemoProviderUsage(demoEnv, now);
+    expect(usage.currentUsage).toBe(3);
+    expect(usage.allowed).toBe(false);
+
+    // 4. Fourth attempt blocked by cap before provider.submit
+    const design4 = await createDesign(demoEnv, userId, {
+      sourceAssetId: assetId,
+      scene: "interior",
+      intent: { mode: "redesign", roomType: "kitchen", style: "modern" },
+      idempotencyKey: "retry-idem-4",
+    });
+    const res4 = await runGeneration(demoEnv, design4.id);
+    expect(res4.status).toBe("failed");
+    expect(submitAttempts).toBe(3); // No extra submit call!
+
+    usage = await getDemoProviderUsage(demoEnv, now);
+    expect(usage.currentUsage).toBe(3);
   });
 });

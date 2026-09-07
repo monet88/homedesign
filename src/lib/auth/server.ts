@@ -149,24 +149,26 @@ export function createAuth(env: AuthEnv) {
   const emailDeliveryMode = env.EMAIL_DELIVERY_MODE?.toLowerCase() ?? "test-outbox";
 
   let googleProvider: { clientId: string; clientSecret: string } | undefined;
-  if (env.GOOGLE_CLIENT_ID) {
+  if (isDemo(env)) {
+    const clientId = env.GOOGLE_CLIENT_ID?.trim();
     const secret = env.GOOGLE_CLIENT_SECRET?.trim();
-    if (isDemo(env)) {
-      if (!secret || secret === env.GOOGLE_CLIENT_ID.trim()) {
-        throw new Error("GOOGLE_CLIENT_SECRET is required and must be distinct from GOOGLE_CLIENT_ID in demo");
-      }
-      googleProvider = {
-        clientId: env.GOOGLE_CLIENT_ID,
-        clientSecret: secret,
-      };
-    } else {
-      googleProvider = {
-        clientId: env.GOOGLE_CLIENT_ID,
-        clientSecret: secret || env.GOOGLE_CLIENT_ID,
-      };
+    if (!clientId) {
+      throw new Error("GOOGLE_CLIENT_ID is required in demo");
     }
+    if (!secret || secret === clientId) {
+      throw new Error("GOOGLE_CLIENT_SECRET is required and must be distinct from GOOGLE_CLIENT_ID in demo");
+    }
+    googleProvider = {
+      clientId,
+      clientSecret: secret,
+    };
+  } else if (env.GOOGLE_CLIENT_ID) {
+    const secret = env.GOOGLE_CLIENT_SECRET?.trim();
+    googleProvider = {
+      clientId: env.GOOGLE_CLIENT_ID,
+      clientSecret: secret || env.GOOGLE_CLIENT_ID,
+    };
   }
-
   return betterAuth({
     appName: "HomeDesign Clone",
     baseURL: env.BETTER_AUTH_URL,
@@ -186,7 +188,7 @@ export function createAuth(env: AuthEnv) {
       useSecureCookies: isProduction(env) || env.BETTER_AUTH_URL.startsWith("https://"),
     },
     emailAndPassword: {
-      enabled: true,
+      enabled: !isDemo(env),
       requireEmailVerification: false, // ADR 0001: unverified users can log in; App Worker gates billable work
       minPasswordLength: 8,
       maxPasswordLength: 128,

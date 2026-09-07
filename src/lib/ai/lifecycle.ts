@@ -450,9 +450,8 @@ async function buildProviderRequest(env: Env, task: TaskRow): Promise<ProviderRe
  * Resolve the source object to short-lived private access for the provider.
  * Presigned GET when R2 S3 credentials are configured; otherwise an internal
  * `private:` reference (local/test). Either way this value never leaves the
- * Worker and is never persisted on the Design row.
  */
-async function resolveSourceAccess(env: Env, key: string): Promise<string> {
+export async function resolveSourceAccess(env: Env, key: string): Promise<string> {
   if (
     env.ENVIRONMENT !== "local" &&
     env.R2_ACCOUNT_ID !== "local-dev-account" &&

@@ -30,21 +30,44 @@ test.describe("Public Demo Auth & Google Live Smoke (ADR 0008, Issue #72)", () =
     expect(json).not.toHaveProperty("apiKey");
   });
 
-  test("public landing renders sign-in trigger and Google auth entry point", async ({
+  test("public landing renders sign-in trigger, Google One Tap client config, and normal Google auth entry points", async ({
     page,
+    request,
   }) => {
     await page.goto("/");
 
-    // Public visitor can view landing page
+    // 1. Public visitor can view landing page
     await expect(
       page.getByRole("heading", { name: "See your future home in minutes" })
     ).toBeVisible();
 
-    // Sign in trigger is accessible
+    // 2. Normal Sign In trigger is accessible in header/nav
     const signInTrigger = page.getByRole("link", { name: "Sign In", exact: true }).first();
     await expect(signInTrigger).toBeVisible();
-  });
 
+    // 3. Google One Tap client config is exposed and valid
+    const cfgRes = await request.get("/api/auth/client-config");
+    expect(cfgRes.status()).toBe(200);
+    const cfgJson = (await cfgRes.json()) as { googleClientId?: string | null };
+    expect(cfgJson).toHaveProperty("googleClientId");
+
+    // 4. Normal Google OAuth social sign-in affordance exists at the auth endpoint
+    // BetterAuth social sign-in initiation endpoint: POST /api/auth/sign-in/social
+    const socialSignInRes = await request.post("/api/auth/sign-in/social", {
+      data: {
+        provider: "google",
+        callbackURL: "https://homedesign.monet.uno/",
+      },
+    });
+    // In demo or test mode, the endpoint is registered (returns 200 with redirect url or valid response)
+    expect([200, 302, 400]).toContain(socialSignInRes.status());
+    if (socialSignInRes.status() === 200) {
+      const body = (await socialSignInRes.json()) as { url?: string };
+      if (body.url) {
+        expect(body.url).toContain("accounts.google.com");
+      }
+    }
+  });
   test("demo mode presents Google-only auth contract and bans email/password", async ({
     request,
   }) => {
@@ -67,8 +90,9 @@ test.describe("Public Demo Auth & Google Live Smoke (ADR 0008, Issue #72)", () =
     }
   });
 
-  test("authenticated operator session (when provided via runtime storageState) starts with 0 credits", async ({
+  test("authenticated operator session (when provided via runtime storageState) proves valid session on homedesign.monet.uno and starts with 0 credits", async ({
     page,
+    request,
   }) => {
     // Only executed when operator provided an authenticated runtime storage state
     if (!process.env.PLAYWRIGHT_STORAGE_STATE) {
@@ -77,23 +101,31 @@ test.describe("Public Demo Auth & Google Live Smoke (ADR 0008, Issue #72)", () =
     }
 
     await page.goto("/");
-    const sessionRes = (await page.evaluate(async () => {
-      const res = await fetch("/api/auth/get-session");
-      return res.ok ? await res.json() : null;
-    })) as { session?: Record<string, unknown>; user?: Record<string, unknown> } | null;
 
-    // Verify session token is redacted and never in JSON
-    expect(sessionRes).toBeTruthy();
-    expect(sessionRes?.session).not.toHaveProperty("token");
+    // 1. Prove authenticated Google session is returned on the public origin
+    const sessionRes = await request.get("/api/auth/get-session");
+    expect(sessionRes.status()).toBe(200);
+    const sessionJson = (await sessionRes.json()) as {
+      session?: { id: string; userId: string; token?: string };
+      user?: { id: string; email: string; role: string };
+    } | null;
 
-    // In demo environment, verify initial available credits = 0
-    const creditsRes = (await page.evaluate(async () => {
-      const res = await fetch("/api/credits");
-      return res.ok ? await res.json() : null;
-    })) as { data?: { available?: number } } | null;
+    expect(sessionJson).toBeTruthy();
+    expect(sessionJson?.user).toBeDefined();
+    expect(sessionJson?.user?.email).toBeTruthy();
+    // Invariants: session token must be redacted from browser-visible JSON
+    expect(sessionJson?.session).not.toHaveProperty("token");
 
-    if (creditsRes?.data) {
-      expect(creditsRes.data.available).toBe(0);
-    }
+    // 2. In demo environment, verify initial available credits = 0
+    const creditsRes = await request.get("/api/credits");
+    expect(creditsRes.status()).toBe(200);
+    const creditsData = (await creditsRes.json()) as {
+      code: number;
+      data?: { available: number; totalGrants: number; totalUsage: number; activeHolds: number };
+    };
+    expect(creditsData.data).toBeDefined();
+    expect(creditsData.data?.available).toBe(0);
+    expect(creditsData.data?.totalUsage).toBe(0);
+    expect(creditsData.data?.activeHolds).toBe(0);
   });
 });

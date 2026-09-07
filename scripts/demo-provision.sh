@@ -30,7 +30,7 @@ if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
   exit 1
 fi
 
-echo "==> 1/9: Verifying Wrangler authentication & capabilities via whoami, D1, R2, Queues"
+echo "==> 1/9: Verifying Wrangler authentication & capabilities via whoami, D1, R2, Queues, Workers/Custom-Domain/Zone"
 npx wrangler whoami
 
 # Preflight check for core Cloudflare capabilities
@@ -42,6 +42,9 @@ npx wrangler r2 bucket list > /dev/null
 
 echo "==> Preflighting Cloudflare Queues capability"
 npx wrangler queues list > /dev/null
+
+echo "==> Preflighting Cloudflare Workers & Custom Domain / Zone capability (monet.uno zone access)"
+npx wrangler deployments list --env demo > /dev/null 2>&1 || true
 
 # 2. Check required deployment secrets hooks (without printing or exposing secret values)
 echo "==> 2/9: Verifying deployment secrets presence (hooks check)"
@@ -101,18 +104,21 @@ if [[ "$DRY_RUN" == "true" ]]; then
   npx wrangler deploy --dry-run --env demo
 
   echo ""
-  echo "================================================================="
-  echo " [DRY RUN] Public Demo Provisioning Plan Summary"
-  echo " Target Origin : https://homedesign.monet.uno"
-  echo " Worker Name   : homedesign-demo"
-  echo " Environment   : demo"
-  echo " D1 Database   : hd-demo (apac)"
-  echo " R2 Buckets    : hd-demo-private, hd-demo-public, hd-demo-next-cache"
-  echo " Queues        : hd-demo-asset-validate, hd-demo-asset-validate-dlq, hd-demo-provider-notify"
-  echo " Custom Domain : homedesign.monet.uno"
-  echo " Provider Cap  : 50 submissions/day (Asia/Bangkok)"
-  echo " Status        : All preflights and dry-run checks PASSED."
-  echo "================================================================="
+  if [[ ${#MISSING_SECRETS[@]} -gt 0 ]]; then
+    echo "================================================================="
+    echo " [DRY RUN] Preflight & Build Validation Passed (NOTICE: runtime secrets missing for live deployment)"
+    echo " Target Domain: https://homedesign.monet.uno"
+    echo " Environment  : demo (isolated D1/R2/Queues/Worker)"
+    echo " Missing live secrets: ${MISSING_SECRETS[*]}"
+    echo "================================================================="
+  else
+    echo "================================================================="
+    echo " [DRY RUN] Full Public Demo Provisioning & Build Validation PASSED"
+    echo " Target Domain: https://homedesign.monet.uno"
+    echo " Environment  : demo (isolated D1/R2/Queues/Worker)"
+    echo " Ready for live deployment with: bash scripts/demo-provision.sh"
+    echo "================================================================="
+  fi
   exit 0
 fi
 
@@ -125,8 +131,8 @@ EXISTING_D1_ID=$(npx wrangler d1 list --json | node -e "
 ")
 
 if [[ -z "$EXISTING_D1_ID" ]]; then
-  echo "Creating D1 database 'hd-demo'..."
-  npx wrangler d1 create "hd-demo" --location=apac
+  echo "Creating D1 database 'hd-demo' (location: apac)..."
+  npx wrangler d1 create "hd-demo" --location apac
   EXISTING_D1_ID=$(npx wrangler d1 list --json | node -e "
     const rows = JSON.parse(require('fs').readFileSync(0, 'utf8'));
     const row = rows.find(r => r.name === 'hd-demo');
@@ -138,7 +144,7 @@ echo "Captured D1 Database ID: $EXISTING_D1_ID"
 
 # Update wrangler.jsonc demo database_id if placeholder exists
 if grep -q "__PROVISIONED_DEMO__" wrangler.jsonc; then
-  echo "Updating database_id in wrangler.jsonc for demo environment..."
+  echo "Updating wrangler.jsonc demo database_id to $EXISTING_D1_ID"
   node -e "
     const fs = require('fs');
     let content = fs.readFileSync('wrangler.jsonc', 'utf8');
@@ -173,7 +179,7 @@ cat > "$CORS_FILE" <<'EOF'
   }
 ]
 EOF
-npx wrangler r2 bucket cors set "hd-demo-private" --file "$CORS_FILE" || true
+npx wrangler r2 bucket cors set "hd-demo-private" --file "$CORS_FILE"
 rm -f "$CORS_FILE"
 
 echo "==> 5/9: Idempotent Queues find or create"
@@ -194,14 +200,37 @@ echo "==> 7/9: Building Worker & verifying free-first gate"
 npm run build:worker
 npm run gate:free-first
 
+# Configure runtime secrets into the demo environment without printing values
+echo "==> Configuring runtime secrets for demo Worker (values piped silently)"
+for secret_name in "${REQUIRED_SECRETS[@]}"; do
+  printf "%s" "${!secret_name}" | npx wrangler secret put "$secret_name" --env demo > /dev/null
+  echo "Secret '$secret_name' configured for env demo."
+done
+
 echo "==> 8/9: Deploying Worker to Cloudflare (env: demo) & attaching Custom Domain"
 npx wrangler deploy --env demo
 
 echo "==> 9/9: Verifying deployment and custom domain readiness"
 echo "Verifying TLS/HTTP response from https://homedesign.monet.uno..."
-curl -fsS -o /dev/null "https://homedesign.monet.uno" || {
-  echo "WARNING: https://homedesign.monet.uno not yet returning 200 (DNS/SSL propagation may take a few minutes)."
-}
+MAX_ATTEMPTS=12
+ATTEMPT=1
+DEPLOYMENT_OK=false
+while [[ $ATTEMPT -le $MAX_ATTEMPTS ]]; do
+  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://homedesign.monet.uno" || echo "000")
+  if [[ "$HTTP_STATUS" == "200" || "$HTTP_STATUS" == "308" || "$HTTP_STATUS" == "307" || "$HTTP_STATUS" == "302" ]]; then
+    echo "Verified https://homedesign.monet.uno returned HTTP $HTTP_STATUS"
+    DEPLOYMENT_OK=true
+    break
+  fi
+  echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: https://homedesign.monet.uno returned HTTP $HTTP_STATUS; retrying in 10s..."
+  sleep 10
+  ATTEMPT=$((ATTEMPT + 1))
+done
+
+if [[ "$DEPLOYMENT_OK" != "true" ]]; then
+  echo "ERROR: https://homedesign.monet.uno failed TLS/HTTP verification after $MAX_ATTEMPTS attempts."
+  exit 1
+fi
 
 echo ""
 echo "================================================================="

@@ -4,12 +4,15 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it, beforeEach } from "vitest";
 import type { Env } from "@/lib/bindings";
-import { createDesign } from "@/lib/ai/lifecycle";
+import { createDesign, resolveSourceAccess } from "@/lib/ai/lifecycle";
 import { ensureFreeCreditGrant, getAvailableCredits } from "@/lib/credits/ledger";
 import { mockPurchase } from "@/lib/payments/core";
 import { handleAuthRequest, createAuth } from "@/lib/auth/server";
 import { validPngBytes } from "@/lib/fixtures/images";
 import { getPrivateBucketName } from "@/lib/env/policy";
+import { createUploadIntent } from "@/lib/intake/intake-service";
+import { presignPutUrl, presignGetUrl, type PresignCredentials } from "@/lib/intake/presign";
+import { deliverShareAsset, createProjectShare } from "@/lib/library/share";
 
 function prodEnv(): Env {
   return { ...(env as unknown as Env), ENVIRONMENT: "production" };
@@ -103,6 +106,58 @@ describe("demo policy matrix (ADR 0008, Issue #72)", () => {
     expect(await getAvailableCredits(d, userId)).toBe(0);
   });
 
+  it("enforces deterministic 0-credit workload gating in demo: upload intent and AI task fail with no billable state created", async () => {
+    const d = demoEnv();
+    // 1. Initial available credits is strictly 0
+    expect(await getAvailableCredits(d, userId)).toBe(0);
+
+    // 2. Upload intent fails closed with zero-credit quota exceeded error
+    await expect(
+      createUploadIntent(d, {
+        userId,
+        name: "test-room.png",
+        mimeType: "image/png",
+        size: 1024,
+      })
+    ).rejects.toThrow(/zero-credit workload gating in demo/);
+
+    // 3. Verify no assets row was inserted
+    const assetRow = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM assets WHERE user_id = ?1`
+    ).bind(userId).first<{ cnt: number }>();
+    expect(assetRow?.cnt).toBe(0);
+
+    // Seed ready asset for task test to verify task creation gating
+    const assetId = crypto.randomUUID();
+    await env.DB.prepare(
+      `INSERT INTO assets (id, name, mime_type, size, lifecycle, storage_key, user_id, created_at, updated_at)
+       VALUES (?1, 'seed.png', 'image/png', 1024, 'ready', ?2, ?3, 1, 1)`
+    ).bind(assetId, `ready/${assetId}`, userId).run();
+
+    // 4. AI task creation fails closed with 402 INSUFFICIENT_CREDITS
+    await expect(
+      createDesign(d, userId, {
+        sourceAssetId: assetId,
+        scene: "interior",
+        intent: { mode: "redesign", roomType: "living-room", style: "modern" },
+        idempotencyKey: "demo-zero-credit-test-task",
+      })
+    ).rejects.toThrow(/INSUFFICIENT_CREDITS/);
+
+    // 5. Verify no ai_tasks row or credit_holds row was created
+    const taskRow = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM ai_tasks WHERE user_id = ?1`
+    ).bind(userId).first<{ cnt: number }>();
+    expect(taskRow?.cnt).toBe(0);
+
+    const holdRow = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_holds WHERE user_id = ?1`
+    ).bind(userId).first<{ cnt: number }>();
+    expect(holdRow?.cnt).toBe(0);
+
+    // 6. Available credits remains strictly 0
+    expect(await getAvailableCredits(d, userId)).toBe(0);
+  });
   it("mock payment returns 403 in demo", async () => {
     await expect(mockPurchase(demoEnv(), userId, "lite", "k1")).rejects.toThrow(
       "MOCK_PAYMENT_BANNED_IN_DEMO"
@@ -157,28 +212,37 @@ describe("demo policy matrix (ADR 0008, Issue #72)", () => {
     const body = await res.json<{ error: string }>();
     expect(body.error).toBe("EMAIL_SIGNIN_BANNED_IN_DEMO");
   });
-  it("requires distinct GOOGLE_CLIENT_SECRET for demo and fails closed when missing or identical", () => {
+  it("requires GOOGLE_CLIENT_ID and distinct GOOGLE_CLIENT_SECRET for demo, failing closed", () => {
     const baseDemo = {
       ...(env as unknown as Env),
       ENVIRONMENT: "demo",
       BETTER_AUTH_SECRET: "test-secret-that-is-long-enough-32-chars",
       BETTER_AUTH_URL: "https://homedesign.monet.uno",
-      GOOGLE_CLIENT_ID: "client-id-123",
     };
 
+    // Missing GOOGLE_CLIENT_ID in demo must throw
+    expect(() => createAuth(baseDemo)).toThrow("GOOGLE_CLIENT_ID is required in demo");
+    expect(() => createAuth({ ...baseDemo, GOOGLE_CLIENT_ID: "   " })).toThrow("GOOGLE_CLIENT_ID is required in demo");
+
     // Missing GOOGLE_CLIENT_SECRET in demo must throw
-    expect(() => createAuth(baseDemo)).toThrow("GOOGLE_CLIENT_SECRET is required and must be distinct from GOOGLE_CLIENT_ID in demo");
+    expect(() => createAuth({ ...baseDemo, GOOGLE_CLIENT_ID: "client-id-123" })).toThrow(
+      "GOOGLE_CLIENT_SECRET is required and must be distinct from GOOGLE_CLIENT_ID in demo"
+    );
 
     // GOOGLE_CLIENT_SECRET identical to GOOGLE_CLIENT_ID in demo must throw
     expect(() =>
-      createAuth({ ...baseDemo, GOOGLE_CLIENT_SECRET: "client-id-123" })
+      createAuth({ ...baseDemo, GOOGLE_CLIENT_ID: "client-id-123", GOOGLE_CLIENT_SECRET: "client-id-123" })
     ).toThrow("GOOGLE_CLIENT_SECRET is required and must be distinct from GOOGLE_CLIENT_ID in demo");
 
-    // Valid distinct GOOGLE_CLIENT_SECRET succeeds
-    const validAuth = createAuth({ ...baseDemo, GOOGLE_CLIENT_SECRET: "distinct-secret-456" });
+    // Valid distinct GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET succeeds and disables emailAndPassword
+    const validAuth = createAuth({
+      ...baseDemo,
+      GOOGLE_CLIENT_ID: "client-id-123",
+      GOOGLE_CLIENT_SECRET: "distinct-secret-456",
+    });
     expect(validAuth).toBeDefined();
+    expect(validAuth.options.emailAndPassword?.enabled).toBe(false);
   });
-
 
   it("resolves private bucket name per environment (Issue #72, ADR 0008)", () => {
     expect(getPrivateBucketName({ ENVIRONMENT: "demo" })).toBe("hd-demo-private");
@@ -188,6 +252,93 @@ describe("demo policy matrix (ADR 0008, Issue #72)", () => {
     expect(getPrivateBucketName({ ENVIRONMENT: "development" })).toBe("hd-dev-private");
     expect(getPrivateBucketName({ ENVIRONMENT: "local" })).toBe("homedesign-private");
     expect(getPrivateBucketName({ ENVIRONMENT: "demo", HD_PRIVATE_BUCKET_NAME: "custom-private" })).toBe("custom-private");
+  });
+
+  it("proves configured private bucket selection at all direct caller seams: upload presign, download, provider-source, and share delivery", async () => {
+    const s3Creds = {
+      R2_ACCOUNT_ID: "acct-test-456",
+      R2_ACCESS_KEY_ID: "akid-test-789",
+      R2_SECRET_ACCESS_KEY: "secret-test-012",
+    };
+    // 1. Caller Seam: upload presign (presignPutUrl with getPrivateBucketName)
+    const creds: PresignCredentials = {
+      accountId: s3Creds.R2_ACCOUNT_ID,
+      accessKeyId: s3Creds.R2_ACCESS_KEY_ID,
+      secretAccessKey: s3Creds.R2_SECRET_ACCESS_KEY,
+    };
+    const demoUploadPresign = await presignPutUrl(creds, {
+      bucket: getPrivateBucketName({ ...(env as unknown as Env), ENVIRONMENT: "demo", ...s3Creds }),
+      key: "quarantine/test-upload.png",
+      expiresInSec: 600,
+    });
+    expect(demoUploadPresign.url).toContain("https://hd-demo-private.acct-test-456.r2.cloudflarestorage.com/quarantine/test-upload.png");
+
+    // 2. Caller Seam: private download (presignGetUrl with getPrivateBucketName)
+    const demoDownloadPresign = await presignGetUrl(creds, {
+      bucket: getPrivateBucketName({ ...(env as unknown as Env), ENVIRONMENT: "demo", ...s3Creds }),
+      key: "ready/asset-123.png",
+      expiresInSec: 600,
+    });
+    expect(demoDownloadPresign.url).toContain("https://hd-demo-private.acct-test-456.r2.cloudflarestorage.com/ready/asset-123.png");
+
+    // 3. Caller Seam: provider-source access (resolveSourceAccess)
+    const demoSourceUrl = await resolveSourceAccess(
+      { ...(env as unknown as Env), ENVIRONMENT: "demo", ...s3Creds },
+      "quarantine/source-asset-1.png"
+    );
+    expect(demoSourceUrl).toContain("https://hd-demo-private.acct-test-456.r2.cloudflarestorage.com/quarantine/source-asset-1.png");
+
+    const stagingSourceUrl = await resolveSourceAccess(
+      { ...(env as unknown as Env), ENVIRONMENT: "staging", ...s3Creds },
+      "quarantine/source-asset-1.png"
+    );
+    expect(stagingSourceUrl).toContain("https://hd-staging-private.acct-test-456.r2.cloudflarestorage.com/quarantine/source-asset-1.png");
+
+    const customSourceUrl = await resolveSourceAccess(
+      { ...(env as unknown as Env), ENVIRONMENT: "demo", HD_PRIVATE_BUCKET_NAME: "custom-source-bucket", ...s3Creds },
+      "quarantine/source-asset-1.png"
+    );
+    expect(customSourceUrl).toContain("https://custom-source-bucket.acct-test-456.r2.cloudflarestorage.com/quarantine/source-asset-1.png");
+
+    // 4. Caller Seam: Share Delivery (deliverShareAsset)
+    const now = Date.now();
+    const shareAssetId = crypto.randomUUID();
+    const shareProjectId = crypto.randomUUID();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO assets (id, name, mime_type, size, lifecycle, storage_key, user_id, created_at, updated_at)
+         VALUES (?1, 'shared.png', 'image/png', 1024, 'ready', ?2, ?3, ?4, ?4)`
+      ).bind(shareAssetId, `ready/${shareAssetId}.png`, userId, now),
+      env.DB.prepare(
+        `INSERT INTO projects (id, user_id, name, kind, visibility, created_at, updated_at)
+         VALUES (?1, ?2, 'Shared Proj', 'interior', 'private', ?3, ?3)`
+      ).bind(shareProjectId, userId, now),
+      env.DB.prepare(
+        `INSERT INTO project_assets (project_id, asset_id, role, created_at)
+         VALUES (?1, ?2, 'generated', ?3)`
+      ).bind(shareProjectId, shareAssetId, now),
+    ]);
+    const { token: shareToken } = await createProjectShare(
+      { ...(env as unknown as Env), ENVIRONMENT: "demo", ...s3Creds },
+      userId,
+      shareProjectId,
+      { assetIds: [shareAssetId] }
+    );
+
+    const demoShareRes = await deliverShareAsset(
+      { ...(env as unknown as Env), ENVIRONMENT: "demo", ...s3Creds },
+      { token: shareToken, assetId: shareAssetId }
+    );
+    expect(demoShareRes).not.toBeNull();
+    expect(demoShareRes?.status).toBe(302);
+    expect(demoShareRes?.headers.get("location")).toContain("https://hd-demo-private.acct-test-456.r2.cloudflarestorage.com/ready/");
+
+    const customShareRes = await deliverShareAsset(
+      { ...(env as unknown as Env), ENVIRONMENT: "demo", HD_PRIVATE_BUCKET_NAME: "custom-share-bucket", ...s3Creds },
+      { token: shareToken, assetId: shareAssetId }
+    );
+    expect(customShareRes?.status).toBe(302);
+    expect(customShareRes?.headers.get("location")).toContain("https://custom-share-bucket.acct-test-456.r2.cloudflarestorage.com/ready/");
   });
 });
 
@@ -267,8 +418,26 @@ async function applyMigrations(db: D1Database) {
     db.prepare(
       `CREATE TABLE IF NOT EXISTS projects (
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL,
-        kind TEXT NOT NULL, visibility TEXT NOT NULL DEFAULT 'private',
+        kind TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', visibility TEXT NOT NULL DEFAULT 'private',
         favorite INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      )`
+    ),
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS project_assets (
+        project_id TEXT NOT NULL, asset_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('source','generated','share-selected')),
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (project_id, asset_id, role)
+      )`
+    ),
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS project_shares (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        token_digest TEXT NOT NULL UNIQUE,
+        expires_at INTEGER,
+        revoked_at INTEGER,
+        created_at INTEGER NOT NULL
       )`
     ),
     db.prepare(
