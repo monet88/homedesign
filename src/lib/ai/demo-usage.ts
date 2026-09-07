@@ -1,12 +1,30 @@
 // Concurrency-safe provider usage rate limiter for Public Demo (ADR 0008, Issue #72).
 // Tracks actual outbound provider submissions per Asia/Bangkok calendar day.
-// Max 50 provider submissions per day.
+// Configurable limit via DEMO_DAILY_PROVIDER_LIMIT env var with safe fallback to 50.
+// Invalid/non-numeric/negative values fail safe to default 50 and NEVER disable the cap.
 
 import type { Env } from "@/lib/bindings";
 import { isDemo } from "@/lib/env/policy";
 
-export const DEMO_DAILY_PROVIDER_LIMIT = 50;
+export const DEFAULT_DEMO_DAILY_PROVIDER_LIMIT = 50;
 export const BANGKOK_TIMEZONE = "Asia/Bangkok";
+
+/**
+ * Resolves the configured daily provider submission limit.
+ * Defaults to 50. If env var is missing, empty, non-numeric, or <= 0,
+ * it fails safe to 50, ensuring the cap is never disabled.
+ */
+export function getDemoDailyProviderLimit(env?: { DEMO_DAILY_PROVIDER_LIMIT?: string | number } | null): number {
+  const raw = env?.DEMO_DAILY_PROVIDER_LIMIT;
+  if (raw === undefined || raw === null) {
+    return DEFAULT_DEMO_DAILY_PROVIDER_LIMIT;
+  }
+  const parsed = typeof raw === "number" ? raw : parseInt(String(raw).trim(), 10);
+  if (Number.isNaN(parsed) || !Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_DEMO_DAILY_PROVIDER_LIMIT;
+  }
+  return parsed;
+}
 
 /**
  * Formats a timestamp (or current time) into 'YYYY-MM-DD' in Asia/Bangkok time.
@@ -31,8 +49,8 @@ export interface DemoProviderUsageCheck {
 
 /**
  * Concurrency-safe atomic check and increment of demo provider usage counter.
- * Uses atomic SQLite UPDATE ... WHERE usage_count < 50.
- * If row does not exist, inserts with count = 1.
+ * Uses atomic SQLite UPDATE ... WHERE usage_count < limit.
+ * If row does not exist, inserts with count = 1 (provided limit >= 1).
  * Returns true if the submission is allowed under the cap, false if quota exceeded.
  */
 export async function claimDemoProviderSubmission(env: Env, now: Date = new Date()): Promise<boolean> {
@@ -40,6 +58,7 @@ export async function claimDemoProviderSubmission(env: Env, now: Date = new Date
     return true; // only enforced in demo environment
   }
 
+  const limit = getDemoDailyProviderLimit(env);
   const usageDate = getBangkokDateString(now);
   const nowMs = now.getTime();
 
@@ -52,10 +71,10 @@ export async function claimDemoProviderSubmission(env: Env, now: Date = new Date
        updated_at = ?2
      WHERE usage_count < ?3`
   )
-    .bind(usageDate, nowMs, DEMO_DAILY_PROVIDER_LIMIT)
+    .bind(usageDate, nowMs, limit)
     .run();
 
-  // If changes === 0, it means conflict update condition 'usage_count < 50' was false -> exceeded limit!
+  // If changes === 0, it means conflict update condition 'usage_count < limit' was false -> exceeded limit!
   const rowsChanged = insertRes.meta?.changes ?? 0;
   return rowsChanged > 0;
 }
@@ -64,6 +83,7 @@ export async function claimDemoProviderSubmission(env: Env, now: Date = new Date
  * Reads current usage for the current Bangkok day.
  */
 export async function getDemoProviderUsage(env: Env, now: Date = new Date()): Promise<DemoProviderUsageCheck> {
+  const limit = getDemoDailyProviderLimit(env);
   const usageDate = getBangkokDateString(now);
   const row = await env.DB.prepare(
     `SELECT usage_count FROM demo_provider_usage WHERE usage_date = ?1`
@@ -73,9 +93,9 @@ export async function getDemoProviderUsage(env: Env, now: Date = new Date()): Pr
 
   const currentUsage = row?.usage_count ?? 0;
   return {
-    allowed: currentUsage < DEMO_DAILY_PROVIDER_LIMIT,
+    allowed: currentUsage < limit,
     currentUsage,
-    limit: DEMO_DAILY_PROVIDER_LIMIT,
+    limit,
     usageDate,
   };
 }

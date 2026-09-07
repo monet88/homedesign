@@ -352,15 +352,16 @@ export async function runGeneration(
 
   await setTaskStatus(env, taskId, "processing");
 
-  // Concurrency-safe Bangkok-time daily provider submission cap for Demo (ADR 0008, Issue #72)
-  const submissionAllowed = await claimDemoProviderSubmission(env);
-  if (!submissionAllowed) {
-    await failGeneration(env, taskId, "DEMO_DAILY_PROVIDER_LIMIT_EXCEEDED");
-    return { status: "failed" };
-  }
-
   const provider = getProvider(task.provider, env);
   const req = await buildProviderRequest(env, task);
+
+  // Concurrency-safe Bangkok-time daily provider submission cap for Demo (ADR 0008, Issue #72).
+  // Reserved after ProviderRequest is constructed and immediately before real provider.submit network call.
+  const submissionAllowed = await claimDemoProviderSubmission(env);
+  if (!submissionAllowed) {
+    await failGeneration(env, taskId, "DEMO_DAILY_LIMIT_REACHED");
+    return { status: "failed" };
+  }
 
   let providerTaskId: string;
   try {
