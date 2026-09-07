@@ -438,7 +438,7 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     await expect(assertCreditInvariant(demoEnv, userId)).resolves.toBe(true);
   });
 
-  it("proves each outbound submit retry attempt consumes a separate slot towards daily cap", async () => {
+  it("proves each outbound submit retry attempt of the same accepted task consumes a separate slot towards daily cap", async () => {
     const demoEnv = {
       ...env,
       ENVIRONMENT: "demo",
@@ -461,9 +461,14 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
       submit: vi.fn(async (): Promise<ProviderSubmitResult> => {
         submitAttempts++;
         if (submitAttempts === 1) {
-          // First attempt fails transiently at provider API level
+          // First attempt returns transient provider error (remains accepted for retry)
           return { ok: false, error: "PROVIDER_TRANSIENT_ERROR" };
         }
+        if (submitAttempts === 2) {
+          // Second attempt also fails transiently on the same task
+          return { ok: false, error: "PROVIDER_RATE_LIMITED" };
+        }
+        // Third attempt succeeds
         return { ok: true, providerTaskId: `retry-task-${submitAttempts}` };
       }),
       fetchOutput: vi.fn(async () => null),
@@ -476,7 +481,7 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     };
     registerProvider(mockProvider);
 
-    // 1. First task attempt: runs generation, claims 1 slot, provider.submit returns transient error
+    // Create ONE accepted task
     const design1 = await createDesign(demoEnv, userId, {
       sourceAssetId: assetId,
       scene: "interior",
@@ -484,41 +489,34 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
       idempotencyKey: "retry-idem-1",
     });
 
+    const initialTask = await getTask(demoEnv, design1.id);
+    expect(initialTask?.status).toBe("accepted");
+
+    // 1. First execution attempt of the task: consumes slot 1
     const res1 = await runGeneration(demoEnv, design1.id);
     expect(res1.status).toBe("failed");
     expect(submitAttempts).toBe(1);
 
-    // Even though provider returned error, 1 actual outbound submission attempt was consumed
     usage = await getDemoProviderUsage(demoEnv, now);
     expect(usage.currentUsage).toBe(1);
 
-    // 2. Retry / re-dispatch attempt: a new or re-dispatched runGeneration claims a 2nd slot
-    // Reset task to processing to simulate reconciler / queue retry
+    // 2. Real retry / re-dispatch of the SAME accepted task:
+    // The task remains accepted/retryable; re-dispatching runGeneration on the SAME task id
+    // simulates queue retry / reconciler re-dispatch seam.
     await env.DB.prepare(`UPDATE ai_tasks SET status = 'accepted' WHERE id = ?1`).bind(design1.id).run();
-    // Re-hold credits if needed or test with second design
-    const design2 = await createDesign(demoEnv, userId, {
-      sourceAssetId: assetId,
-      scene: "interior",
-      intent: { mode: "redesign", roomType: "living-room", style: "modern" },
-      idempotencyKey: "retry-idem-2",
-    });
 
-    const res2 = await runGeneration(demoEnv, design2.id);
-    expect(["processing", "quarantined"]).toContain(res2.status);
+    const res2 = await runGeneration(demoEnv, design1.id);
+    expect(res2.status).toBe("failed");
     expect(submitAttempts).toBe(2);
 
-    // 2 slots now consumed
+    // Exactly 2 slots consumed by the 2 submit attempts of the same task
     usage = await getDemoProviderUsage(demoEnv, now);
     expect(usage.currentUsage).toBe(2);
 
-    // 3. Third submit attempt consumes slot 3 (reaching 3/3 cap)
-    const design3 = await createDesign(demoEnv, userId, {
-      sourceAssetId: assetId,
-      scene: "interior",
-      intent: { mode: "redesign", roomType: "bedroom", style: "modern" },
-      idempotencyKey: "retry-idem-3",
-    });
-    const res3 = await runGeneration(demoEnv, design3.id);
+    // 3. Third submit attempt on the SAME accepted task: consumes slot 3 (reaching 3/3 cap)
+    await env.DB.prepare(`UPDATE ai_tasks SET status = 'accepted' WHERE id = ?1`).bind(design1.id).run();
+
+    const res3 = await runGeneration(demoEnv, design1.id);
     expect(["processing", "quarantined"]).toContain(res3.status);
     expect(submitAttempts).toBe(3);
 
@@ -526,14 +524,14 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     expect(usage.currentUsage).toBe(3);
     expect(usage.allowed).toBe(false);
 
-    // 4. Fourth attempt blocked by cap before provider.submit
-    const design4 = await createDesign(demoEnv, userId, {
+    // 4. Fourth attempt on a new task or retry is blocked by cap before provider.submit
+    const design2 = await createDesign(demoEnv, userId, {
       sourceAssetId: assetId,
       scene: "interior",
       intent: { mode: "redesign", roomType: "kitchen", style: "modern" },
-      idempotencyKey: "retry-idem-4",
+      idempotencyKey: "retry-idem-2",
     });
-    const res4 = await runGeneration(demoEnv, design4.id);
+    const res4 = await runGeneration(demoEnv, design2.id);
     expect(res4.status).toBe("failed");
     expect(submitAttempts).toBe(3); // No extra submit call!
 

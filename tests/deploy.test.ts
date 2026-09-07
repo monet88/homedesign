@@ -151,7 +151,6 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
     expect(script).toContain("npx wrangler d1 list");
     expect(script).toContain("npx wrangler r2 bucket list");
     expect(script).toContain("npx wrangler queues list");
-    expect(script).toContain("monet.uno zone access");
     expect(script).toContain("hd-demo-private");
     expect(script).toContain("https://homedesign.monet.uno");
     expect(script).toContain("--dry-run");
@@ -161,6 +160,23 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
     expect(script).not.toMatch(/r2 bucket cors set .* \|\| true/);
     expect(script).toContain("DEPLOYMENT_OK");
     expect(script).not.toContain("password");
+  });
+
+  it("fails closed on zone/custom-domain preflight instead of masking a deployments-list check", () => {
+    const script = read("scripts/demo-provision.sh");
+
+    // The fail-open pattern (`deployments list ... || true`) must be gone.
+    expect(script).not.toMatch(/deployments list[^\n]*\|\| true/);
+    expect(script).not.toMatch(/deployments list/);
+
+    // It must state the non-mutating capability limitation explicitly.
+    expect(script).toContain("non-mutating Wrangler command");
+    expect(script).toContain("FAILS CLOSED");
+    expect(script).toContain("--dry-run does NOT validate");
+
+    // The live deploy (the earliest operation touching the custom domain) must not be masked.
+    expect(script).toContain("npx wrangler deploy --env demo");
+    expect(script).not.toMatch(/wrangler deploy --env demo[^\n]*\|\| true/);
   });
 });
 
@@ -175,11 +191,12 @@ describe("playwright config and public-demo harness (Issue #72)", () => {
     expect(config).toMatch(/webServer:\s*isRemote\s*\?\s*undefined/);
   });
 
-  it("declares public demo journey covering real R2 intake, Interior, Exterior, Floor Plan, settlement, denial, and share", () => {
+  it("declares public demo journey covering real R2 intake PUT, Interior, Exterior, Floor Plan with Panorama, settlement, denial, and share", () => {
     const demoJourney = read("e2e/public-demo-journey.spec.ts");
 
     expect(demoJourney).toContain("PLAYWRIGHT_STORAGE_STATE");
     expect(demoJourney).toContain("upload-intent");
+    expect(demoJourney).toContain("request.put");
     expect(demoJourney).toContain("finalize");
     expect(demoJourney).toContain("/ai-interior-design");
     expect(demoJourney).toContain("/ai-exterior-design");
@@ -187,7 +204,9 @@ describe("playwright config and public-demo harness (Issue #72)", () => {
     expect(demoJourney).toContain("Brief");
     expect(demoJourney).toContain("Layout");
     expect(demoJourney).toContain("Render");
+    expect(demoJourney).toContain("Panorama");
     expect(demoJourney).toContain("creditsBefore.available - 1");
+    expect(demoJourney).toContain("creditsBefore.available - 10");
     expect(demoJourney).toContain("Unauthorized Private Asset Access Denial");
     expect(demoJourney).toContain("Intended Anonymous Project Share Access");
   });

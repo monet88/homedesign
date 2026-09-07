@@ -13,7 +13,7 @@ import { test, expect } from "@playwright/test";
 //    it verifies the authenticated session has 0 credits initially and cannot create workloads.
 
 test.describe("Public Demo Auth & Google Live Smoke (ADR 0008, Issue #72)", () => {
-  test("client-config endpoint returns googleClientId without secrets or sensitive tokens", async ({
+  test("client-config endpoint returns non-empty googleClientId without secrets or sensitive tokens", async ({
     request,
   }) => {
     const res = await request.get("/api/auth/client-config");
@@ -21,6 +21,8 @@ test.describe("Public Demo Auth & Google Live Smoke (ADR 0008, Issue #72)", () =
 
     const json = (await res.json()) as Record<string, unknown>;
     expect(json).toHaveProperty("googleClientId");
+    expect(typeof json.googleClientId).toBe("string");
+    expect((json.googleClientId as string).trim().length).toBeGreaterThan(0);
 
     // Invariants: secrets and tokens must never appear in client config
     expect(json).not.toHaveProperty("googleClientSecret");
@@ -45,11 +47,13 @@ test.describe("Public Demo Auth & Google Live Smoke (ADR 0008, Issue #72)", () =
     const signInTrigger = page.getByRole("link", { name: "Sign In", exact: true }).first();
     await expect(signInTrigger).toBeVisible();
 
-    // 3. Google One Tap client config is exposed and valid
+    // 3. Google One Tap client config is exposed, valid, and contains non-empty googleClientId
     const cfgRes = await request.get("/api/auth/client-config");
     expect(cfgRes.status()).toBe(200);
     const cfgJson = (await cfgRes.json()) as { googleClientId?: string | null };
     expect(cfgJson).toHaveProperty("googleClientId");
+    expect(typeof cfgJson.googleClientId).toBe("string");
+    expect((cfgJson.googleClientId as string).trim().length).toBeGreaterThan(0);
 
     // 4. Normal Google OAuth social sign-in affordance exists at the auth endpoint
     // BetterAuth social sign-in initiation endpoint: POST /api/auth/sign-in/social
@@ -59,13 +63,17 @@ test.describe("Public Demo Auth & Google Live Smoke (ADR 0008, Issue #72)", () =
         callbackURL: "https://homedesign.monet.uno/",
       },
     });
-    // In demo or test mode, the endpoint is registered (returns 200 with redirect url or valid response)
-    expect([200, 302, 400]).toContain(socialSignInRes.status());
+    // Must return a valid initiation response (200 with accounts.google.com redirect URL, or 302 redirect).
+    // Cannot pass merely on HTTP 400.
+    expect([200, 302]).toContain(socialSignInRes.status());
     if (socialSignInRes.status() === 200) {
       const body = (await socialSignInRes.json()) as { url?: string };
-      if (body.url) {
-        expect(body.url).toContain("accounts.google.com");
-      }
+      expect(body.url).toBeDefined();
+      expect(typeof body.url).toBe("string");
+      expect(body.url).toContain("accounts.google.com");
+    } else if (socialSignInRes.status() === 302) {
+      const location = socialSignInRes.headers()["location"] || "";
+      expect(location).toContain("accounts.google.com");
     }
   });
   test("demo mode presents Google-only auth contract and bans email/password", async ({

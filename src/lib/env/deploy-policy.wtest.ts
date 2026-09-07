@@ -2,17 +2,34 @@
 // Public seams: HTTP 403/404 and grant no-op.
 
 import { env } from "cloudflare:test";
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import type { Env } from "@/lib/bindings";
 import { createDesign, resolveSourceAccess } from "@/lib/ai/lifecycle";
-import { ensureFreeCreditGrant, getAvailableCredits } from "@/lib/credits/ledger";
+import { ensureFreeCreditGrant, getAvailableCredits, recordAdminCreditAdjustment } from "@/lib/credits/ledger";
 import { mockPurchase } from "@/lib/payments/core";
 import { handleAuthRequest, createAuth } from "@/lib/auth/server";
 import { validPngBytes } from "@/lib/fixtures/images";
 import { getPrivateBucketName } from "@/lib/env/policy";
 import { createUploadIntent } from "@/lib/intake/intake-service";
-import { presignPutUrl, presignGetUrl, type PresignCredentials } from "@/lib/intake/presign";
 import { deliverShareAsset, createProjectShare } from "@/lib/library/share";
+import { POST as handleUploadIntent } from "@/app/api/assets/upload-intent/route";
+import { GET as handleDownload } from "@/app/api/assets/[id]/download/route";
+import type { RouteSession } from "@/lib/ai/http";
+
+// Mock the auth seam so these route handlers can be exercised through their real
+// caller boundary (presign / bucket resolution) with an injected demo env.
+let mockRouteSession: RouteSession | Response | null = null;
+
+vi.mock("@/lib/ai/http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/ai/http")>();
+  return {
+    ...actual,
+    authorizeVerified: vi.fn().mockImplementation(async () => {
+      if (!mockRouteSession) return Response.json({ error: "UNAUTHENTICATED" }, { status: 401 });
+      return mockRouteSession;
+    }),
+  };
+});
 
 function prodEnv(): Env {
   return { ...(env as unknown as Env), ENVIRONMENT: "production" };
@@ -254,34 +271,61 @@ describe("demo policy matrix (ADR 0008, Issue #72)", () => {
     expect(getPrivateBucketName({ ENVIRONMENT: "demo", HD_PRIVATE_BUCKET_NAME: "custom-private" })).toBe("custom-private");
   });
 
-  it("proves configured private bucket selection at all direct caller seams: upload presign, download, provider-source, and share delivery", async () => {
+  it("proves configured private bucket selection through real upload-intent and download route caller boundaries, plus provider-source and share delivery", async () => {
     const s3Creds = {
       R2_ACCOUNT_ID: "acct-test-456",
       R2_ACCESS_KEY_ID: "akid-test-789",
       R2_SECRET_ACCESS_KEY: "secret-test-012",
     };
-    // 1. Caller Seam: upload presign (presignPutUrl with getPrivateBucketName)
-    const creds: PresignCredentials = {
-      accountId: s3Creds.R2_ACCOUNT_ID,
-      accessKeyId: s3Creds.R2_ACCESS_KEY_ID,
-      secretAccessKey: s3Creds.R2_SECRET_ACCESS_KEY,
+    const demoRouteEnv = {
+      ...(env as unknown as Env),
+      ENVIRONMENT: "demo",
+      ...s3Creds,
+    } as unknown as Env;
+
+    // Fund the operator so the real upload-intent route (which enforces
+    // zero-credit gating in demo) proceeds past quota.
+    await recordAdminCreditAdjustment(demoRouteEnv, userId, 10, "Caller seam credits", "admin-id");
+    mockRouteSession = { env: demoRouteEnv, userId };
+
+    // 1. Caller Seam: upload-intent route (POST /api/assets/upload-intent)
+    const uploadReq = new Request("https://homedesign.monet.uno/api/assets/upload-intent", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "demo-room.png", mimeType: "image/png", size: 1024 }),
+    });
+    const uploadRes = await handleUploadIntent(uploadReq);
+    expect(uploadRes.status).toBe(200);
+    const uploadJson = (await uploadRes.json()) as {
+      code: number;
+      data: { assetId: string; presignedUrl: string };
     };
-    const demoUploadPresign = await presignPutUrl(creds, {
-      bucket: getPrivateBucketName({ ...(env as unknown as Env), ENVIRONMENT: "demo", ...s3Creds }),
-      key: "quarantine/test-upload.png",
-      expiresInSec: 600,
-    });
-    expect(demoUploadPresign.url).toContain("https://hd-demo-private.acct-test-456.r2.cloudflarestorage.com/quarantine/test-upload.png");
+    expect(uploadJson.code).toBe(0);
+    expect(uploadJson.data.assetId).toBeTruthy();
+    expect(uploadJson.data.presignedUrl).toContain(
+      "https://hd-demo-private.acct-test-456.r2.cloudflarestorage.com/quarantine/"
+    );
 
-    // 2. Caller Seam: private download (presignGetUrl with getPrivateBucketName)
-    const demoDownloadPresign = await presignGetUrl(creds, {
-      bucket: getPrivateBucketName({ ...(env as unknown as Env), ENVIRONMENT: "demo", ...s3Creds }),
-      key: "ready/asset-123.png",
-      expiresInSec: 600,
-    });
-    expect(demoDownloadPresign.url).toContain("https://hd-demo-private.acct-test-456.r2.cloudflarestorage.com/ready/asset-123.png");
+    // 2. Caller Seam: private download route (GET /api/assets/[id]/download)
+    const dlAssetId = crypto.randomUUID();
+    const dlStorageKey = `ready/${dlAssetId}.png`;
+    await env.DB.prepare(
+      `INSERT INTO assets (id, name, mime_type, size, lifecycle, storage_key, user_id, created_at, updated_at)
+       VALUES (?1, 'download.png', 'image/png', 1024, 'ready', ?2, ?3, ?4, ?4)`
+    ).bind(dlAssetId, dlStorageKey, userId, Date.now()).run();
 
-    // 3. Caller Seam: provider-source access (resolveSourceAccess)
+    const downloadReq = new Request(`https://homedesign.monet.uno/api/assets/${dlAssetId}/download`);
+    const downloadRes = await handleDownload(downloadReq, {
+      params: Promise.resolve({ id: dlAssetId }),
+    });
+    expect(downloadRes.status).toBe(302);
+    expect(downloadRes.headers.get("location")).toContain(
+      `https://hd-demo-private.acct-test-456.r2.cloudflarestorage.com/ready/${dlAssetId}.png`
+    );
+
+    mockRouteSession = null;
+
+    // 3. Caller Seam: provider-source access (resolveSourceAccess) — kept direct
     const demoSourceUrl = await resolveSourceAccess(
       { ...(env as unknown as Env), ENVIRONMENT: "demo", ...s3Creds },
       "quarantine/source-asset-1.png"
@@ -300,7 +344,7 @@ describe("demo policy matrix (ADR 0008, Issue #72)", () => {
     );
     expect(customSourceUrl).toContain("https://custom-source-bucket.acct-test-456.r2.cloudflarestorage.com/quarantine/source-asset-1.png");
 
-    // 4. Caller Seam: Share Delivery (deliverShareAsset)
+    // 4. Caller Seam: Share Delivery (deliverShareAsset) — kept direct
     const now = Date.now();
     const shareAssetId = crypto.randomUUID();
     const shareProjectId = crypto.randomUUID();
@@ -357,7 +401,7 @@ async function applyMigrations(db: D1Database) {
         lifecycle TEXT NOT NULL DEFAULT 'pending-upload',
         storage_key TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
         user_id TEXT, declared_size INTEGER, actual_size INTEGER,
-        width INTEGER, height INTEGER, created_by TEXT
+        width INTEGER, height INTEGER, created_by TEXT, purge_at INTEGER
       )`
     ),
     db.prepare(

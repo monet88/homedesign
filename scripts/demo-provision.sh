@@ -30,7 +30,7 @@ if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
   exit 1
 fi
 
-echo "==> 1/9: Verifying Wrangler authentication & capabilities via whoami, D1, R2, Queues, Workers/Custom-Domain/Zone"
+echo "==> 1/9: Verifying Wrangler authentication & capabilities via whoami, D1, R2, Queues"
 npx wrangler whoami
 
 # Preflight check for core Cloudflare capabilities
@@ -43,8 +43,16 @@ npx wrangler r2 bucket list > /dev/null
 echo "==> Preflighting Cloudflare Queues capability"
 npx wrangler queues list > /dev/null
 
-echo "==> Preflighting Cloudflare Workers & Custom Domain / Zone capability (monet.uno zone access)"
-npx wrangler deployments list --env demo > /dev/null 2>&1 || true
+# Zone / Custom Domain capability limitation (ADR 0008 / Issue #72):
+# There is NO non-mutating Wrangler command that proves the token may attach a
+# Custom Domain to the `monet.uno` zone before deployment. `wrangler deployments
+# list` only succeeds once a Worker already exists — it is NOT a capability probe
+# and must not be masked as one. The earliest live operation that exercises this
+# permission is the actual Worker deploy + Custom Domain attach
+# (`wrangler deploy --env demo`), which runs under `set -euo pipefail` and
+# FAILS CLOSED if the token lacks workers:write or zone/custom-domain
+# permission. `wrangler deploy --dry-run` does NOT validate this permission,
+# so a passing dry-run is not evidence of zone/custom-domain access.
 
 # 2. Check required deployment secrets hooks (without printing or exposing secret values)
 echo "==> 2/9: Verifying deployment secrets presence (hooks check)"
@@ -100,7 +108,8 @@ if [[ "$DRY_RUN" == "true" ]]; then
   echo "[DRY RUN] Role-only admin bootstrap command simulated: node scripts/seed-admin.mjs --demo"
 
   echo "==> 9/9: [DRY RUN] Simulating Worker deployment & Custom Domain attachment"
-  echo "[DRY RUN] wrangler deploy --dry-run --env demo verified."
+  echo "[DRY RUN] wrangler deploy --dry-run --env demo (config/bundle check only)."
+  echo "[DRY RUN] NOTE: --dry-run does NOT validate zone/custom-domain permission; live deploy fails closed."
   npx wrangler deploy --dry-run --env demo
 
   echo ""
