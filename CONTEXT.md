@@ -5,7 +5,7 @@
 - **Generation** — một lần gọi AI tạo ảnh từ ảnh gốc + tham số (Model, Style, Room/Area, Palette, Aspect Ratio, Custom Requirements). Chi phí Credits phụ thuộc model/action; luồng mặc định hiện có giá 1 Credit. Không nhầm với **Render** (Floor Plan → 3D/360°).
 - **AI Task** — bản ghi thực thi phía server cho đúng một Generation hoặc Floor Plan Stage Run. Provider hoàn tất chưa đồng nghĩa task thành công; task chỉ success khi mọi Generated Asset mong đợi đã qua validation thành `ready`.
 - **AI Provider Adapter** — module trừu tượng hóa giao tiếp với backend AI ngoài (`ProviderAdapter`). Hiện hỗ trợ `FakeProviderAdapter` (test/stub) và `GeminiFlashImageAdapter` (kết nối endpoint thật `https://cliproxy.monet.uno/v1` với model `gemini-3.1-flash-image`).
-- **Admin** — người dùng có role `admin` (mặc định: `minhthang421992@gmail.com`), sở hữu hạn mức Credits đặc quyền (99,999 credits), quyền truy cập Admin Panel (`/admin`), xem/điều chỉnh Credits của mọi người dùng, và giám sát lịch sử AI Tasks toàn hệ thống.
+- **Admin** — người dùng có role `admin`, có quyền truy cập Admin Panel, xem/điều chỉnh Credits của người dùng và giám sát AI Tasks toàn hệ thống. Admin role không tự mang một số dư Credits đặc quyền; trên Public Demo, Credits của Admin cũng chỉ thay đổi qua Credit Ledger như các user khác.
 - **Admin Panel** — giao diện quản trị riêng tại `/admin` dành cho role `admin`, cung cấp các bảng điều khiển: Quản lý Người dùng, Điều chỉnh Credits thủ công, Giám sát AI Tasks & Logs, và Kiểm tra kết nối AI Provider.
 - **Project** — workspace thuộc một user, gom intent thiết kế, Generations và các Source/Generated Assets cho một phương án Interior, Exterior hoặc Floor Plan. Project là aggregate duy nhất mang visibility, favorite và sharing; khác **Asset** là một ảnh độc lập.
 - **Project Favorite** — dấu lưu cá nhân của owner trên một Project, không thay đổi visibility hoặc quyền truy cập và không áp dụng riêng cho Asset.
@@ -18,8 +18,10 @@
 - **Room Type / Area** — phạm vi áp dụng Style (Interior: Living Room, Bedroom... / Exterior: House Facade, Front Porch...).
 - **Palette** — lựa chọn màu chủ đạo (Neutral/Warm/Cool/Earth/Custom). Khi chọn Custom thì textbox `e.g. navy blue and brass...` enable.
 - **Credits** — đơn vị quota đo quyền sử dụng AI, không đồng nghĩa với Payment. Chi phí thay đổi theo action/model (Generation, Floor Plan Render, panorama...).
-- **Free Credit Grant** — 10 Credits không hết hạn được cấp một lần cho mỗi user đã xác thực trong giai đoạn testing.
-- **Credit Ledger** — lịch sử bất biến của mọi Free Credit Grant, Mock Payment, Credit Hold, usage và release; là nguồn chuẩn của số dư Credits.
+- **Free Credit Grant** — 10 Credits không hết hạn được cấp một lần cho mỗi user đã xác thực trong các môi trường testing nội bộ. Public Demo không tự cấp Free Credit Grant.
+- **Admin Credit Grant** — Credits do Admin chủ động cấp cho một user cụ thể. Trên Public Demo, đây là cách duy nhất để user có Credits; đăng nhập thành công không tự tạo quyền sử dụng AI.
+- **Public Demo** — deployment public tại `homedesign.monet.uno` để người ngoài xem và đăng nhập bằng Google. User mới bắt đầu với 0 Credits; chỉ user được Admin chủ động cấp Credits mới có thể tạo workload AI mới.
+- **Credit Ledger** — lịch sử bất biến của mọi Free Credit Grant, Admin Credit Grant, Mock Payment, Credit Hold, usage và release; là nguồn chuẩn của số dư Credits.
 - **Credit Hold** — phần Credits được giữ chỗ khi một AI Task được chấp nhận: được chốt thành usage khi Generated Asset đã `ready` và task thành công, hoặc trả lại ở terminal failed/canceled/output-validation exhausted/server expiry. Client polling timeout không kết thúc hold.
 - **Available Credits** — số Credits user còn có thể dùng sau khi trừ các Credit Hold đang hoạt động; đây là số hiển thị trên badge.
 - **Mock Payment** — mô phỏng luồng mua và cộng Credits cho user đã xác thực trong local/development/preview/staging, không chuyển tiền và không gọi Stripe hay payment provider thật. Đây là tên chuẩn duy nhất cho khái niệm này.
@@ -38,7 +40,7 @@
 
 ## Bounded Contexts
 
-1. **Identity & Credits** — BetterAuth (`__Secure-better-auth.session_token`), email+Google One Tap, Admin role (`minhthang421992@gmail.com`), free Credits entitlement và Mock Payment.
+1. **Identity & Credits** — BetterAuth identities, Admin role, testing-only Free Credit Grant, Public Demo Admin Credit Grant và Mock Payment ngoài Public Demo.
 2. **Catalog** — Styles, Ideas, Popular Galleries (dùng chung UI card Preview/Use style).
 3. **Generation Pipeline** — Upload 50MB (PNG/JPG/JPEG), Model=gemini-3.1-flash-image (Nano Banana), Full Redesign/Local Edit, Aspect Ratios (1:1,4:3,16:9,3:4,9:16), Custom Requirements 0/300, tích hợp endpoint `https://cliproxy.monet.uno/v1`.
 4. **Asset & Project Library** — Projects, Assets, Activity, Private/Favorite/Share.

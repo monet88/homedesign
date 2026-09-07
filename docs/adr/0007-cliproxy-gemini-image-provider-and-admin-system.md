@@ -3,6 +3,8 @@
 ## Status
 Accepted
 
+**Revision 2026-09-07:** Password-based admin seeding with an initial 99,999 Credit grant is retained only for internal/local E2E compatibility. Public Demo follows ADR 0008: the configured Google-authenticated account is promoted to `admin` idempotently without creating a password credential or automatic Credit grant; any Credits are added separately through the immutable Admin Credit Grant path.
+
 ## Context
 The HomeDesign application previously operated with fake/stubbed provider adapters (`FakeProviderAdapter`) during UI prototyping. For production fidelity and realistic multi-modal generation, we need:
 1. Direct integration with the real AI Image Generation endpoint (`https://cliproxy.monet.uno/v1` with model `gemini-3.1-flash-image` and API Key authentication).
@@ -16,8 +18,9 @@ The HomeDesign application previously operated with fake/stubbed provider adapte
    - Parse returned base64 image data URL from `choices[0].message.images[0].image_url.url` and stream into R2/Storage as validated `ready` assets.
 
 2. **Admin Provisioning & Panel**:
-   - Store Admin configuration in environment variables (`ADMIN_EMAIL=minhthang421992@gmail.com`, `ADMIN_PASSWORD=<admin-password>`, `ADMIN_INITIAL_CREDITS=99999`).
-   - Provide automated seeding script `npm run db:seed:admin` to insert/update the admin user and grant 99,999 credits in the Credit Ledger.
+   - Internal/local E2E may keep Admin configuration through `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `ADMIN_INITIAL_CREDITS` for deterministic test provisioning.
+   - Public Demo does not use the password/initial-credit seed. After the configured Google account has signed in, a role-only bootstrap promotes that exact identity to `admin`; Credits remain a separate immutable Admin Credit Grant operation.
+   - Keep the existing `npm run db:seed:admin` compatibility path for internal/local E2E where required, without treating its initial balance as a domain property of the Admin role.
    - Build a dedicated `/admin` dashboard with sub-views: User Management, Credit Adjustments, AI Task Monitor, and Provider Health Check.
    - Restrict `/admin` route via server session role check (`user.role === 'admin'`).
 

@@ -6,6 +6,8 @@ Deploy HomeDesign end-to-end trên Cloudflare thay vì đặt Next.js ở Vercel
 
 **Revision 2026-08-26:** Bỏ Cloudflare Container khỏi phase đầu. Intake Validation chỉ đọc byte/header có giới hạn trong Worker; full image decode/re-encode là Canonicalization deferred theo ADR 0003. Workers Paid không còn là mặc định kiến trúc và chỉ được bật ở environment nào có production build/CPU/usage vượt Workers Free hoặc có yêu cầu vận hành đã đo được.
 
+**Revision 2026-09-07:** Thêm **Public Demo** như một environment riêng theo ADR 0008. Development/preview/staging/production vẫn giữ topology isolation hiện tại; Public Demo là ngoại lệ có chủ đích dùng account đang sở hữu zone `monet.uno` nhưng resource D1/R2/Queues/Worker tách riêng, expose qua Worker Custom Domain `homedesign.monet.uno`, không dùng `cloudflared` Tunnel làm origin.
+
 ## Runtime modules and interfaces
 
 - **App module:** Next.js/OpenNext Worker sở hữu HTTP/SSR, BetterAuth, authorization, upload intents, D1 transactions và public task/query interface. Dùng `nodejs_compat`, Node runtime của Next.js và pinned compatibility date; không dùng `export const runtime = "edge"`. Bắt đầu từ Workers Free chỉ khi production dry-run và runtime tests chứng minh compressed bundle, CPU và request usage nằm trong giới hạn; nâng Paid theo evidence thay vì mặc định.
@@ -71,6 +73,7 @@ flowchart TB
 | Development | Cloudflare Access-protected `workers.dev` | Dedicated dev account/resources | Free Grant + Mock Payment; fake provider mặc định, real provider opt-in có cap; Access-protected test-outbox |
 | PR preview | Access-protected PR-specific `workers.dev` | Ephemeral D1/R2/Queue/Worker, migrations + seed, destroy on close and 72-hour janitor | Free Grant + Mock Payment; fake provider only; real bounded-header validation; Access-protected test-outbox |
 | Staging | Access-protected `workers.dev` | Dedicated production-shaped resources and real Validation Worker/Workflow | Free Grant + Mock Payment; full fake-provider failure suite + controlled real-provider smoke; Access-protected test-outbox |
+| Public Demo | Public `homedesign.monet.uno` | Isolated `hd-demo-*` D1/R2/Queues/Worker resources in the account that owns `monet.uno` | Google-only auth; 0 Credits by default; Admin Credit Grant only; real provider required with 50 outbound submissions/day cap |
 | Production | apex/www, `cdn.<domain>`, share routes | Dedicated prod account; real user data only | Mock Payment/Free Grant/email sign-up forbidden; generation off until production Credits, email delivery and abuse policy are accepted |
 
 Static fixtures may be copied from a versioned manifest, but no environment reads another environment's private bucket, D1, Queue, secret or user export. Cloudflare version Preview URLs are not used as PR environments because they retain Worker bindings and lack the isolated data lifecycle and logs required by this topology.
@@ -87,6 +90,7 @@ Static fixtures may be copied from a versioned manifest, but no environment read
 
 - Wrangler configuration and checked-in provisioning scripts are source of truth. Bindings, vars and secrets are explicit per environment because Wrangler environments do not inherit them.
 - Commit only `secrets.required` names. Local values live in ignored `.dev.vars*`; deployed values use environment-specific secrets. BetterAuth, Google OAuth, AI provider and Cloudflare automation credentials differ by account.
+- `cloudflared login`/Tunnel credentials are not accepted as Wrangler deployment credentials. Public Demo provisioning uses `CLOUDFLARE_API_TOKEN`; each provisioning run must preflight the actual Wrangler token against the required account surfaces before creating resources.
 - CI tokens are least-privilege and account-scoped. Production tokens live only in a protected CI environment with approval; no development/preview job receives them.
 - Each PR preview provisions resources from migrations/fixtures, runs smoke tests and records resource IDs. Close cleanup plus a scheduled janitor deletes resources older than 72 hours. It never clones production data.
 
