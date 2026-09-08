@@ -445,6 +445,140 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     await expect(assertCreditInvariant(demoEnv, userId)).resolves.toBe(true);
   });
 
+  it("proves same-task retry/re-dispatch consumes one slot per actual outbound attempt and cap blocks attempt without network call", async () => {
+    const demoEnv = {
+      ...env,
+      ENVIRONMENT: "demo",
+      DEMO_DAILY_PROVIDER_LIMIT: "2", // limit = 2
+      AI_API_KEY: "sk-live-test-key",
+    } as unknown as Env;
+
+    const userId = "user-same-task-retry";
+    const assetId = "asset-same-task-retry";
+    await setupUserAndAsset(userId, assetId);
+    await recordAdminCreditAdjustment(demoEnv, userId, 20, "Testing credits", "admin-id");
+
+    const now = new Date();
+    let usage = await getDemoProviderUsage(demoEnv, now);
+    expect(usage.currentUsage).toBe(0);
+
+    // Create a non-terminal task
+    const design = await createDesign(demoEnv, userId, {
+      sourceAssetId: assetId,
+      scene: "interior",
+      intent: { mode: "redesign", roomType: "living-room", style: "modern" },
+      idempotencyKey: "retry-same-task-idem",
+    });
+    const taskId = design.id;
+    expect(await getAvailableCredits(demoEnv, userId)).toBe(19); // 1 credit held
+
+    let submitCallCount = 0;
+    let fetchOutputCallCount = 0;
+
+    // Mock provider where:
+    // - submit calls claimDemoProviderSubmission(demoEnv, now)
+    // - fetchOutput returns null (simulates provider still working, so runGeneration leaves task in non-terminal "processing")
+    const retryProvider: ProviderAdapter = {
+      name: "gemini",
+      submit: vi.fn(async (_req: ProviderRequest): Promise<ProviderSubmitResult> => {
+        const allowed = await claimDemoProviderSubmission(demoEnv, now);
+        if (!allowed) {
+          return { ok: false, error: "DEMO_DAILY_LIMIT_REACHED", retryable: false };
+        }
+        submitCallCount++;
+        return { ok: true, providerTaskId: `retry-prov-${submitCallCount}` };
+      }),
+      fetchOutput: vi.fn(async () => {
+        fetchOutputCallCount++;
+        return null; // Return null -> runGeneration stays non-terminal "processing"
+      }),
+      healthCheck: vi.fn(async () => ({
+        status: "healthy" as const,
+        latencyMs: 0,
+        models: ["fake-model"],
+        endpoint: "fake://health",
+      })),
+    };
+    registerProvider(retryProvider);
+
+    // ── First dispatch of the task ──
+    const res1 = await runGeneration(demoEnv, taskId);
+    expect(res1.status).toBe("processing");
+    expect(submitCallCount).toBe(1);
+    expect(fetchOutputCallCount).toBe(1);
+
+    // 1 slot consumed
+    usage = await getDemoProviderUsage(demoEnv, now);
+    expect(usage.currentUsage).toBe(1);
+    expect(usage.allowed).toBe(true);
+
+    // Task is still non-terminal ("processing"), hold is still active (19 credits available)
+    let taskState = await getTask(demoEnv, taskId);
+    expect(taskState?.status).toBe("processing");
+    expect(await getAvailableCredits(demoEnv, userId)).toBe(19);
+    let hold = await getActiveHoldByRef(demoEnv, "task", taskId);
+    expect(hold).not.toBeNull();
+
+    // ── Second dispatch of the SAME non-terminal task (e.g. queue retry / re-dispatch) ──
+    const res2 = await runGeneration(demoEnv, taskId);
+    expect(res2.status).toBe("processing");
+    expect(submitCallCount).toBe(2);
+    expect(fetchOutputCallCount).toBe(2);
+
+    // 2nd slot consumed, now cap is reached (2/2)
+    usage = await getDemoProviderUsage(demoEnv, now);
+    expect(usage.currentUsage).toBe(2);
+    expect(usage.allowed).toBe(false);
+
+    // Task remains non-terminal ("processing"), hold is still active
+    taskState = await getTask(demoEnv, taskId);
+    expect(taskState?.status).toBe("processing");
+    expect(await getAvailableCredits(demoEnv, userId)).toBe(19);
+    hold = await getActiveHoldByRef(demoEnv, "task", taskId);
+    expect(hold).not.toBeNull();
+
+    // ── Third dispatch of the SAME non-terminal task: Cap is reached! ──
+    // Provider submit fails closed with DEMO_DAILY_LIMIT_REACHED without making real outbound attempt
+    const res3 = await runGeneration(demoEnv, taskId);
+    expect(res3.status).toBe("failed");
+
+    // submit was called to check adapter/cap, but NO actual outbound network attempt was permitted
+    expect(submitCallCount).toBe(2); // Still 2!
+    expect(fetchOutputCallCount).toBe(2); // Still 2!
+
+    // Usage remains at cap (2), does not overshoot
+    usage = await getDemoProviderUsage(demoEnv, now);
+    expect(usage.currentUsage).toBe(2);
+
+    // Task is now terminal failed with DEMO_DAILY_LIMIT_REACHED
+    taskState = await getTask(demoEnv, taskId);
+    expect(taskState?.status).toBe("failed");
+    expect(taskState?.error_code).toBe("DEMO_DAILY_LIMIT_REACHED");
+
+    // Credit hold is released exactly once and balance is restored (19 + 1 = 20)
+    hold = await getActiveHoldByRef(demoEnv, "task", taskId);
+    expect(hold).toBeNull();
+    expect(await getAvailableCredits(demoEnv, userId)).toBe(20);
+    await expect(assertCreditInvariant(demoEnv, userId)).resolves.toBe(true);
+
+    // Explicitly verify exactly one release entry in credit_ledger for the task hold
+    const releaseEntries = await env.DB.prepare(
+      `SELECT * FROM credit_ledger WHERE user_id = ?1 AND ref_id = ?2 AND entry_type = 'release'`
+    ).bind(userId, taskId).all();
+    expect(releaseEntries.results).toHaveLength(1);
+    expect(releaseEntries.results[0]?.amount).toBe(1);
+
+    // ── Fourth dispatch: Late-safe terminal invariant ──
+    // Further re-dispatch of terminal task is a no-op skipped as TERMINAL, consumes 0 slots
+    const res4 = await runGeneration(demoEnv, taskId);
+    expect(res4.status).toBe("failed");
+    expect(res4.skipped).toBe("TERMINAL");
+    expect(submitCallCount).toBe(2);
+    usage = await getDemoProviderUsage(demoEnv, now);
+    expect(usage.currentUsage).toBe(2);
+    expect(await getAvailableCredits(demoEnv, userId)).toBe(20);
+  });
+
   it("proves pre-network failures consume zero slots and real network attempts consume atomic slots", async () => {
     const demoEnv = {
       ...env,
@@ -452,7 +586,6 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
       DEMO_DAILY_PROVIDER_LIMIT: "3", // limit = 3
       AI_API_KEY: "sk-live-test-key",
     } as unknown as Env;
-
     const now = new Date();
     let usage = await getDemoProviderUsage(demoEnv, now);
     expect(usage.currentUsage).toBe(0);

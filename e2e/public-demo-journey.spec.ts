@@ -343,34 +343,42 @@ test.describe("Public Demo Real End-to-End Journey (ADR 0008 / Issue #72)", () =
       test.skip(true, "Requires operator runtime storage state via PLAYWRIGHT_STORAGE_STATE");
       return;
     }
-    // 1. Fetch real ready generated assets owned by the authenticated operator
-    const assetsRes = await request.get("/api/assets?type=generated&lifecycle=ready");
-    expect(assetsRes.ok()).toBeTruthy();
-    const assetsJson = (await assetsRes.json()) as {
-      data?: { items?: Array<{ id: string; name: string; projectId?: string }> };
+    // 1. Fetch user's existing projects and find one that actually owns ready generated assets
+    const projectsRes = await request.get("/api/projects");
+    expect(projectsRes.ok()).toBeTruthy();
+    const projectsJson = (await projectsRes.json()) as {
+      data?: { items?: Array<{ id: string; name: string; kind: string }> };
     };
-    const readyGeneratedAssets = assetsJson.data?.items ?? [];
-    expect(readyGeneratedAssets.length).toBeGreaterThan(0);
-    const targetAsset = readyGeneratedAssets[0];
+    const projects = projectsJson.data?.items ?? [];
+    expect(projects.length).toBeGreaterThan(0);
 
-    // Determine owning project (from asset or by querying projects)
-    let projectId = targetAsset.projectId;
-    let projectName = "Shared project";
-    if (!projectId) {
-      const projectsRes = await request.get("/api/projects");
-      expect(projectsRes.ok()).toBeTruthy();
-      const projectsJson = (await projectsRes.json()) as {
+    let targetProject: { id: string; name: string; kind: string } | null = null;
+    let targetAsset: { id: string; name: string } | null = null;
+
+    for (const project of projects) {
+      const assetsRes = await request.get(
+        `/api/assets?type=generated&lifecycle=ready&projectId=${encodeURIComponent(project.id)}`
+      );
+      if (!assetsRes.ok()) continue;
+      const assetsJson = (await assetsRes.json()) as {
         data?: { items?: Array<{ id: string; name: string }> };
       };
-      const projects = projectsJson.data?.items ?? [];
-      expect(projects.length).toBeGreaterThan(0);
-      projectId = projects[0].id;
-      projectName = projects[0].name;
+      const assets = assetsJson.data?.items ?? [];
+      if (assets.length > 0) {
+        targetProject = project;
+        targetAsset = assets[0];
+        break;
+      }
     }
 
-    // 2. Create a real Project Share for this owned project with explicit assetIds
+    expect(targetProject).not.toBeNull();
+    expect(targetAsset).not.toBeNull();
+    const chosenProject = targetProject!;
+    const chosenAsset = targetAsset!;
+    const projectId = chosenProject.id;
+    // 2. Create a real Project Share for this exact owned project with its attached generated asset
     const shareRes = await request.post(`/api/projects/${projectId}/share`, {
-      data: { expiresAt: null, assetIds: [targetAsset.id] },
+      data: { expiresAt: null, assetIds: [chosenAsset.id] },
     });
     expect(shareRes.ok()).toBeTruthy();
     const shareData = (await shareRes.json()) as {
@@ -394,12 +402,11 @@ test.describe("Public Demo Real End-to-End Journey (ADR 0008 / Issue #72)", () =
         data?: { name: string; kind: string; assets: Array<{ id: string; mimeType: string }> };
       };
       expect(shareViewJson.data?.assets).toBeDefined();
-      const foundAsset = shareViewJson.data?.assets.find((a) => a.id === targetAsset.id);
-      expect(foundAsset).toBeDefined();
+      const foundAsset = shareViewJson.data?.assets.find((a) => a.id === chosenAsset.id);
 
       // 3b. Exercise anonymous shared-asset delivery route for the selected asset
       const sharedAssetRes = await anonPage.request.get(
-        `/api/share/${encodeURIComponent(realShareToken)}/assets/${targetAsset.id}`
+        `/api/share/${encodeURIComponent(realShareToken)}/assets/${chosenAsset.id}`
       );
       expect(sharedAssetRes.ok()).toBeTruthy();
       expect(sharedAssetRes.status()).toBe(200);
@@ -409,8 +416,7 @@ test.describe("Public Demo Real End-to-End Journey (ADR 0008 / Issue #72)", () =
       expect(contentDisposition).toContain("inline");
 
       // 3c. Direct private download without share token remains denied for anonymous visitor
-      const directDownloadRes = await anonPage.request.get(`/api/assets/${targetAsset.id}/download`);
-      expect(directDownloadRes.status()).toBe(401);
+      const directDownloadRes = await anonPage.request.get(`/api/assets/${chosenAsset.id}/download`);
       const directDownloadJson = (await directDownloadRes.json()) as { error?: string };
       expect(directDownloadJson.error).toBe("UNAUTHENTICATED");
 

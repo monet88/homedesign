@@ -35,7 +35,10 @@ npx wrangler whoami
 
 # 1a. Cloudflare API Token introspection preflight (non-mutating GET)
 echo "==> Preflighting Cloudflare API Token status and introspection (user/tokens/verify)"
-TOKEN_VERIFY_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/user/tokens/verify" 2>/dev/null || true)
+TOKEN_VERIFY_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/user/tokens/verify" 2>/dev/null) || {
+  echo "ERROR: Failed network request to verify Cloudflare API Token."
+  exit 1
+}
 
 if [[ "$TOKEN_VERIFY_RES" != *"\"status\":\"active\""* && "$TOKEN_VERIFY_RES" != *"\"success\":true"* ]]; then
   echo "ERROR: CLOUDFLARE_API_TOKEN verification failed or token is not active."
@@ -44,21 +47,63 @@ if [[ "$TOKEN_VERIFY_RES" != *"\"status\":\"active\""* && "$TOKEN_VERIFY_RES" !=
 fi
 echo "OK: CLOUDFLARE_API_TOKEN is valid and active."
 
-# Optional policy introspection when token has 'User: API Tokens: Read' permission
-TOKEN_ID=$(echo "$TOKEN_VERIFY_RES" | grep -o '"id":"[^"]*' | head -1 | cut -d'"' -f4 || true)
-if [[ -n "$TOKEN_ID" ]]; then
-  TOKEN_DETAILS_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/user/tokens/${TOKEN_ID}" 2>/dev/null || true)
-  if [[ "$TOKEN_DETAILS_RES" == *"\"success\":true"* ]]; then
-    echo "OK: Successfully introspected token policies via user/tokens/${TOKEN_ID}."
-  else
-    echo "NOTICE: Token details self-introspection requires 'User: API Tokens: Read' permission group."
-    echo "Proceeding with resource-level non-mutating permission checks."
-  fi
+# 1b. Authoritative Token Policy & Permission Introspection
+TOKEN_ID=$(echo "$TOKEN_VERIFY_RES" | grep -o '"id":"[^"]*' | head -1 | cut -d'"' -f4)
+if [[ -z "$TOKEN_ID" ]]; then
+  echo "ERROR: Could not parse token ID from verify response."
+  exit 1
 fi
 
-# 1b. Zone preflight: verify access to 'monet.uno' zone (non-mutating GET)
+echo "==> Introspecting token policy details via user/tokens/${TOKEN_ID}"
+TOKEN_DETAILS_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/user/tokens/${TOKEN_ID}" 2>/dev/null) || {
+  echo "ERROR: Failed network request to introspect Cloudflare API Token details."
+  exit 1
+}
+
+if [[ "$TOKEN_DETAILS_RES" != *"\"success\":true"* ]]; then
+  echo "ERROR: Authoritative token policy introspection failed (requires 'User: API Tokens: Read' permission)."
+  echo "Cannot prove required write permissions for Workers Scripts, Custom Domains, D1, R2, or Queues."
+  exit 1
+fi
+
+# Verify required write and admin permissions are present in the token's policies
+# Required groups:
+# - Workers Scripts: "Workers Scripts Write" or "Workers Scripts"
+# - Custom Domains / Routes: "Workers Routes Write" or "Workers Custom Domains Write" or "Zone:Read" + "DNS:Write" / "DNS Write"
+# - D1: "D1 Write"
+# - R2: "Workers R2 Storage Write" or "R2 Write"
+# - Queues: "Workers Queues Write" or "Queues Write"
+MISSING_PERMISSIONS=()
+
+if [[ "$TOKEN_DETAILS_RES" != *"Workers Scripts Write"* && "$TOKEN_DETAILS_RES" != *"Workers Scripts"* ]]; then
+  MISSING_PERMISSIONS+=("Workers Scripts:Write")
+fi
+
+if [[ "$TOKEN_DETAILS_RES" != *"D1 Write"* && "$TOKEN_DETAILS_RES" != *"D1"* ]]; then
+  MISSING_PERMISSIONS+=("D1:Write")
+fi
+
+if [[ "$TOKEN_DETAILS_RES" != *"R2 Storage Write"* && "$TOKEN_DETAILS_RES" != *"R2 Write"* && "$TOKEN_DETAILS_RES" != *"R2"* ]]; then
+  MISSING_PERMISSIONS+=("R2:Write")
+fi
+
+if [[ "$TOKEN_DETAILS_RES" != *"Queues Write"* && "$TOKEN_DETAILS_RES" != *"Queues"* ]]; then
+  MISSING_PERMISSIONS+=("Queues:Write")
+fi
+
+if [[ ${#MISSING_PERMISSIONS[@]} -gt 0 ]]; then
+  echo "ERROR: Token lacks required write permission groups: ${MISSING_PERMISSIONS[*]}"
+  echo "Failing closed before mutating any Cloudflare resources."
+  exit 1
+fi
+echo "OK: Authoritative token policy introspection confirmed required write permission groups."
+
+# 1c. Zone preflight: verify access and permissions for 'monet.uno' zone (non-mutating GET)
 echo "==> Preflighting Cloudflare Zone capability for 'monet.uno' (zones?name=monet.uno)"
-ZONE_QUERY_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/zones?name=monet.uno" 2>/dev/null || true)
+ZONE_QUERY_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/zones?name=monet.uno" 2>/dev/null) || {
+  echo "ERROR: Failed network request to query zone 'monet.uno'."
+  exit 1
+}
 
 if [[ "$ZONE_QUERY_RES" != *"\"name\":\"monet.uno\""* ]]; then
   echo "ERROR: Unable to access zone 'monet.uno' with provided CLOUDFLARE_API_TOKEN."
@@ -66,25 +111,6 @@ if [[ "$ZONE_QUERY_RES" != *"\"name\":\"monet.uno\""* ]]; then
   exit 1
 fi
 echo "OK: Zone 'monet.uno' is accessible."
-
-# 1c. Account and Workers Scripts / Custom Domains capability check (non-mutating GET)
-ACCOUNT_ID=$(npx wrangler whoami 2>/dev/null | grep -o '[a-f0-9]\{32\}' | head -1 || true)
-if [[ -n "$ACCOUNT_ID" ]]; then
-  echo "==> Preflighting Cloudflare Workers Scripts & Custom Domains capability on account: $ACCOUNT_ID"
-  SCRIPTS_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/workers/scripts" 2>/dev/null || true)
-  if [[ "$SCRIPTS_RES" == *"\"success\":false"* && "$SCRIPTS_RES" == *"\"code\":10000"* ]]; then
-    echo "ERROR: Token lacks Workers Scripts permission on Cloudflare account $ACCOUNT_ID."
-    exit 1
-  fi
-
-  DOMAINS_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/workers/domains" 2>/dev/null || true)
-  if [[ "$DOMAINS_RES" == *"\"success\":false"* && "$DOMAINS_RES" == *"\"code\":10000"* ]]; then
-    echo "ERROR: Token lacks Workers Custom Domains permission on Cloudflare account $ACCOUNT_ID."
-    exit 1
-  fi
-  echo "OK: Cloudflare Workers scripts and custom domains capabilities verified on account."
-fi
-
 # 1d. Core Cloudflare resource capabilities (D1, R2, Queues)
 echo "==> Preflighting Cloudflare D1 capability"
 npx wrangler d1 list > /dev/null

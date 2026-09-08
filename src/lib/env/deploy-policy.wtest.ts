@@ -344,10 +344,14 @@ describe("demo policy matrix (ADR 0008, Issue #72)", () => {
     );
     expect(customSourceUrl).toContain("https://custom-source-bucket.acct-test-456.r2.cloudflarestorage.com/quarantine/source-asset-1.png");
 
-    // 4. Caller Seam: Share Delivery (deliverShareAsset) — kept direct
+    // 4. Caller Seam: Share Delivery (deliverShareAsset) — served direct via Worker binding (ADR 0005, Issue #72)
     const now = Date.now();
     const shareAssetId = crypto.randomUUID();
     const shareProjectId = crypto.randomUUID();
+    const sampleImageBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    await env.HD_PRIVATE.put(`ready/${shareAssetId}.png`, sampleImageBytes, {
+      httpMetadata: { contentType: "image/png" },
+    });
     await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO assets (id, name, mime_type, size, lifecycle, storage_key, user_id, created_at, updated_at)
@@ -369,23 +373,31 @@ describe("demo policy matrix (ADR 0008, Issue #72)", () => {
       { assetIds: [shareAssetId] }
     );
 
+    // Both default demo and custom environments deliver bytes directly without 302 redirect or signed R2 URL
     const demoShareRes = await deliverShareAsset(
       { ...(env as unknown as Env), ENVIRONMENT: "demo", ...s3Creds },
       { token: shareToken, assetId: shareAssetId }
     );
     expect(demoShareRes).not.toBeNull();
-    expect(demoShareRes?.status).toBe(302);
-    expect(demoShareRes?.headers.get("location")).toContain("https://hd-demo-private.acct-test-456.r2.cloudflarestorage.com/ready/");
+    expect(demoShareRes?.status).toBe(200);
+    expect(demoShareRes?.headers.get("location")).toBeNull();
+    expect(demoShareRes?.headers.get("content-type")).toBe("image/png");
+    expect(demoShareRes?.headers.get("content-disposition")).toBe("inline");
+    expect(demoShareRes?.headers.get("cache-control")).toBe("private, no-store");
+    const receivedBytes = new Uint8Array(await demoShareRes!.arrayBuffer());
+    expect(receivedBytes).toEqual(sampleImageBytes);
 
     const customShareRes = await deliverShareAsset(
       { ...(env as unknown as Env), ENVIRONMENT: "demo", HD_PRIVATE_BUCKET_NAME: "custom-share-bucket", ...s3Creds },
       { token: shareToken, assetId: shareAssetId }
     );
-    expect(customShareRes?.status).toBe(302);
-    expect(customShareRes?.headers.get("location")).toContain("https://custom-share-bucket.acct-test-456.r2.cloudflarestorage.com/ready/");
+    expect(customShareRes?.status).toBe(200);
+    expect(customShareRes?.headers.get("location")).toBeNull();
+    expect(customShareRes?.headers.get("content-type")).toBe("image/png");
+    expect(customShareRes?.headers.get("content-disposition")).toBe("inline");
+    expect(customShareRes?.headers.get("cache-control")).toBe("private, no-store");
   });
 });
-
 async function applyMigrations(db: D1Database) {
   await db.batch([
     db.prepare(

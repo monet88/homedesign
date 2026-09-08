@@ -163,20 +163,21 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
     expect(script).not.toContain("password");
   });
 
-  it("implements non-mutating capability preflights for token, zone, workers scripts/domains, D1, R2, Queues before any mutation", () => {
+  it("implements authoritative non-mutating capability preflights for token policies, zone, D1, R2, Queues before any mutation", () => {
     const script = read("scripts/demo-provision.sh");
 
-    // Token self-verification and introspection
+    // Token self-verification and authoritative policy introspection
     expect(script).toContain("user/tokens/verify");
     expect(script).toContain("user/tokens/${TOKEN_ID}");
     expect(script).toContain("User: API Tokens: Read");
+    expect(script).toContain("MISSING_PERMISSIONS");
+    expect(script).toContain("Workers Scripts");
+    expect(script).toContain("D1");
+    expect(script).toContain("R2");
+    expect(script).toContain("Queues");
 
     // Zone capability check
     expect(script).toContain("zones?name=monet.uno");
-
-    // Workers Scripts and Custom Domains check
-    expect(script).toContain("workers/scripts");
-    expect(script).toContain("workers/domains");
 
     // Never masks deployment checks with || true
     expect(script).not.toMatch(/deployments list/);
@@ -248,9 +249,9 @@ describe("playwright config and public-demo harness (Issue #72)", () => {
     expect(demoJourney).toContain("creditsBefore.available - 1");
     expect(demoJourney).toContain("creditsBefore.available - 10");
     expect(demoJourney).toContain("Unauthorized Private Asset Access Denial");
-    expect(demoJourney).toContain("Intended Anonymous Project Share Access");
     expect(demoJourney).toContain("type=generated&lifecycle=ready");
-    expect(demoJourney).toContain("assetIds: [targetAsset.id]");
-    expect(demoJourney).toContain("/assets/${targetAsset.id}");
+    expect(demoJourney).toContain("projectId=${encodeURIComponent(project.id)}");
+    expect(demoJourney).toContain("assetIds: [chosenAsset.id]");
+    expect(demoJourney).toContain("/assets/${chosenAsset.id}");
   });
 });
