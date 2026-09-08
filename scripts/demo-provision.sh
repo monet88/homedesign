@@ -61,22 +61,61 @@ if [[ "$ZONE_QUERY_RES" != *"\"name\":\"monet.uno\""* ]]; then
 fi
 echo "OK: Zone 'monet.uno' is accessible."
 
-# Parse and require non-empty ZONE_ID and ACCOUNT_ID
-ZONE_ID=$(echo "$ZONE_QUERY_RES" | grep -o '"id":"[^"]*' | head -1 | cut -d'"' -f4 || true)
-if [[ -z "$ZONE_ID" ]]; then
-  echo "ERROR: Could not parse non-empty zone ID for 'monet.uno' from zone query response."
+# Parse and require non-empty ZONE_ID and zone-owning ACCOUNT_ID from zone query response
+ZONE_PARSED=$(printf "%s" "$ZONE_QUERY_RES" | node -e "
+  const fs = require('fs');
+  let res;
+  try {
+    res = JSON.parse(fs.readFileSync(0, 'utf8'));
+  } catch (e) {
+    console.error('ERROR: Failed to parse zone query JSON response.');
+    process.exit(1);
+  }
+  if (!res || !res.success || !Array.isArray(res.result)) {
+    console.error('ERROR: Invalid zone query API response structure.');
+    process.exit(1);
+  }
+  const zones = res.result.filter(z => z && z.name === 'monet.uno');
+  if (zones.length === 0) {
+    console.error('ERROR: Zone monet.uno not found in API response.');
+    process.exit(1);
+  }
+  if (zones.length > 1 || res.result.length > 1) {
+    console.error('ERROR: Ambiguous zone response: expected exactly 1 zone matching monet.uno, found ' + zones.length + ' (total ' + res.result.length + ').');
+    process.exit(1);
+  }
+  const z = zones[0];
+  const zoneId = (z.id || '').trim();
+  const accountId = (z.account && z.account.id ? z.account.id : '').trim();
+  if (!zoneId) {
+    console.error('ERROR: Missing or empty zone id in zone query response.');
+    process.exit(1);
+  }
+  if (!accountId) {
+    console.error('ERROR: Missing or empty owning account.id in zone query response.');
+    process.exit(1);
+  }
+  process.stdout.write(zoneId + ' ' + accountId);
+") || {
+  echo "ERROR: Failed to parse authoritative zone ID or owning account ID from zone 'monet.uno' response."
+  echo "Failing closed before mutating any Cloudflare resources."
+  exit 1
+}
+
+ZONE_ID=$(echo "$ZONE_PARSED" | awk '{print $1}')
+ACCOUNT_ID=$(echo "$ZONE_PARSED" | awk '{print $2}')
+
+if [[ -z "$ZONE_ID" || -z "$ACCOUNT_ID" ]]; then
+  echo "ERROR: Missing authoritative Zone ID or Account ID from zone query response."
   echo "Failing closed before mutating any Cloudflare resources."
   exit 1
 fi
 
-ACCOUNT_ID=$(npx wrangler whoami 2>/dev/null | grep -o '[a-f0-9]\{32\}' | head -1 || true)
-if [[ -z "$ACCOUNT_ID" ]]; then
-  echo "ERROR: Could not parse non-empty account ID from wrangler whoami output."
-  echo "Failing closed before mutating any Cloudflare resources."
-  exit 1
-fi
+# Pin Wrangler to the authoritative zone-owning account ID for all subsequent checks and mutations
+export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
 
-echo "OK: Verified target Account ID (${ACCOUNT_ID}) and Zone ID (${ZONE_ID})."
+echo "OK: Verified authoritative target Account ID (${ACCOUNT_ID}) and Zone ID (${ZONE_ID}) from zone 'monet.uno'."
+echo "OK: Pinned CLOUDFLARE_ACCOUNT_ID=${ACCOUNT_ID} for Wrangler operations."
 
 # 1c. Authoritative Token Policy & Permission Introspection
 TOKEN_ID=$(echo "$TOKEN_VERIFY_RES" | grep -o '"id":"[^"]*' | head -1 | cut -d'"' -f4)
@@ -142,6 +181,14 @@ if [[ ${#MISSING_SECRETS[@]} -gt 0 ]]; then
   fi
 else
   echo "OK: All required deployment secret variables are present in the environment."
+fi
+
+# 2a. Validate R2_ACCOUNT_ID matches the zone-owning account ID before any mutation
+if [[ -n "${R2_ACCOUNT_ID:-}" && "$R2_ACCOUNT_ID" != "$ACCOUNT_ID" ]]; then
+  echo "ERROR: Configured R2_ACCOUNT_ID (${R2_ACCOUNT_ID}) does not match zone-owning account ID (${ACCOUNT_ID})."
+  echo "Demo R2 S3 credentials and resources must stay in the same Cloudflare account."
+  echo "Failing closed before mutating any Cloudflare resources."
+  exit 1
 fi
 
 # 3. Dry-run early exit after build & free-first validation

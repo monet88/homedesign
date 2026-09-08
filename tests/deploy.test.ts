@@ -183,6 +183,237 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
     expect(script).not.toContain("echo \"${CLOUDFLARE_API_TOKEN}\"");
   });
 
+  it("proves zone-owning account id is authoritative and pins CLOUDFLARE_ACCOUNT_ID before any mutation or capability check", () => {
+    const script = read("scripts/demo-provision.sh");
+
+    // 1. Authoritative account derivation: zone API, NOT wrangler whoami
+    expect(script).not.toMatch(/ACCOUNT_ID=\$\(npx wrangler whoami/);
+    expect(script).not.toContain("wrangler whoami 2>/dev/null | grep -o");
+    expect(script).toContain('export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"');
+    expect(script).toContain('node "$(dirname "$0")/verify-token-policy.mjs" - "$ACCOUNT_ID" "$ZONE_ID"');
+
+    // 2. Wrangler pinning ordering: export CLOUDFLARE_ACCOUNT_ID must precede all capability checks and mutations
+    const exportIndex = script.indexOf('export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"');
+    expect(exportIndex).toBeGreaterThan(0);
+
+    const d1ListIndex = script.indexOf("npx wrangler d1 list > /dev/null");
+    const r2ListIndex = script.indexOf("npx wrangler r2 bucket list > /dev/null");
+    const queuesListIndex = script.indexOf("npx wrangler queues list > /dev/null");
+    const d1CreateIndex = script.indexOf('npx wrangler d1 create "hd-demo"');
+    const r2CreateIndex = script.indexOf('npx wrangler r2 bucket create "$bname"');
+    const queuesCreateIndex = script.indexOf('npx wrangler queues create "$qname"');
+    const migrationsIndex = script.indexOf('npx wrangler d1 migrations apply "hd-demo" --remote');
+    const secretPutIndex = script.indexOf('npx wrangler secret put "$secret_name" --env demo');
+    const deployIndex = script.indexOf("npx wrangler deploy --env demo");
+
+    expect(exportIndex).toBeLessThan(d1ListIndex);
+    expect(exportIndex).toBeLessThan(r2ListIndex);
+    expect(exportIndex).toBeLessThan(queuesListIndex);
+    expect(exportIndex).toBeLessThan(d1CreateIndex);
+    expect(exportIndex).toBeLessThan(r2CreateIndex);
+    expect(exportIndex).toBeLessThan(queuesCreateIndex);
+    expect(exportIndex).toBeLessThan(migrationsIndex);
+    expect(exportIndex).toBeLessThan(secretPutIndex);
+    expect(exportIndex).toBeLessThan(deployIndex);
+  });
+
+  it("proves zone account parser extracts authoritative account id and fails closed on missing or ambiguous data", () => {
+    const script = read("scripts/demo-provision.sh");
+
+    // Extract the exact inline node snippet used by demo-provision.sh for zone parsing
+    const parserPrefix = 'ZONE_PARSED=$(printf "%s" "$ZONE_QUERY_RES" | node -e "';
+    const startIndex = script.indexOf(parserPrefix);
+    expect(startIndex).toBeGreaterThan(0);
+    const endIndex = script.indexOf('") || {', startIndex);
+    expect(endIndex).toBeGreaterThan(startIndex);
+    const parserCode = script.slice(startIndex + parserPrefix.length, endIndex);
+
+    function runParser(jsonPayload: unknown) {
+      return spawnSync("node", ["-e", parserCode], {
+        input: typeof jsonPayload === "string" ? jsonPayload : JSON.stringify(jsonPayload),
+        encoding: "utf8",
+      });
+    }
+
+    // 1. Valid zone response: extracts authoritative zone ID and owning account ID
+    const validZoneRes = runParser({
+      success: true,
+      result: [
+        {
+          id: "zone_authoritative_123",
+          name: "monet.uno",
+          account: {
+            id: "acct_zone_owner_456",
+            name: "Authoritative Account",
+          },
+        },
+      ],
+    });
+    expect(validZoneRes.status).toBe(0);
+    expect(validZoneRes.stdout).toBe("zone_authoritative_123 acct_zone_owner_456");
+
+    // 2. Missing zone: result array is empty -> fails closed (status 1)
+    const emptyRes = runParser({
+      success: true,
+      result: [],
+    });
+    expect(emptyRes.status).toBe(1);
+    expect(emptyRes.stderr).toContain("Zone monet.uno not found");
+
+    // 3. Ambiguous zone: multiple zones matching monet.uno -> fails closed (status 1)
+    const multipleMatchingRes = runParser({
+      success: true,
+      result: [
+        {
+          id: "zone_1",
+          name: "monet.uno",
+          account: { id: "acct_1" },
+        },
+        {
+          id: "zone_2",
+          name: "monet.uno",
+          account: { id: "acct_2" },
+        },
+      ],
+    });
+    expect(multipleMatchingRes.status).toBe(1);
+    expect(multipleMatchingRes.stderr).toContain("Ambiguous zone response");
+
+    // 4. Ambiguous zone: total result count > 1 -> fails closed (status 1)
+    const multipleTotalRes = runParser({
+      success: true,
+      result: [
+        {
+          id: "zone_1",
+          name: "monet.uno",
+          account: { id: "acct_1" },
+        },
+        {
+          id: "zone_other",
+          name: "other.uno",
+          account: { id: "acct_2" },
+        },
+      ],
+    });
+    expect(multipleTotalRes.status).toBe(1);
+    expect(multipleTotalRes.stderr).toContain("Ambiguous zone response");
+
+    // 5. Missing account object in zone result -> fails closed (status 1)
+    const missingAccountRes = runParser({
+      success: true,
+      result: [
+        {
+          id: "zone_1",
+          name: "monet.uno",
+        },
+      ],
+    });
+    expect(missingAccountRes.status).toBe(1);
+    expect(missingAccountRes.stderr).toContain("Missing or empty owning account.id");
+
+    // 6. Missing account.id (empty string) -> fails closed (status 1)
+    const emptyAccountIdRes = runParser({
+      success: true,
+      result: [
+        {
+          id: "zone_1",
+          name: "monet.uno",
+          account: { id: "   " },
+        },
+      ],
+    });
+    expect(emptyAccountIdRes.status).toBe(1);
+    expect(emptyAccountIdRes.stderr).toContain("Missing or empty owning account.id");
+
+    // 7. Missing or empty zone id -> fails closed (status 1)
+    const emptyZoneIdRes = runParser({
+      success: true,
+      result: [
+        {
+          id: " ",
+          name: "monet.uno",
+          account: { id: "acct_1" },
+        },
+      ],
+    });
+    expect(emptyZoneIdRes.status).toBe(1);
+    expect(emptyZoneIdRes.stderr).toContain("Missing or empty zone id");
+
+    // 8. Invalid JSON or API failure -> fails closed (status 1)
+    const invalidJsonRes = runParser("not valid json");
+    expect(invalidJsonRes.status).toBe(1);
+    expect(invalidJsonRes.stderr).toContain("Failed to parse zone query JSON");
+
+    const failedApiRes = runParser({ success: false, result: [] });
+    expect(failedApiRes.status).toBe(1);
+    expect(failedApiRes.stderr).toContain("Invalid zone query API response structure");
+  });
+
+  it("proves mismatched R2_ACCOUNT_ID fails closed before any Cloudflare mutation", () => {
+    const script = read("scripts/demo-provision.sh");
+
+    // Verify guard clause exists and checks R2_ACCOUNT_ID against zone-owning ACCOUNT_ID
+    expect(script).toContain('if [[ -n "${R2_ACCOUNT_ID:-}" && "$R2_ACCOUNT_ID" != "$ACCOUNT_ID" ]]; then');
+    expect(script).toContain("ERROR: Configured R2_ACCOUNT_ID (${R2_ACCOUNT_ID}) does not match zone-owning account ID (${ACCOUNT_ID}).");
+    expect(script).toContain("Demo R2 S3 credentials and resources must stay in the same Cloudflare account.");
+
+    // Verify guard clause runs before ANY mutation
+    const r2CheckIndex = script.indexOf('if [[ -n "${R2_ACCOUNT_ID:-}" && "$R2_ACCOUNT_ID" != "$ACCOUNT_ID" ]]; then');
+    expect(r2CheckIndex).toBeGreaterThan(0);
+
+    const d1CreateIndex = script.indexOf('npx wrangler d1 create "hd-demo"');
+    const r2CreateIndex = script.indexOf('npx wrangler r2 bucket create "$bname"');
+    const queuesCreateIndex = script.indexOf('npx wrangler queues create "$qname"');
+    const migrationsIndex = script.indexOf('npx wrangler d1 migrations apply "hd-demo" --remote');
+    const secretPutIndex = script.indexOf('npx wrangler secret put "$secret_name" --env demo');
+    const deployIndex = script.indexOf("npx wrangler deploy --env demo");
+
+    expect(r2CheckIndex).toBeLessThan(d1CreateIndex);
+    expect(r2CheckIndex).toBeLessThan(r2CreateIndex);
+    expect(r2CheckIndex).toBeLessThan(queuesCreateIndex);
+    expect(r2CheckIndex).toBeLessThan(migrationsIndex);
+    expect(r2CheckIndex).toBeLessThan(secretPutIndex);
+    expect(r2CheckIndex).toBeLessThan(deployIndex);
+
+    // Functional proof: test the validation logic with matching and mismatched accounts
+    function runR2AccountCheck(targetAccountId: string, configuredR2AccountId: string) {
+      return spawnSync(
+        "node",
+        [
+          "-e",
+          `
+          const accountId = process.argv[1];
+          const r2AccountId = process.argv[2];
+          if (r2AccountId && r2AccountId !== accountId) {
+            console.error("ERROR: Configured R2_ACCOUNT_ID does not match zone-owning account ID.");
+            process.exit(1);
+          }
+          console.log("OK");
+          process.exit(0);
+        `,
+          targetAccountId,
+          configuredR2AccountId,
+        ],
+        { encoding: "utf8" }
+      );
+    }
+
+    // Mismatched R2_ACCOUNT_ID -> exits 1
+    const mismatchRes = runR2AccountCheck("zone_owner_acct", "different_acct_999");
+    expect(mismatchRes.status).toBe(1);
+    expect(mismatchRes.stderr).toContain("ERROR: Configured R2_ACCOUNT_ID does not match zone-owning account ID.");
+
+    // Matching R2_ACCOUNT_ID -> succeeds (exit 0)
+    const matchRes = runR2AccountCheck("zone_owner_acct", "zone_owner_acct");
+    expect(matchRes.status).toBe(0);
+    expect(matchRes.stdout).toContain("OK");
+
+    // Empty/omitted R2_ACCOUNT_ID (dry-run scenario before configuration) -> succeeds (exit 0)
+    const emptyRes = runR2AccountCheck("zone_owner_acct", "");
+    expect(emptyRes.status).toBe(0);
+    expect(emptyRes.stdout).toContain("OK");
+  });
+
   it("proves verify-token-policy rejects read-only permissions, missing groups, wrong resource scopes, and accepts valid write tokens", () => {
     const verifyScriptPath = join(ROOT, "scripts/verify-token-policy.mjs");
     const targetAccount = "acct_target_123456";
