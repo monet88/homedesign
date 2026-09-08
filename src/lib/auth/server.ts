@@ -219,6 +219,9 @@ export type AppAuth = ReturnType<typeof createAuth>;
 /** Auth HTTP entry with production sign-up gate (ADR 0006 / ticket #18). */
 export async function handleAuthRequest(env: AuthEnv, request: Request): Promise<Response> {
   const url = new URL(request.url);
+  if (url.pathname.endsWith("/sign-in") && request.method === "GET") {
+    return Response.redirect(new URL("/sign-in", url.origin), 302);
+  }
   if (url.pathname.endsWith("/sign-up/email") && request.method === "POST") {
     try {
       assertEmailSignUpAllowed(env);

@@ -240,7 +240,7 @@ function ProjectsPage() {
     return (
       <main className="mx-auto max-w-6xl px-4 py-16 text-center sm:px-6 lg:px-8">
         <h1 className="text-2xl font-semibold text-ink">Sign in to view your projects</h1>
-        <Link href="/api/auth/sign-in" className="mt-4 inline-block rounded-pill bg-ink px-6 py-2 text-paper">
+        <Link href="/sign-in" className="mt-4 inline-block rounded-pill bg-ink px-6 py-2 text-paper">
           Sign In
         </Link>
       </main>

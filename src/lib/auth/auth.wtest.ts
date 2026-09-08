@@ -8,6 +8,7 @@ import { env } from "cloudflare:test";
 import { describe, expect, it, beforeEach } from "vitest";
 import {
   createAuth,
+  handleAuthRequest,
   requireVerifiedUser,
   deliverVerificationEmail,
   listOutbox,
@@ -45,6 +46,15 @@ describe("better-auth D1 adapter (ADR 0001)", () => {
     expect(auth).toBeDefined();
     expect(typeof auth.handler).toBe("function");
     expect(typeof auth.api.getSession).toBe("function");
+  });
+});
+
+describe("sign-in entry route", () => {
+  it("redirects legacy GET /api/auth/sign-in to the real sign-in page", async () => {
+    const res = await handleAuthRequest(testEnv(), new Request("http://localhost:3000/api/auth/sign-in"));
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("http://localhost:3000/sign-in");
   });
 });
 

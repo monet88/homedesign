@@ -32,10 +32,12 @@ describe("wrangler environment isolation (ADR 0006)", () => {
     expect(wrangler).toMatch(/"database_name":\s*"hd-demo"/);
   });
 
-  it("remote environments use provisioned placeholders, not shared local id", () => {
-    for (const marker of ["__PROVISIONED_DEV__", "__PROVISIONED_STAGING__", "__PROVISIONED_PROD__", "__PROVISIONED_DEMO__"]) {
+  it("remote environments avoid the shared local id and demo records its provisioned D1 id", () => {
+    for (const marker of ["__PROVISIONED_DEV__", "__PROVISIONED_STAGING__", "__PROVISIONED_PROD__"]) {
       expect(wrangler).toContain(marker);
     }
+    expect(wrangler).not.toContain("__PROVISIONED_DEMO__");
+    expect(wrangler).toMatch(/"database_name":\s*"hd-demo"[\s\S]*?"database_id":\s*"[0-9a-f-]{36}"/);
     const remoteSection = wrangler.split('"env"')[1] ?? "";
     expect(remoteSection).not.toContain('"database_id": "local"');
   });
@@ -166,6 +168,8 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
     expect(script).toContain("npm run gate:free-first");
     expect(script).toContain("npx wrangler secret put");
     expect(script).not.toMatch(/r2 bucket cors set .* \|\| true/);
+    expect(script).toContain('"rules": [');
+    expect(script).toContain('"allowed": {');
     expect(script).toContain("DEPLOYMENT_OK");
     expect(script).not.toContain("password");
   });
@@ -208,7 +212,7 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
     const d1CreateIndex = script.indexOf('npx wrangler d1 create "hd-demo"');
     const r2CreateIndex = script.indexOf('npx wrangler r2 bucket create "$bname"');
     const queuesCreateIndex = script.indexOf('npx wrangler queues create "$qname"');
-    const migrationsIndex = script.indexOf('npx wrangler d1 migrations apply "hd-demo" --remote');
+    const migrationsIndex = script.indexOf('npx wrangler d1 migrations apply "hd-demo" --remote --env demo');
     const secretPutIndex = script.indexOf('npx wrangler secret put "$secret_name" --env demo');
     const deployIndex = script.indexOf("npx wrangler deploy --env demo");
 
@@ -370,7 +374,7 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
     const d1CreateIndex = script.indexOf('npx wrangler d1 create "hd-demo"');
     const r2CreateIndex = script.indexOf('npx wrangler r2 bucket create "$bname"');
     const queuesCreateIndex = script.indexOf('npx wrangler queues create "$qname"');
-    const migrationsIndex = script.indexOf('npx wrangler d1 migrations apply "hd-demo" --remote');
+    const migrationsIndex = script.indexOf('npx wrangler d1 migrations apply "hd-demo" --remote --env demo');
     const secretPutIndex = script.indexOf('npx wrangler secret put "$secret_name" --env demo');
     const deployIndex = script.indexOf("npx wrangler deploy --env demo");
 

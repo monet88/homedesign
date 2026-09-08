@@ -34,7 +34,7 @@ export default function AdminUnauthorized({ status }: { status: 401 | 403 }) {
         </p>
         <div className="mt-6 flex flex-col gap-2.5">
           <Link
-            href="/api/auth/sign-in"
+            href="/sign-in"
             className="w-full rounded-pill bg-brand-forest px-4 py-2.5 text-sm font-semibold text-paper transition-opacity hover:opacity-90 shadow-sm"
           >
             Sign In as Administrator

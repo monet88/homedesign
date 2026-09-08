@@ -306,15 +306,19 @@ done
 echo "==> Configuring CORS on hd-demo-private for https://homedesign.monet.uno"
 CORS_FILE="$(mktemp)"
 cat > "$CORS_FILE" <<'EOF'
-[
-  {
-    "AllowedOrigins": ["https://homedesign.monet.uno"],
-    "AllowedMethods": ["GET", "PUT", "HEAD"],
-    "AllowedHeaders": ["*"],
-    "ExposeHeaders": ["ETag"],
-    "MaxAgeSeconds": 3600
-  }
-]
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": ["https://homedesign.monet.uno"],
+        "methods": ["GET", "PUT", "HEAD"],
+        "headers": ["*"]
+      },
+      "exposeHeaders": ["ETag"],
+      "maxAgeSeconds": 3600
+    }
+  ]
+}
 EOF
 npx wrangler r2 bucket cors set "hd-demo-private" --file "$CORS_FILE"
 rm -f "$CORS_FILE"
@@ -331,7 +335,7 @@ for qname in "hd-demo-asset-validate" "hd-demo-asset-validate-dlq" "hd-demo-prov
 done
 
 echo "==> 6/9: Applying D1 migrations remotely to hd-demo"
-npx wrangler d1 migrations apply "hd-demo" --remote
+npx wrangler d1 migrations apply "hd-demo" --remote --env demo
 
 echo "==> 7/9: Building Worker & verifying free-first gate"
 npm run build:worker

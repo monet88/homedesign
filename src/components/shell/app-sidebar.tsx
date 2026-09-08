@@ -208,7 +208,7 @@ export function AppSidebar() {
                 Unlock more features!
               </p>
               <Link
-                href="/api/auth/sign-in"
+                href="/sign-in"
                 className="flex h-7 w-full items-center justify-center rounded-lg bg-brand-primary text-xs font-semibold text-white transition-all hover:bg-brand-accent shadow-xs"
               >
                 Claim Free Credits
@@ -262,7 +262,7 @@ export function AppSidebar() {
                 </button>
               ) : (
                 <Link
-                  href="/api/auth/sign-in"
+                  href="/sign-in"
                   className="flex h-9 items-center gap-3 rounded-lg px-2.5 text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 >
                   <IconUser className="size-4 shrink-0" />

@@ -308,7 +308,7 @@
         {
           "binding": "DB",
           "database_name": "hd-demo",
-          "database_id": "__PROVISIONED_DEMO__",
+          "database_id": "8ea20f96-135b-4fce-8c8b-a5829a945e12",
           "migrations_dir": "migrations"
         }
       ],

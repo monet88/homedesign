@@ -129,7 +129,7 @@ export function Header() {
             ) : (
               <div className="flex items-center gap-2">
                 <Link
-                  href="/api/auth/sign-in"
+                  href="/sign-in"
                   className="rounded-full border border-foreground/15 bg-background/60 px-4 py-1.5 text-sm font-medium text-foreground transition-all hover:bg-background hover:shadow-xs"
                 >
                   Sign In
@@ -210,7 +210,7 @@ export function Header() {
               ) : (
                 <div className="flex flex-col gap-2 pt-1">
                   <Link
-                    href="/api/auth/sign-in"
+                    href="/sign-in"
                     className="rounded-lg border border-border py-2 text-center text-sm font-semibold text-foreground"
                     onClick={() => setMobileMenuOpen(false)}
                   >
