@@ -1,7 +1,8 @@
 // Deploy topology + workflow structure tests (ticket #18).
-import { readFileSync, readdirSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -745,16 +746,34 @@ describe("demo admin bootstrap CLI (ADR 0008, Issue #72)", () => {
   });
 
   it("fails closed with exit code 1 when Google user has not yet signed in", () => {
-    const res = spawnSync("node", ["scripts/seed-admin.mjs", "--demo", "--local"], {
-      cwd: ROOT,
-      env: {
-        ...process.env,
-        ADMIN_EMAIL: "completely-nonexistent-user@example.com",
-      },
-      encoding: "utf8",
-    });
-    expect(res.status).toBe(1);
-    expect(res.stderr).toContain("Admin must sign in with Google first");
+    // Keep this CLI test hermetic: seed-admin shells out to `npx wrangler d1 execute`.
+    // A clean CI runner has no local Wrangler D1 state, so inject an `npx` shim that
+    // returns a valid empty D1 result instead of depending on developer-machine state.
+    const shimDir = mkdtempSync(join(tmpdir(), "homedesign-seed-admin-"));
+    const shimName = process.platform === "win32" ? "npx.cmd" : "npx";
+    const shimPath = join(shimDir, shimName);
+    if (process.platform === "win32") {
+      writeFileSync(shimPath, '@echo off\r\necho [{"results":[]}]\r\n', "utf8");
+    } else {
+      writeFileSync(shimPath, '#!/usr/bin/env sh\nprintf \'%s\\n\' \'[{"results":[]}]\'\n', "utf8");
+      chmodSync(shimPath, 0o755);
+    }
+
+    try {
+      const res = spawnSync("node", ["scripts/seed-admin.mjs", "--demo", "--local"], {
+        cwd: ROOT,
+        env: {
+          ...process.env,
+          ADMIN_EMAIL: "completely-nonexistent-user@example.com",
+          PATH: `${shimDir}${delimiter}${process.env.PATH ?? ""}`,
+        },
+        encoding: "utf8",
+      });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("Admin must sign in with Google first");
+    } finally {
+      rmSync(shimDir, { recursive: true, force: true });
+    }
   });
 });
 
