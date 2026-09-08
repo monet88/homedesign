@@ -402,6 +402,59 @@ describe("GeminiFlashImageAdapter Adapter Lifecycle", () => {
     expect(output!.contentType).toBe("image/png");
     expect(Array.from(output!.bytes.slice(0, 8))).toEqual(Array.from(MAGIC.PNG));
   });
+
+  it("claims outbound attempt immediately before fetch and skips fetch if cap is reached", async () => {
+    const mockFetch = vi.fn();
+    const claimFn = vi.fn().mockResolvedValue(false); // cap reached
+
+    const adapter = new GeminiFlashImageAdapter({
+      apiKey: "sk-live-key",
+      fetchFn: mockFetch as unknown as typeof fetch,
+      claimOutboundAttempt: claimFn,
+    });
+
+    const res = await adapter.submit(REQ);
+    expect(res).toEqual({
+      ok: false,
+      error: "DEMO_DAILY_LIMIT_REACHED",
+      retryable: false,
+    });
+    expect(claimFn).toHaveBeenCalledTimes(1);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("pre-network failures (missing key, failure marker) consume zero outbound attempt claims", async () => {
+    const mockFetch = vi.fn();
+    const claimFn = vi.fn().mockResolvedValue(true);
+
+    // 1. Missing API key
+    const noKeyAdapter = new GeminiFlashImageAdapter({
+      apiKey: "",
+      fetchFn: mockFetch as unknown as typeof fetch,
+      claimOutboundAttempt: claimFn,
+    });
+    const resNoKey = await noKeyAdapter.submit(REQ);
+    expect(resNoKey.ok).toBe(false);
+    if (!resNoKey.ok) {
+      expect(resNoKey.error).toBe("PROVIDER_NOT_CONFIGURED");
+    }
+    expect(claimFn).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+
+    // 2. Failure marker in prompt
+    const markerAdapter = new GeminiFlashImageAdapter({
+      apiKey: "sk-live-key",
+      fetchFn: mockFetch as unknown as typeof fetch,
+      claimOutboundAttempt: claimFn,
+    });
+    const resMarker = await markerAdapter.submit({ ...REQ, prompt: "test FAIL:TEST_FAIL" });
+    expect(resMarker.ok).toBe(false);
+    if (!resMarker.ok) {
+      expect(resMarker.error).toBe("TEST_FAIL");
+    }
+    expect(claimFn).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
 });
 
 describe("Provider Registry with GeminiFlashImageAdapter", () => {

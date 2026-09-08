@@ -30,10 +30,62 @@ if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
   exit 1
 fi
 
-echo "==> 1/9: Verifying Wrangler authentication & capabilities via whoami, D1, R2, Queues"
+echo "==> 1/9: Verifying Wrangler deploy token & capabilities (ADR 0008, Issue #72)"
 npx wrangler whoami
 
-# Preflight check for core Cloudflare capabilities
+# 1a. Cloudflare API Token introspection preflight (non-mutating GET)
+echo "==> Preflighting Cloudflare API Token status and introspection (user/tokens/verify)"
+TOKEN_VERIFY_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/user/tokens/verify" 2>/dev/null || true)
+
+if [[ "$TOKEN_VERIFY_RES" != *"\"status\":\"active\""* && "$TOKEN_VERIFY_RES" != *"\"success\":true"* ]]; then
+  echo "ERROR: CLOUDFLARE_API_TOKEN verification failed or token is not active."
+  echo "Endpoint: https://api.cloudflare.com/client/v4/user/tokens/verify"
+  exit 1
+fi
+echo "OK: CLOUDFLARE_API_TOKEN is valid and active."
+
+# Optional policy introspection when token has 'User: API Tokens: Read' permission
+TOKEN_ID=$(echo "$TOKEN_VERIFY_RES" | grep -o '"id":"[^"]*' | head -1 | cut -d'"' -f4 || true)
+if [[ -n "$TOKEN_ID" ]]; then
+  TOKEN_DETAILS_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/user/tokens/${TOKEN_ID}" 2>/dev/null || true)
+  if [[ "$TOKEN_DETAILS_RES" == *"\"success\":true"* ]]; then
+    echo "OK: Successfully introspected token policies via user/tokens/${TOKEN_ID}."
+  else
+    echo "NOTICE: Token details self-introspection requires 'User: API Tokens: Read' permission group."
+    echo "Proceeding with resource-level non-mutating permission checks."
+  fi
+fi
+
+# 1b. Zone preflight: verify access to 'monet.uno' zone (non-mutating GET)
+echo "==> Preflighting Cloudflare Zone capability for 'monet.uno' (zones?name=monet.uno)"
+ZONE_QUERY_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/zones?name=monet.uno" 2>/dev/null || true)
+
+if [[ "$ZONE_QUERY_RES" != *"\"name\":\"monet.uno\""* ]]; then
+  echo "ERROR: Unable to access zone 'monet.uno' with provided CLOUDFLARE_API_TOKEN."
+  echo "The token must have Zone:Read or DNS:Write permissions on the 'monet.uno' zone to attach the Custom Domain."
+  exit 1
+fi
+echo "OK: Zone 'monet.uno' is accessible."
+
+# 1c. Account and Workers Scripts / Custom Domains capability check (non-mutating GET)
+ACCOUNT_ID=$(npx wrangler whoami 2>/dev/null | grep -o '[a-f0-9]\{32\}' | head -1 || true)
+if [[ -n "$ACCOUNT_ID" ]]; then
+  echo "==> Preflighting Cloudflare Workers Scripts & Custom Domains capability on account: $ACCOUNT_ID"
+  SCRIPTS_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/workers/scripts" 2>/dev/null || true)
+  if [[ "$SCRIPTS_RES" == *"\"success\":false"* && "$SCRIPTS_RES" == *"\"code\":10000"* ]]; then
+    echo "ERROR: Token lacks Workers Scripts permission on Cloudflare account $ACCOUNT_ID."
+    exit 1
+  fi
+
+  DOMAINS_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/workers/domains" 2>/dev/null || true)
+  if [[ "$DOMAINS_RES" == *"\"success\":false"* && "$DOMAINS_RES" == *"\"code\":10000"* ]]; then
+    echo "ERROR: Token lacks Workers Custom Domains permission on Cloudflare account $ACCOUNT_ID."
+    exit 1
+  fi
+  echo "OK: Cloudflare Workers scripts and custom domains capabilities verified on account."
+fi
+
+# 1d. Core Cloudflare resource capabilities (D1, R2, Queues)
 echo "==> Preflighting Cloudflare D1 capability"
 npx wrangler d1 list > /dev/null
 
@@ -42,18 +94,6 @@ npx wrangler r2 bucket list > /dev/null
 
 echo "==> Preflighting Cloudflare Queues capability"
 npx wrangler queues list > /dev/null
-
-# Zone / Custom Domain capability limitation (ADR 0008 / Issue #72):
-# There is NO non-mutating Wrangler command that proves the token may attach a
-# Custom Domain to the `monet.uno` zone before deployment. `wrangler deployments
-# list` only succeeds once a Worker already exists — it is NOT a capability probe
-# and must not be masked as one. The earliest live operation that exercises this
-# permission is the actual Worker deploy + Custom Domain attach
-# (`wrangler deploy --env demo`), which runs under `set -euo pipefail` and
-# FAILS CLOSED if the token lacks workers:write or zone/custom-domain
-# permission. `wrangler deploy --dry-run` does NOT validate this permission,
-# so a passing dry-run is not evidence of zone/custom-domain access.
-
 # 2. Check required deployment secrets hooks (without printing or exposing secret values)
 echo "==> 2/9: Verifying deployment secrets presence (hooks check)"
 REQUIRED_SECRETS=(
@@ -105,7 +145,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
   echo "[DRY RUN] Remote migrations apply simulated."
 
   echo "==> 8/9: [DRY RUN] Simulating demo admin role-only bootstrap (minhthang421992@gmail.com)"
-  echo "[DRY RUN] Role-only admin bootstrap command simulated: node scripts/seed-admin.mjs --demo"
+  echo "[DRY RUN] Role-only admin bootstrap command simulated: node scripts/seed-admin.mjs --demo --remote"
 
   echo "==> 9/9: [DRY RUN] Simulating Worker deployment & Custom Domain attachment"
   echo "[DRY RUN] wrangler deploy --dry-run --env demo (config/bundle check only)."
@@ -252,5 +292,5 @@ echo " R2 Buckets    : hd-demo-private, hd-demo-public, hd-demo-next-cache"
 echo " Queues        : hd-demo-asset-validate, hd-demo-asset-validate-dlq, hd-demo-provider-notify"
 echo " Admin User    : minhthang421992@gmail.com"
 echo " Note          : To bootstrap admin role without credits after first Google login, run:"
-echo "                 node scripts/seed-admin.mjs --demo"
+echo "                 node scripts/seed-admin.mjs --demo --remote"
 echo "================================================================="

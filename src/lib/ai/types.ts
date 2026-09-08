@@ -282,6 +282,8 @@ export type DesignErrorCode =
   | "INSUFFICIENT_CREDITS"
   | "GENERATION_DISABLED"
   | "DEMO_DAILY_LIMIT_REACHED"
+  | "PROVIDER_NOT_ALLOWED"
+  | "PROVIDER_NOT_CONFIGURED"
   | "SCENE_NOT_IMPLEMENTED"
   | "TASK_NOT_FOUND";
 export class DesignError extends Error {

@@ -24,8 +24,10 @@ import {
   registerProvider,
   resetProviders,
   type ProviderAdapter,
+  getProvider,
 } from "@/lib/ai/provider-adapter";
-import type { ProviderRequest, ProviderSubmitResult } from "@/lib/ai/types";
+import { GeminiFlashImageAdapter } from "@/lib/ai/gemini-adapter";
+import { DesignError, type ProviderRequest, type ProviderSubmitResult } from "@/lib/ai/types";
 import {
   createFloorPlanProject,
   placeRoomMarker,
@@ -292,6 +294,7 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
       ...env,
       ENVIRONMENT: "demo",
       DEMO_DAILY_PROVIDER_LIMIT: "50",
+      AI_API_KEY: "sk-live-test-key",
     } as unknown as Env;
 
     const userId = "user-cap-test";
@@ -317,8 +320,12 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     // Spy on provider.submit to count actual network calls
     let submitCallCount = 0;
     const mockProvider: ProviderAdapter = {
-      name: "fake",
+      name: "gemini",
       submit: vi.fn(async (_req: ProviderRequest): Promise<ProviderSubmitResult> => {
+        const allowed = await claimDemoProviderSubmission(demoEnv, now);
+        if (!allowed) {
+          return { ok: false, error: "DEMO_DAILY_LIMIT_REACHED", retryable: false };
+        }
         submitCallCount++;
         return { ok: true, providerTaskId: `p-${submitCallCount}` };
       }),
@@ -385,13 +392,13 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
       ...env,
       ENVIRONMENT: "demo",
       DEMO_DAILY_PROVIDER_LIMIT: "1", // limit = 1
+      AI_API_KEY: "sk-live-test-key",
     } as unknown as Env;
 
     const userId = "user-fp-test";
     const assetId = "asset-fp-test";
     await setupUserAndAsset(userId, assetId);
     await recordAdminCreditAdjustment(demoEnv, userId, 50, "FP credits", "admin-id");
-
     const now = new Date();
     const today = getBangkokDateString(now);
 
@@ -438,104 +445,169 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     await expect(assertCreditInvariant(demoEnv, userId)).resolves.toBe(true);
   });
 
-  it("proves each outbound submit retry attempt of the same accepted task consumes a separate slot towards daily cap", async () => {
+  it("proves pre-network failures consume zero slots and real network attempts consume atomic slots", async () => {
     const demoEnv = {
       ...env,
       ENVIRONMENT: "demo",
       DEMO_DAILY_PROVIDER_LIMIT: "3", // limit = 3
+      AI_API_KEY: "sk-live-test-key",
     } as unknown as Env;
 
-    const userId = "user-retry-test";
-    const assetId = "asset-retry-test";
-    await setupUserAndAsset(userId, assetId);
-    await recordAdminCreditAdjustment(demoEnv, userId, 10, "Testing credits", "admin-id");
-
     const now = new Date();
-    // Initial usage is 0
     let usage = await getDemoProviderUsage(demoEnv, now);
     expect(usage.currentUsage).toBe(0);
 
-    let submitAttempts = 0;
-    const mockProvider: ProviderAdapter = {
-      name: "fake",
-      submit: vi.fn(async (): Promise<ProviderSubmitResult> => {
-        submitAttempts++;
-        if (submitAttempts === 1) {
-          // First attempt returns transient provider error (remains accepted for retry)
-          return { ok: false, error: "PROVIDER_TRANSIENT_ERROR" };
-        }
-        if (submitAttempts === 2) {
-          // Second attempt also fails transiently on the same task
-          return { ok: false, error: "PROVIDER_RATE_LIMITED" };
-        }
-        // Third attempt succeeds
-        return { ok: true, providerTaskId: `retry-task-${submitAttempts}` };
-      }),
-      fetchOutput: vi.fn(async () => null),
-      healthCheck: vi.fn(async () => ({
-        status: "healthy" as const,
-        latencyMs: 0,
-        models: ["fake-model"],
-        endpoint: "fake://health",
-      })),
-    };
-    registerProvider(mockProvider);
-
-    // Create ONE accepted task
-    const design1 = await createDesign(demoEnv, userId, {
-      sourceAssetId: assetId,
-      scene: "interior",
-      intent: { mode: "redesign", roomType: "living-room", style: "modern" },
-      idempotencyKey: "retry-idem-1",
+    const mockFetch = vi.fn().mockImplementation(async () => {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" } }],
+      }), { status: 200, headers: { "content-type": "application/json" } });
     });
 
-    const initialTask = await getTask(demoEnv, design1.id);
-    expect(initialTask?.status).toBe("accepted");
+    const adapter = new GeminiFlashImageAdapter({
+      apiKey: "sk-live-test-key",
+      fetchFn: mockFetch as unknown as typeof fetch,
+      claimOutboundAttempt: () => claimDemoProviderSubmission(demoEnv, now),
+    });
 
-    // 1. First execution attempt of the task: consumes slot 1
-    const res1 = await runGeneration(demoEnv, design1.id);
-    expect(res1.status).toBe("failed");
-    expect(submitAttempts).toBe(1);
+    const req: ProviderRequest = {
+      taskId: "test-task-seam",
+      scene: "image-to-image",
+      prompt: "modern living room",
+      mediaType: "image",
+      provider: "gemini",
+      model: "gemini-3.1-flash-image",
+      options: {},
+    };
 
+    // 1. Pre-network failure: failure marker in prompt
+    const failMarkerReq = { ...req, prompt: "modern living room FAIL:SIMULATED_PRE_NETWORK" };
+    const failMarkerRes = await adapter.submit(failMarkerReq);
+    expect(failMarkerRes.ok).toBe(false);
+    expect(mockFetch).not.toHaveBeenCalled();
+    usage = await getDemoProviderUsage(demoEnv, now);
+    expect(usage.currentUsage).toBe(0); // Zero slots consumed!
+
+    // 2. First real outbound network attempt: consumes slot 1
+    const attempt1 = await adapter.submit(req);
+    expect(attempt1.ok).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
     usage = await getDemoProviderUsage(demoEnv, now);
     expect(usage.currentUsage).toBe(1);
 
-    // 2. Real retry / re-dispatch of the SAME accepted task:
-    // The task remains accepted/retryable; re-dispatching runGeneration on the SAME task id
-    // simulates queue retry / reconciler re-dispatch seam.
-    await env.DB.prepare(`UPDATE ai_tasks SET status = 'accepted' WHERE id = ?1`).bind(design1.id).run();
-
-    const res2 = await runGeneration(demoEnv, design1.id);
-    expect(res2.status).toBe("failed");
-    expect(submitAttempts).toBe(2);
-
-    // Exactly 2 slots consumed by the 2 submit attempts of the same task
+    // 3. Second real outbound network attempt: consumes slot 2
+    const attempt2 = await adapter.submit({ ...req, taskId: "test-task-seam-2" });
+    expect(attempt2.ok).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
     usage = await getDemoProviderUsage(demoEnv, now);
     expect(usage.currentUsage).toBe(2);
 
-    // 3. Third submit attempt on the SAME accepted task: consumes slot 3 (reaching 3/3 cap)
-    await env.DB.prepare(`UPDATE ai_tasks SET status = 'accepted' WHERE id = ?1`).bind(design1.id).run();
-
-    const res3 = await runGeneration(demoEnv, design1.id);
-    expect(["processing", "quarantined"]).toContain(res3.status);
-    expect(submitAttempts).toBe(3);
-
+    // 4. Third real outbound network attempt: consumes slot 3 (reaches 3/3 cap)
+    const attempt3 = await adapter.submit({ ...req, taskId: "test-task-seam-3" });
+    expect(attempt3.ok).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
     usage = await getDemoProviderUsage(demoEnv, now);
     expect(usage.currentUsage).toBe(3);
     expect(usage.allowed).toBe(false);
 
-    // 4. Fourth attempt on a new task or retry is blocked by cap before provider.submit
-    const design2 = await createDesign(demoEnv, userId, {
+    // 5. Fourth outbound network attempt: cap is reached, NO network call made
+    const attempt4 = await adapter.submit({ ...req, taskId: "test-task-seam-4" });
+    expect(attempt4.ok).toBe(false);
+    if (!attempt4.ok) {
+      expect(attempt4.error).toBe("DEMO_DAILY_LIMIT_REACHED");
+    }
+    usage = await getDemoProviderUsage(demoEnv, now);
+    expect(usage.currentUsage).toBe(3); // Usage stays at cap
+  });
+
+  it("enforces Public Demo provider resolution rules: omitted resolves to gemini, explicit fake/offline forbidden, missing key fails closed", async () => {
+    const demoEnvWithKey = {
+      ...env,
+      ENVIRONMENT: "demo",
+      AI_API_KEY: "sk-live-demo-key",
+    } as unknown as Env;
+
+    const userId = "user-demo-provider-rules";
+    const assetId = "asset-demo-provider-rules";
+    await setupUserAndAsset(userId, assetId);
+    await recordAdminCreditAdjustment(demoEnvWithKey, userId, 10, "Testing credits", "admin-id");
+
+    // 1. Omitted provider in demo resolves to real Gemini provider
+    const designOmitted = await createDesign(demoEnvWithKey, userId, {
       sourceAssetId: assetId,
       scene: "interior",
-      intent: { mode: "redesign", roomType: "kitchen", style: "modern" },
-      idempotencyKey: "retry-idem-2",
+      intent: { mode: "redesign", roomType: "living-room", style: "modern" },
+      idempotencyKey: "omitted-provider-idem",
     });
-    const res4 = await runGeneration(demoEnv, design2.id);
-    expect(res4.status).toBe("failed");
-    expect(submitAttempts).toBe(3); // No extra submit call!
+    const taskOmitted = await getTask(demoEnvWithKey, designOmitted.id);
+    expect(taskOmitted?.provider).toBe("gemini");
 
-    usage = await getDemoProviderUsage(demoEnv, now);
-    expect(usage.currentUsage).toBe(3);
+    // 2. Explicit fake provider in demo is rejected fail-closed before any billable work
+    let caughtFakeErr: unknown = null;
+    try {
+      await createDesign(demoEnvWithKey, userId, {
+        sourceAssetId: assetId,
+        scene: "interior",
+        intent: { mode: "redesign", roomType: "living-room", style: "modern" },
+        provider: "fake",
+        idempotencyKey: "explicit-fake-idem",
+      });
+    } catch (err) {
+      caughtFakeErr = err;
+    }
+    expect(caughtFakeErr).toBeInstanceOf(DesignError);
+    expect((caughtFakeErr as DesignError).code).toBe("PROVIDER_NOT_ALLOWED");
+    expect((caughtFakeErr as DesignError).status).toBe(400);
+
+    // 3. Explicit offline marker in demo is rejected fail-closed before any billable work
+    let caughtOfflineErr: unknown = null;
+    try {
+      await createDesign(demoEnvWithKey, userId, {
+        sourceAssetId: assetId,
+        scene: "interior",
+        intent: { mode: "redesign", roomType: "living-room", style: "modern" },
+        provider: "offline",
+        idempotencyKey: "explicit-offline-idem",
+      });
+    } catch (err) {
+      caughtOfflineErr = err;
+    }
+    expect(caughtOfflineErr).toBeInstanceOf(DesignError);
+    expect((caughtOfflineErr as DesignError).code).toBe("PROVIDER_NOT_ALLOWED");
+
+    // 4. Missing live AI key in demo fails closed before any billable work
+    const demoEnvNoKey = {
+      ...env,
+      ENVIRONMENT: "demo",
+      AI_API_KEY: "",
+    } as unknown as Env;
+
+    let caughtNoKeyErr: unknown = null;
+    try {
+      await createDesign(demoEnvNoKey, userId, {
+        sourceAssetId: assetId,
+        scene: "interior",
+        intent: { mode: "redesign", roomType: "living-room", style: "modern" },
+        idempotencyKey: "missing-key-idem",
+      });
+    } catch (err) {
+      caughtNoKeyErr = err;
+    }
+    expect(caughtNoKeyErr).toBeInstanceOf(DesignError);
+    expect((caughtNoKeyErr as DesignError).code).toBe("PROVIDER_NOT_CONFIGURED");
+    expect((caughtNoKeyErr as DesignError).status).toBe(503);
+
+    // 5. Non-demo environment (e.g. development) still permits omitted/fake provider
+    const devEnv = {
+      ...env,
+      ENVIRONMENT: "development",
+    } as unknown as Env;
+    const designDev = await createDesign(devEnv, userId, {
+      sourceAssetId: assetId,
+      scene: "interior",
+      intent: { mode: "redesign", roomType: "living-room", style: "modern" },
+      idempotencyKey: "dev-omitted-idem",
+    });
+    const taskDev = await getTask(devEnv, designDev.id);
+    expect(taskDev?.provider).toBe("fake"); // Preserved for testing environments!
   });
 });

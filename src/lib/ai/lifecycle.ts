@@ -55,8 +55,7 @@ import {
   dispatchTask,
 } from "@/lib/ai/task-lifecycle";
 import { validateDesignConfig } from "@/lib/ai/config";
-import { assertGenerationAllowed, getPrivateBucketName } from "@/lib/env/policy";
-import { claimDemoProviderSubmission } from "@/lib/ai/demo-usage";
+import { assertGenerationAllowed, getPrivateBucketName, isDemo, isLiveApiKeyConfigured } from "@/lib/env/policy";
 /** Short-lived private access handed to the provider adapter (never to a browser). */
 const SOURCE_ACCESS_TTL_SEC = 600;
 /** Initial attempt + 3 retries, then validation-exhausted (ADR 0003). */
@@ -139,6 +138,40 @@ export async function createDesign(
   assertGenerationAllowed(env);
   const config = validateDesignConfig(rawBody);
 
+  let effectiveProvider = config.provider;
+  if (isDemo(env)) {
+    const rawProvider =
+      rawBody && typeof rawBody === "object" && "provider" in rawBody
+        ? (rawBody as Record<string, unknown>).provider
+        : undefined;
+
+    if (
+      typeof rawProvider === "string" &&
+      ["fake", "offline", "mock", "test"].includes(rawProvider.trim().toLowerCase())
+    ) {
+      throw new DesignError("PROVIDER_NOT_ALLOWED", 400, "fake or offline provider is forbidden in demo");
+    }
+
+    const isOfflineMarker =
+      env.AI_OFFLINE === "1" ||
+      env.AI_OFFLINE === "true" ||
+      env.AI_OFFLINE === "yes" ||
+      (typeof env.AI_API_KEY === "string" &&
+        ["fake", "test", "offline", "mock"].includes(env.AI_API_KEY.trim().toLowerCase()));
+
+    if (isOfflineMarker) {
+      throw new DesignError("PROVIDER_NOT_CONFIGURED", 503, "live AI key required in demo");
+    }
+
+    if (!isLiveApiKeyConfigured(env.AI_API_KEY)) {
+      throw new DesignError("PROVIDER_NOT_CONFIGURED", 503, "live AI key required in demo");
+    }
+
+    // Default/omitted provider in demo resolves to real Gemini/Cliproxy provider
+    if (rawProvider === undefined || effectiveProvider === "fake") {
+      effectiveProvider = "gemini";
+    }
+  }
   let floorPlanStagePlan: ResolvedFloorPlanStagePlan | null = null;
   let effectiveSourceAssetId = config.sourceAssetId;
   let prompt: string;
@@ -173,7 +206,7 @@ export async function createDesign(
 
   const taskDef = {
     scene: effectiveConfig.providerScene,
-    provider: effectiveConfig.provider,
+    provider: effectiveProvider,
     model: effectiveConfig.model,
     prompt,
     sourceKey: asset.storage_key,
@@ -354,15 +387,6 @@ export async function runGeneration(
 
   const provider = getProvider(task.provider, env);
   const req = await buildProviderRequest(env, task);
-
-  // Concurrency-safe Bangkok-time daily provider submission cap for Demo (ADR 0008, Issue #72).
-  // Reserved after ProviderRequest is constructed and immediately before real provider.submit network call.
-  const submissionAllowed = await claimDemoProviderSubmission(env);
-  if (!submissionAllowed) {
-    await failGeneration(env, taskId, "DEMO_DAILY_LIMIT_REACHED");
-    return { status: "failed" };
-  }
-
   let providerTaskId: string;
   try {
     const accepted = await provider.submit(req);

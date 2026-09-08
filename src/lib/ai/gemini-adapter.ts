@@ -33,6 +33,7 @@ export interface GeminiAdapterOptions {
   fetchFn?: typeof fetch;
   environment?: string;
   offlineFallback?: boolean;
+  claimOutboundAttempt?: () => Promise<boolean>;
 }
 
 export class GeminiFlashImageAdapter implements ProviderAdapter {
@@ -44,6 +45,7 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
   private readonly fetchFn: typeof fetch;
   private readonly environment: string;
   private readonly offlineFallback: boolean;
+  private readonly claimOutboundAttempt?: () => Promise<boolean>;
   private readonly pendingOutputs = new Map<string, ProviderOutput>();
 
   constructor(options: GeminiAdapterOptions = {}) {
@@ -69,6 +71,7 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
     this.bucket = options.bucket;
     this.fetchFn = options.fetchFn ?? fetch.bind(globalThis);
     this.offlineFallback = options.offlineFallback ?? false;
+    this.claimOutboundAttempt = options.claimOutboundAttempt;
   }
 
   async resolveImageToDataUri(input: string): Promise<string> {
@@ -173,6 +176,13 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
       headers["Authorization"] = `Bearer ${this.apiKey}`;
     }
 
+    // Outbound network attempt seam: claim daily submission slot right before fetch
+    if (this.claimOutboundAttempt) {
+      const allowed = await this.claimOutboundAttempt();
+      if (!allowed) {
+        return { ok: false, error: "DEMO_DAILY_LIMIT_REACHED", retryable: false };
+      }
+    }
     try {
       const res = await this.fetchFn(endpoint, {
         method: "POST",

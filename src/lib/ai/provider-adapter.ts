@@ -17,7 +17,8 @@
 
 import { GeminiFlashImageAdapter } from "@/lib/ai/gemini-adapter";
 import { fixturePngBytes } from "@/lib/ai/fake-provider";
-import { isLiveApiKeyConfigured, isProduction } from "@/lib/env/policy";
+import { isDemo, isLiveApiKeyConfigured, isOfflineProviderAllowed, isProduction } from "@/lib/env/policy";
+import { claimDemoProviderSubmission } from "@/lib/ai/demo-usage";
 import type { Env } from "@/lib/bindings";
 import type {
   ProviderAdapter,
@@ -163,6 +164,8 @@ export function getProvider(
 
   const envName = envObj.ENVIRONMENT || "local";
   const isProd = isProduction({ ENVIRONMENT: envName });
+  const isDemoEnv = isDemo({ ENVIRONMENT: envName });
+  const offlineAllowed = isOfflineProviderAllowed({ ENVIRONMENT: envName });
 
   const apiKey =
     envObj.AI_API_KEY ??
@@ -175,8 +178,8 @@ export function getProvider(
     envObj.AI_OFFLINE === "yes" ||
     (typeof apiKey === "string" && ["fake", "test", "offline", "mock"].includes(apiKey.trim().toLowerCase()));
 
-  // 1. Production: never fake
-  if (isProd) {
+  // 1. Production and Demo: offline fallback / FakeProvider strictly forbidden (ADR 0008, Issue #72)
+  if (!offlineAllowed) {
     if (name === "fake") {
       return new RealProviderAdapter("fake");
     }
@@ -187,14 +190,18 @@ export function getProvider(
     if (!hasLiveKey || isOfflineMarker) {
       return new RealProviderAdapter(name);
     }
-    if (name === "gemini") {
+    if (name === "gemini" || (isDemoEnv && (name === "" || name === "default"))) {
       return new GeminiFlashImageAdapter({
-        environment: "production",
+        environment: envName,
         apiKey,
         baseUrl: envObj.AI_API_BASE_URL,
         defaultModel: envObj.AI_DEFAULT_MODEL,
         bucket: envObj.HD_PRIVATE,
         fetchFn: envObj.fetchFn,
+        claimOutboundAttempt:
+          isDemoEnv && "DB" in envObj && envObj.DB
+            ? () => claimDemoProviderSubmission(envObj as Env)
+            : undefined,
       });
     }
     return new RealProviderAdapter(name);

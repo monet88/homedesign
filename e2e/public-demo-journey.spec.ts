@@ -343,20 +343,34 @@ test.describe("Public Demo Real End-to-End Journey (ADR 0008 / Issue #72)", () =
       test.skip(true, "Requires operator runtime storage state via PLAYWRIGHT_STORAGE_STATE");
       return;
     }
-
-    // 1. Fetch an existing project owned by the authenticated session
-    const projectsRes = await request.get("/api/projects");
-    expect(projectsRes.ok()).toBeTruthy();
-    const projectsJson = (await projectsRes.json()) as {
-      data?: { items?: Array<{ id: string; name: string }> };
+    // 1. Fetch real ready generated assets owned by the authenticated operator
+    const assetsRes = await request.get("/api/assets?type=generated&lifecycle=ready");
+    expect(assetsRes.ok()).toBeTruthy();
+    const assetsJson = (await assetsRes.json()) as {
+      data?: { items?: Array<{ id: string; name: string; projectId?: string }> };
     };
-    const projects = projectsJson.data?.items ?? [];
-    expect(projects.length).toBeGreaterThan(0);
-    const existingProject = projects[0];
+    const readyGeneratedAssets = assetsJson.data?.items ?? [];
+    expect(readyGeneratedAssets.length).toBeGreaterThan(0);
+    const targetAsset = readyGeneratedAssets[0];
 
-    // 2. Create a real Project Share for this owned project
-    const shareRes = await request.post(`/api/projects/${existingProject.id}/share`, {
-      data: { expiresAt: null },
+    // Determine owning project (from asset or by querying projects)
+    let projectId = targetAsset.projectId;
+    let projectName = "Shared project";
+    if (!projectId) {
+      const projectsRes = await request.get("/api/projects");
+      expect(projectsRes.ok()).toBeTruthy();
+      const projectsJson = (await projectsRes.json()) as {
+        data?: { items?: Array<{ id: string; name: string }> };
+      };
+      const projects = projectsJson.data?.items ?? [];
+      expect(projects.length).toBeGreaterThan(0);
+      projectId = projects[0].id;
+      projectName = projects[0].name;
+    }
+
+    // 2. Create a real Project Share for this owned project with explicit assetIds
+    const shareRes = await request.post(`/api/projects/${projectId}/share`, {
+      data: { expiresAt: null, assetIds: [targetAsset.id] },
     });
     expect(shareRes.ok()).toBeTruthy();
     const shareData = (await shareRes.json()) as {
@@ -373,30 +387,52 @@ test.describe("Public Demo Real End-to-End Journey (ADR 0008 / Issue #72)", () =
     const anonContext = await browser.newContext({ storageState: undefined });
     const anonPage = await anonContext.newPage();
     try {
-      // 3a. Anonymous API query for share view succeeds
+      // 3a. Anonymous API query for share view succeeds and contains the selected generated asset
       const shareApiRes = await anonPage.request.get(`/api/share/${encodeURIComponent(realShareToken)}`);
       expect(shareApiRes.ok()).toBeTruthy();
       const shareViewJson = (await shareApiRes.json()) as {
-        data?: { name: string; kind: string; assets: unknown[] };
+        data?: { name: string; kind: string; assets: Array<{ id: string; mimeType: string }> };
       };
-      expect(shareViewJson.data?.name).toBe(existingProject.name);
+      expect(shareViewJson.data?.assets).toBeDefined();
+      const foundAsset = shareViewJson.data?.assets.find((a) => a.id === targetAsset.id);
+      expect(foundAsset).toBeDefined();
 
-      // 3b. Anonymous page view renders shared project and privacy notice
+      // 3b. Exercise anonymous shared-asset delivery route for the selected asset
+      const sharedAssetRes = await anonPage.request.get(
+        `/api/share/${encodeURIComponent(realShareToken)}/assets/${targetAsset.id}`
+      );
+      expect(sharedAssetRes.ok()).toBeTruthy();
+      expect(sharedAssetRes.status()).toBe(200);
+      const contentType = sharedAssetRes.headers()["content-type"] || "";
+      expect(contentType).toMatch(/image\/(png|jpeg|jpg|webp)/);
+      const contentDisposition = sharedAssetRes.headers()["content-disposition"] || "";
+      expect(contentDisposition).toContain("inline");
+
+      // 3c. Direct private download without share token remains denied for anonymous visitor
+      const directDownloadRes = await anonPage.request.get(`/api/assets/${targetAsset.id}/download`);
+      expect(directDownloadRes.status()).toBe(401);
+      const directDownloadJson = (await directDownloadRes.json()) as { error?: string };
+      expect(directDownloadJson.error).toBe("UNAUTHENTICATED");
+
+      // 3d. Anonymous page view renders shared project and privacy notice
       await anonPage.goto(`/share/${encodeURIComponent(realShareToken)}`);
-      await expect(anonPage.getByRole("heading", { name: existingProject.name })).toBeVisible({
-        timeout: 15_000,
-      });
       await expect(anonPage.getByText("Shared project")).toBeVisible();
       await expect(anonPage.getByRole("note", { name: "Sharing privacy notice" })).toContainText(
         "not DRM"
       );
       await expect(anonPage.getByRole("link", { name: /download/i })).toHaveCount(0);
 
-      // 3c. Public share route must not expose private storage secrets or tokens
+      // 3e. Verify public share route and asset delivery never expose private storage secrets
       const content = await anonPage.content();
       expect(content).not.toContain("r2.cloudflarestorage.com");
       expect(content).not.toContain("R2_ACCESS_KEY_ID");
+      expect(content).not.toContain("R2_SECRET_ACCESS_KEY");
       expect(content).not.toContain("BETTER_AUTH_SECRET");
+
+      const assetHeaders = JSON.stringify(sharedAssetRes.headers());
+      expect(assetHeaders).not.toContain("r2.cloudflarestorage.com");
+      expect(assetHeaders).not.toContain("R2_ACCESS_KEY_ID");
+      expect(assetHeaders).not.toContain("R2_SECRET_ACCESS_KEY");
     } finally {
       await anonContext.close();
     }

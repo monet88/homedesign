@@ -17,11 +17,10 @@ import { hashPassword } from "better-auth/crypto";
 
 const root = join(import.meta.dirname, "..");
 const tempSqlPath = join(root, ".admin-seed-temp.sql");
-
-const isRemote = process.argv.includes("--remote");
-const isDemo = process.argv.includes("--demo");
-const d1TargetFlag = isRemote ? "--remote" : "--local";
-const dbName = isDemo ? (isRemote ? "hd-demo" : "homedesign") : "homedesign";
+export const isDemo = process.argv.includes("--demo");
+export const isRemote = process.argv.includes("--remote") || (isDemo && !process.argv.includes("--local"));
+export const d1TargetFlag = isRemote ? "--remote" : "--local";
+export const dbName = isDemo ? (isRemote ? "hd-demo" : "homedesign") : "homedesign";
 /**
  * Query D1 to check if an initial admin grant already exists for this email.
  */
@@ -89,9 +88,38 @@ export async function run() {
   const email = (process.env.ADMIN_EMAIL || "minhthang421992@gmail.com").trim().toLowerCase();
 
   if (isDemo) {
-    console.log(`[seed-admin] Public Demo mode: promoting Google-authenticated account (${email}) to role 'admin' without password or credit grant.`);
+    console.log(`[seed-admin] Public Demo mode: verifying and promoting Google-authenticated account (${email}) to role 'admin' on D1 database '${dbName}' (${d1TargetFlag}).`);
+
+    // 1. Verify exact Google-authenticated admin account exists in D1 before UPDATE
+    let existingUser = null;
+    try {
+      const checkStdout = execSync(
+        `npx wrangler d1 execute ${dbName} ${d1TargetFlag} --command="SELECT id, role FROM user WHERE email = '${email}';" --json`,
+        { cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }
+      );
+      const parsed = JSON.parse(checkStdout);
+      const rows = parsed[0]?.results ?? [];
+      existingUser = rows.length > 0 ? rows[0] : null;
+    } catch (error) {
+      console.error(`[seed-admin] Error querying D1 database '${dbName}':`, error?.message || error);
+      process.exit(1);
+    }
+
+    if (!existingUser) {
+      console.error(`[seed-admin] Error: Google-authenticated account '${email}' not found in D1 database '${dbName}' (${d1TargetFlag}).`);
+      console.error(`[seed-admin] Admin must sign in with Google first at https://homedesign.monet.uno before admin role can be bootstrapped.`);
+      process.exit(1);
+    }
+
+    // 2. Idempotent promotion: if already admin, no-op
+    if (existingUser.role === "admin") {
+      console.log(`[seed-admin] Account '${email}' (id: ${existingUser.id}) already has role 'admin' on Public Demo (${dbName}). No changes needed.`);
+      return;
+    }
+
+    // 3. Promote to admin without password or credit grant
     const now = Date.now();
-    const updateSql = `UPDATE user SET role = 'admin', updatedAt = ${now} WHERE email = '${email}';`;
+    const updateSql = `UPDATE user SET role = 'admin', updatedAt = ${now} WHERE id = '${existingUser.id}';`;
     writeFileSync(tempSqlPath, updateSql, "utf8");
     try {
       execSync(
@@ -109,7 +137,6 @@ export async function run() {
     }
     return;
   }
-
   const password = process.env.ADMIN_PASSWORD;
   if (!password) {
     console.error("[seed-admin] Error: ADMIN_PASSWORD environment variable is required for admin database seeding.");

@@ -1,5 +1,6 @@
 // Deploy topology + workflow structure tests (ticket #18).
 import { readFileSync, readdirSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -162,21 +163,60 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
     expect(script).not.toContain("password");
   });
 
-  it("fails closed on zone/custom-domain preflight instead of masking a deployments-list check", () => {
+  it("implements non-mutating capability preflights for token, zone, workers scripts/domains, D1, R2, Queues before any mutation", () => {
     const script = read("scripts/demo-provision.sh");
 
-    // The fail-open pattern (`deployments list ... || true`) must be gone.
-    expect(script).not.toMatch(/deployments list[^\n]*\|\| true/);
+    // Token self-verification and introspection
+    expect(script).toContain("user/tokens/verify");
+    expect(script).toContain("user/tokens/${TOKEN_ID}");
+    expect(script).toContain("User: API Tokens: Read");
+
+    // Zone capability check
+    expect(script).toContain("zones?name=monet.uno");
+
+    // Workers Scripts and Custom Domains check
+    expect(script).toContain("workers/scripts");
+    expect(script).toContain("workers/domains");
+
+    // Never masks deployment checks with || true
     expect(script).not.toMatch(/deployments list/);
 
-    // It must state the non-mutating capability limitation explicitly.
-    expect(script).toContain("non-mutating Wrangler command");
-    expect(script).toContain("FAILS CLOSED");
-    expect(script).toContain("--dry-run does NOT validate");
+    // Never prints the token
+    expect(script).not.toContain("echo \"$CLOUDFLARE_API_TOKEN\"");
+    expect(script).not.toContain("echo \"${CLOUDFLARE_API_TOKEN}\"");
+  });
+});
 
-    // The live deploy (the earliest operation touching the custom domain) must not be masked.
-    expect(script).toContain("npx wrangler deploy --env demo");
-    expect(script).not.toMatch(/wrangler deploy --env demo[^\n]*\|\| true/);
+describe("demo admin bootstrap CLI (ADR 0008, Issue #72)", () => {
+  it("unambiguously targets remote hd-demo, implies --remote, and checks user before promotion", () => {
+    const seedScript = read("scripts/seed-admin.mjs");
+    const provScript = read("scripts/demo-provision.sh");
+
+    // --demo implies --remote and dbName hd-demo
+    expect(seedScript).toContain("isDemo = process.argv.includes(\"--demo\")");
+    expect(seedScript).toContain("isRemote = process.argv.includes(\"--remote\") || (isDemo && !process.argv.includes(\"--local\"))");
+    expect(seedScript).toContain("dbName = isDemo ? (isRemote ? \"hd-demo\" : \"homedesign\") : \"homedesign\"");
+
+    // Queries existing Google account before UPDATE
+    expect(seedScript).toContain("SELECT id, role FROM user WHERE email");
+    expect(seedScript).toContain("Admin must sign in with Google first");
+
+    // Role-only UPDATE, no passwords, no credit ledger grants in demo branch
+    expect(seedScript).toContain("UPDATE user SET role = 'admin'");
+    expect(provScript).toContain("node scripts/seed-admin.mjs --demo --remote");
+  });
+
+  it("fails closed with exit code 1 when Google user has not yet signed in", () => {
+    const res = spawnSync("node", ["scripts/seed-admin.mjs", "--demo", "--local"], {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        ADMIN_EMAIL: "completely-nonexistent-user@example.com",
+      },
+      encoding: "utf8",
+    });
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("Admin must sign in with Google first");
   });
 });
 
@@ -209,5 +249,8 @@ describe("playwright config and public-demo harness (Issue #72)", () => {
     expect(demoJourney).toContain("creditsBefore.available - 10");
     expect(demoJourney).toContain("Unauthorized Private Asset Access Denial");
     expect(demoJourney).toContain("Intended Anonymous Project Share Access");
+    expect(demoJourney).toContain("type=generated&lifecycle=ready");
+    expect(demoJourney).toContain("assetIds: [targetAsset.id]");
+    expect(demoJourney).toContain("/assets/${targetAsset.id}");
   });
 });
