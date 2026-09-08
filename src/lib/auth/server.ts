@@ -1,7 +1,13 @@
 import { betterAuth } from "better-auth";
 import { oneTap } from "better-auth/plugins";
 import type { Env } from "@/lib/bindings";
-import { assertEmailSignUpAllowed, isAuthBypassEnabled } from "@/lib/env/policy";
+import {
+  assertEmailSignInAllowed,
+  assertEmailSignUpAllowed,
+  isAuthBypassEnabled,
+  isDemo,
+  isProduction as isEnvProduction,
+} from "@/lib/env/policy";
 import { ensureFreeCreditGrant } from "@/lib/credits/ledger";
 
 // Ticket 03 (ADR 0001): BetterAuth server instance.
@@ -17,6 +23,7 @@ export interface AuthEnv extends Env {
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   EMAIL_DELIVERY_MODE?: string;
 }
 
@@ -26,7 +33,7 @@ export const RESEND_HOURLY_LIMIT = 5; // 5 resends / hour / user
 export const RESEND_HOURLY_WINDOW_MS = 60 * 60 * 1000;
 
 function isProduction(env: AuthEnv): boolean {
-  return env.ENVIRONMENT === "production";
+  return isEnvProduction(env);
 }
 
 function isTestOutbox(env: AuthEnv): boolean {
@@ -141,6 +148,27 @@ export function requireVerifiedUser(session: { user: { emailVerified: boolean } 
 export function createAuth(env: AuthEnv) {
   const emailDeliveryMode = env.EMAIL_DELIVERY_MODE?.toLowerCase() ?? "test-outbox";
 
+  let googleProvider: { clientId: string; clientSecret: string } | undefined;
+  if (isDemo(env)) {
+    const clientId = env.GOOGLE_CLIENT_ID?.trim();
+    const secret = env.GOOGLE_CLIENT_SECRET?.trim();
+    if (!clientId) {
+      throw new Error("GOOGLE_CLIENT_ID is required in demo");
+    }
+    if (!secret || secret === clientId) {
+      throw new Error("GOOGLE_CLIENT_SECRET is required and must be distinct from GOOGLE_CLIENT_ID in demo");
+    }
+    googleProvider = {
+      clientId,
+      clientSecret: secret,
+    };
+  } else if (env.GOOGLE_CLIENT_ID) {
+    const secret = env.GOOGLE_CLIENT_SECRET?.trim();
+    googleProvider = {
+      clientId: env.GOOGLE_CLIENT_ID,
+      clientSecret: secret || env.GOOGLE_CLIENT_ID,
+    };
+  }
   return betterAuth({
     appName: "HomeDesign Clone",
     baseURL: env.BETTER_AUTH_URL,
@@ -160,7 +188,7 @@ export function createAuth(env: AuthEnv) {
       useSecureCookies: isProduction(env) || env.BETTER_AUTH_URL.startsWith("https://"),
     },
     emailAndPassword: {
-      enabled: true,
+      enabled: !isDemo(env),
       requireEmailVerification: false, // ADR 0001: unverified users can log in; App Worker gates billable work
       minPasswordLength: 8,
       maxPasswordLength: 128,
@@ -175,12 +203,7 @@ export function createAuth(env: AuthEnv) {
       },
     },
     socialProviders: {
-      google: env.GOOGLE_CLIENT_ID
-        ? {
-            clientId: env.GOOGLE_CLIENT_ID,
-            clientSecret: env.GOOGLE_CLIENT_ID, // One Tap uses clientId only; secret is not used for GSI
-          }
-        : undefined,
+      google: googleProvider,
     },
     plugins: [
       oneTap({
@@ -201,7 +224,18 @@ export async function handleAuthRequest(env: AuthEnv, request: Request): Promise
       assertEmailSignUpAllowed(env);
     } catch (err) {
       const status = (err as { status?: number }).status ?? 403;
-      return Response.json({ error: "EMAIL_SIGNUP_BANNED_IN_PRODUCTION" }, { status });
+      const errorMsg = isDemo(env)
+        ? "EMAIL_SIGNUP_BANNED_IN_DEMO"
+        : "EMAIL_SIGNUP_BANNED_IN_PRODUCTION";
+      return Response.json({ error: errorMsg }, { status });
+    }
+  }
+  if (url.pathname.endsWith("/sign-in/email") && request.method === "POST") {
+    try {
+      assertEmailSignInAllowed(env);
+    } catch (err) {
+      const status = (err as { status?: number }).status ?? 403;
+      return Response.json({ error: "EMAIL_SIGNIN_BANNED_IN_DEMO" }, { status });
     }
   }
   return createAuth(env).handler(request);
@@ -395,7 +429,7 @@ export async function authorizeOutboxRequest(
   request: Request,
   customResolver?: (env: AuthEnv, request: Request) => Promise<ResolvedSession | null>
 ): Promise<OutboxAuthResult> {
-  if (isProduction(env) || env.ENVIRONMENT === "production") {
+  if (isProduction(env) || isDemo(env)) {
     return {
       authorized: false,
       status: 404,

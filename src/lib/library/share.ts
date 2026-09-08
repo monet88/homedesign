@@ -1,11 +1,7 @@
 // Ticket 09 — Unlisted read-only project sharing (ADR 0005).
 
 import type { Env } from "@/lib/bindings";
-import { presignGetUrl, type PresignCredentials } from "@/lib/intake/presign";
 import { isFloorPlanOutputActive, resolveActiveFloorPlanOutputAssetIds } from "@/lib/floor-plan";
-
-const PRIVATE_BUCKET = "homedesign-private";
-const SHARE_DELIVERY_TTL_SEC = 600;
 
 export interface ShareViewAsset {
   id: string;
@@ -381,30 +377,14 @@ export async function deliverShareAsset(
   const authorized = await authorizeShareAssetDelivery(env, { token, assetId });
   if (!authorized) return null;
 
-  const creds: PresignCredentials = {
-    accountId: env.R2_ACCOUNT_ID ?? "",
-    accessKeyId: env.R2_ACCESS_KEY_ID ?? "",
-    secretAccessKey: env.R2_SECRET_ACCESS_KEY ?? "",
-  };
-  if (
-    env.ENVIRONMENT !== "local" &&
-    env.R2_ACCOUNT_ID !== "local-dev-account" &&
-    creds.accountId &&
-    creds.accessKeyId &&
-    creds.secretAccessKey
-  ) {
-    const signed = await presignGetUrl(creds, {
-      bucket: PRIVATE_BUCKET,
-      key: authorized.storageKey,
-      expiresInSec: SHARE_DELIVERY_TTL_SEC,
-    });
-    return Response.redirect(signed.url, 302);
-  }
-
+  // Issue #72 & ADR 0005: Raw R2 object keys and reusable signed URLs must stay out of the
+  // public share response surface. All environments serve authorized asset bytes directly
+  // through the Worker HD_PRIVATE binding with inline disposition and no-store caching.
+  // Stream the R2 object body directly rather than buffering up-to-50MB in memory.
   const obj = await env.HD_PRIVATE.get(authorized.storageKey);
   if (!obj) return null;
-  const bytes = await obj.arrayBuffer();
-  return new Response(bytes, {
+  return new Response(obj.body as unknown as BodyInit, {
+    status: 200,
     headers: {
       "Content-Type": authorized.mimeType,
       "Content-Disposition": "inline",

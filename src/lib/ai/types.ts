@@ -281,9 +281,11 @@ export type DesignErrorCode =
   | "SOURCE_ASSET_NOT_READY"
   | "INSUFFICIENT_CREDITS"
   | "GENERATION_DISABLED"
+  | "DEMO_DAILY_LIMIT_REACHED"
+  | "PROVIDER_NOT_ALLOWED"
+  | "PROVIDER_NOT_CONFIGURED"
   | "SCENE_NOT_IMPLEMENTED"
   | "TASK_NOT_FOUND";
-
 export class DesignError extends Error {
   readonly code: DesignErrorCode;
   readonly status: number;

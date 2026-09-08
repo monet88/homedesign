@@ -30,7 +30,7 @@ describe("CLI Seeder to local D1 integration test (Ticket #36 AC 1-5)", { timeou
       `DELETE FROM session WHERE userId IN (SELECT id FROM user WHERE email = '${TEST_ADMIN_EMAIL}'); ` +
       `DELETE FROM user WHERE email = '${TEST_ADMIN_EMAIL}';`
     );
-  });
+  }, 60000);
 
   afterAll(() => {
     // Clean up test admin rows after test run
@@ -203,5 +203,47 @@ describe("CLI Seeder to local D1 integration test (Ticket #36 AC 1-5)", { timeou
     expect(grantsAfter[0].id).toBe(grantsBefore[0].id);
     expect(grantsAfter[0].amount).toBe(99999); // Still 99999!
     expect(grantsAfter[0].created_at).toBe(grantsBefore[0].created_at);
+  });
+
+  it("Demo bootstrap (--demo): promotes user to role admin without password requirement and does not create credit grants", () => {
+    const DEMO_ADMIN_EMAIL = "demo_admin_cli@example.com";
+    const now = Date.now();
+
+    // Ensure clean state before test
+    queryD1(`DELETE FROM user WHERE email = '${DEMO_ADMIN_EMAIL}';`);
+
+    // Pre-create Google user in local D1
+    execSync(
+      `npx wrangler d1 execute homedesign --local --command="INSERT INTO user (id, name, email, emailVerified, role, createdAt, updatedAt) VALUES ('demo-u-1', 'Google Demo Admin', '${DEMO_ADMIN_EMAIL}', 1, 'user', ${now}, ${now});"`,
+      { cwd: ROOT, stdio: "pipe" }
+    );
+
+    // Run with --demo flag without ADMIN_PASSWORD
+    const res = spawnSync("node", ["scripts/seed-admin.mjs", "--local", "--demo"], {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        ADMIN_EMAIL: DEMO_ADMIN_EMAIL,
+      },
+      encoding: "utf8",
+    });
+
+    expect(res.status).toBe(0);
+    const stdout = res.stdout || "";
+    expect(stdout).toContain("Promoted existing account");
+    expect(stdout).toContain("to role 'admin' on Public Demo");
+
+    // Verify user role in D1
+    const userRows = queryD1(`SELECT role FROM user WHERE email = '${DEMO_ADMIN_EMAIL}';`) as Array<{ role: string }>;
+    expect(userRows[0]?.role).toBe("admin");
+
+    // Verify NO account or credit_ledger rows created
+    const accountRows = queryD1(`SELECT * FROM account WHERE userId = 'demo-u-1';`);
+    expect(accountRows).toHaveLength(0);
+    const ledgerRows = queryD1(`SELECT * FROM credit_ledger WHERE user_id = 'demo-u-1';`);
+    expect(ledgerRows).toHaveLength(0);
+
+    // Clean up
+    queryD1(`DELETE FROM user WHERE email = '${DEMO_ADMIN_EMAIL}';`);
   });
 });

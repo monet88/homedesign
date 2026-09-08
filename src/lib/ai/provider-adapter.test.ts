@@ -175,6 +175,70 @@ describe("provider registry & selection policy matrix (Ticket #33)", () => {
     });
   });
 
+  describe("Public Demo provider resolution & fail-closed policy (ADR 0008, Issue #72)", () => {
+    it("demo strictly bans FakeProvider (fails closed)", async () => {
+      const provider = getProvider("fake", "demo");
+      expect(provider).toBeInstanceOf(RealProviderAdapter);
+      const res = await provider.submit(REQ);
+      expect(res).toEqual({ ok: false, error: "PROVIDER_NOT_CONFIGURED", retryable: false });
+    });
+
+    it("demo with live key still strictly bans FakeProvider", async () => {
+      const provider = getProvider("fake", {
+        ENVIRONMENT: "demo",
+        AI_API_KEY: "test-live-key",
+      });
+      expect(provider).toBeInstanceOf(RealProviderAdapter);
+      expect(await provider.submit(REQ)).toEqual({ ok: false, error: "PROVIDER_NOT_CONFIGURED", retryable: false });
+    });
+
+    it("demo with missing/empty key fails closed for gemini", async () => {
+      const provider = getProvider("gemini", "demo");
+      expect(provider).toBeInstanceOf(RealProviderAdapter);
+      const res = await provider.submit(REQ);
+      expect(res).toEqual({ ok: false, error: "PROVIDER_NOT_CONFIGURED", retryable: false });
+    });
+
+    it("demo with offline marker fails closed for gemini", async () => {
+      const offlineMarker = "offline";
+      const provider = getProvider("gemini", {
+        ENVIRONMENT: "demo",
+        AI_API_KEY: offlineMarker,
+      });
+      expect(provider).toBeInstanceOf(RealProviderAdapter);
+      expect(await provider.submit(REQ)).toEqual({ ok: false, error: "PROVIDER_NOT_CONFIGURED", retryable: false });
+    });
+
+    it("demo with live key selects GeminiFlashImageAdapter for gemini", () => {
+      const provider = getProvider("gemini", {
+        ENVIRONMENT: "demo",
+        AI_API_KEY: "test-live-key",
+      });
+      expect(provider.name).toBe("gemini");
+      expect(provider).toBeInstanceOf(GeminiFlashImageAdapter);
+    });
+
+    it("demo with live key resolves omitted/default provider to GeminiFlashImageAdapter", () => {
+      const defaultP = getProvider("default", {
+        ENVIRONMENT: "demo",
+        AI_API_KEY: "test-live-key",
+      });
+      expect(defaultP.name).toBe("gemini");
+      expect(defaultP).toBeInstanceOf(GeminiFlashImageAdapter);
+
+      const emptyP = getProvider("", {
+        ENVIRONMENT: "demo",
+        AI_API_KEY: "test-live-key",
+      });
+      expect(emptyP.name).toBe("gemini");
+      expect(emptyP).toBeInstanceOf(GeminiFlashImageAdapter);
+    });
+
+    it("unknown provider in demo fails closed", () => {
+      expect(getProvider("who-dis", "demo")).toBeInstanceOf(RealProviderAdapter);
+    });
+  });
+
   it("registerProvider adds a custom adapter; resetProviders restores the defaults", () => {
     const stub: ProviderAdapter = {
       name: "stub",

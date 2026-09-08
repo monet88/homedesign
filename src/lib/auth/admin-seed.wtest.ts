@@ -5,6 +5,7 @@ import { env } from "cloudflare:test";
 import { describe, expect, it, beforeEach } from "vitest";
 import {
   seedAdminDatabase,
+  bootstrapDemoAdmin,
   requireAdminSession,
   type AdminSeedConfig,
 } from "@/lib/auth/admin";
@@ -290,5 +291,53 @@ describe("Admin Seed & Immutable Credit Ledger (Ticket #36)", () => {
     expect(initialGrant?.amount).toBe(99999);
 
     await expect(assertCreditInvariant(testEnv(), user.id)).resolves.toBe(true);
+  });
+});
+
+describe("Public Demo role-only admin promotion (ADR 0008, Issue #72)", () => {
+  it("promotes an existing Google-authenticated account to role 'admin' idempotently without credit grants or password", async () => {
+    const adminEmail = "minhthang421992@gmail.com";
+    const userId = "google-user-admin-1";
+    const now = Date.now();
+
+    // 1. User signs in with Google, starting with 0 credits and role 'user'
+    await env.DB.prepare(
+      `INSERT INTO user (id, name, email, emailVerified, role, createdAt, updatedAt)
+       VALUES (?1, 'Google Admin', ?2, 1, 'user', ?3, ?3)`
+    ).bind(userId, adminEmail, now).run();
+
+    // Verify initial state: role is user, available credits is 0
+    const initialUser = await env.DB.prepare("SELECT role FROM user WHERE id = ?1").bind(userId).first<{ role: string }>();
+    expect(initialUser?.role).toBe("user");
+    expect(await getAvailableCredits(testEnv(), userId)).toBe(0);
+
+    // 2. Run bootstrapDemoAdmin
+    const res1 = await bootstrapDemoAdmin(env.DB, adminEmail);
+    expect(res1.promoted).toBe(true);
+    expect(res1.userId).toBe(userId);
+
+    // Role is promoted to admin
+    const promotedUser = await env.DB.prepare("SELECT role FROM user WHERE id = ?1").bind(userId).first<{ role: string }>();
+    expect(promotedUser?.role).toBe("admin");
+
+    // Credits remain 0 (no automatic 99,999 credits grant)
+    expect(await getAvailableCredits(testEnv(), userId)).toBe(0);
+    const ledger = await getCreditLedger(testEnv(), userId);
+    expect(ledger).toHaveLength(0);
+
+    // No password account created
+    const account = await env.DB.prepare("SELECT * FROM account WHERE userId = ?1").bind(userId).first();
+    expect(account).toBeNull();
+
+    // 3. Idempotent re-run
+    const res2 = await bootstrapDemoAdmin(env.DB, adminEmail);
+    expect(res2.promoted).toBe(true);
+    expect(res2.userId).toBe(userId);
+    expect(await getAvailableCredits(testEnv(), userId)).toBe(0);
+  });
+
+  it("returns promoted: false when user has not yet signed in", async () => {
+    const res = await bootstrapDemoAdmin(env.DB, "nonexistent@gmail.com");
+    expect(res.promoted).toBe(false);
   });
 });

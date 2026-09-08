@@ -5,6 +5,7 @@
 //        restoreOwnerAsset, digestShareToken.
 
 import { env } from "cloudflare:test";
+import type { Env } from "@/lib/bindings";
 import { describe, expect, it, beforeEach } from "vitest";
 import {
   authorizeShareAssetDelivery,
@@ -585,8 +586,8 @@ describe("floor plan share read-time lineage and auto-hiding (AC 2 & AC 4)", () 
   });
 });
 
-describe("authorized share asset delivery security (AC 3)", () => {
-  it("delivers asset binary inline without leaking R2 keys", async () => {
+describe("authorized share asset delivery security (AC 3, Issue #72, ADR 0005)", () => {
+  it("delivers asset binary inline without leaking R2 keys, signed URLs, or 302 redirects", async () => {
     const userId = await seedUser();
     const projectId = await seedProject(userId);
     const assetId = await seedReadyAsset(userId, `ready/${crypto.randomUUID()}.png`);
@@ -601,16 +602,33 @@ describe("authorized share asset delivery security (AC 3)", () => {
       .run();
 
     const { token } = await createProjectShare(env, userId, projectId, { assetIds: [assetId] });
-    const res = await deliverShareAsset(env, token, assetId);
+
+    // Pass non-local environment with full presign credentials to prove Worker direct serving is enforced
+    const prodLikeEnv = {
+      ...env,
+      ENVIRONMENT: "demo",
+      R2_ACCOUNT_ID: "acct-prod-123",
+      R2_ACCESS_KEY_ID: "key-prod-123",
+      R2_SECRET_ACCESS_KEY: "secret-prod-123",
+    } as unknown as Env;
+
+    const res = await deliverShareAsset(prodLikeEnv, token, assetId);
 
     expect(res).not.toBeNull();
     expect(res?.status).toBe(200);
+    expect(res?.headers.get("Location")).toBeNull();
     expect(res?.headers.get("Content-Type")).toBe("image/png");
     expect(res?.headers.get("Content-Disposition")).toBe("inline");
     expect(res?.headers.get("Cache-Control")).toBe("private, no-store");
     expect(res?.headers.get("x-amz-request-id")).toBeNull();
-  });
 
+    // Verify response body does not contain R2 signed URL strings
+    const bodyBytes = new Uint8Array(await res!.arrayBuffer());
+    expect(bodyBytes).toEqual(new Uint8Array([1, 2, 3]));
+    const bodyText = new TextDecoder().decode(bodyBytes);
+    expect(bodyText).not.toContain("r2.cloudflarestorage.com");
+    expect(bodyText).not.toContain("X-Amz-Signature");
+  });
   it("denies delivery for non-selected asset or invalid token", async () => {
     const userId = await seedUser();
     const projectId = await seedProject(userId);

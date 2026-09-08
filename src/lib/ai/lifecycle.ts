@@ -55,9 +55,7 @@ import {
   dispatchTask,
 } from "@/lib/ai/task-lifecycle";
 import { validateDesignConfig } from "@/lib/ai/config";
-import { assertGenerationAllowed } from "@/lib/env/policy";
-
-const PRIVATE_BUCKET = "homedesign-private";
+import { assertGenerationAllowed, getPrivateBucketName, isDemo, isLiveApiKeyConfigured } from "@/lib/env/policy";
 /** Short-lived private access handed to the provider adapter (never to a browser). */
 const SOURCE_ACCESS_TTL_SEC = 600;
 /** Initial attempt + 3 retries, then validation-exhausted (ADR 0003). */
@@ -140,6 +138,40 @@ export async function createDesign(
   assertGenerationAllowed(env);
   const config = validateDesignConfig(rawBody);
 
+  let effectiveProvider = config.provider;
+  if (isDemo(env)) {
+    const rawProvider =
+      rawBody && typeof rawBody === "object" && "provider" in rawBody
+        ? (rawBody as Record<string, unknown>).provider
+        : undefined;
+
+    if (
+      typeof rawProvider === "string" &&
+      ["fake", "offline", "mock", "test"].includes(rawProvider.trim().toLowerCase())
+    ) {
+      throw new DesignError("PROVIDER_NOT_ALLOWED", 400, "fake or offline provider is forbidden in demo");
+    }
+
+    const isOfflineMarker =
+      env.AI_OFFLINE === "1" ||
+      env.AI_OFFLINE === "true" ||
+      env.AI_OFFLINE === "yes" ||
+      (typeof env.AI_API_KEY === "string" &&
+        ["fake", "test", "offline", "mock"].includes(env.AI_API_KEY.trim().toLowerCase()));
+
+    if (isOfflineMarker) {
+      throw new DesignError("PROVIDER_NOT_CONFIGURED", 503, "live AI key required in demo");
+    }
+
+    if (!isLiveApiKeyConfigured(env.AI_API_KEY)) {
+      throw new DesignError("PROVIDER_NOT_CONFIGURED", 503, "live AI key required in demo");
+    }
+
+    // Default/omitted provider in demo resolves to real Gemini/Cliproxy provider
+    if (rawProvider === undefined || effectiveProvider === "fake") {
+      effectiveProvider = "gemini";
+    }
+  }
   let floorPlanStagePlan: ResolvedFloorPlanStagePlan | null = null;
   let effectiveSourceAssetId = config.sourceAssetId;
   let prompt: string;
@@ -152,7 +184,12 @@ export async function createDesign(
   } else {
     prompt = buildPrompt(config);
   }
-
+  if (isDemo(env) && effectiveConfig.provider !== effectiveProvider) {
+    effectiveConfig = {
+      ...effectiveConfig,
+      provider: effectiveProvider,
+    };
+  }
   if (!prompt) throw new DesignError("INVALID_INTENT", 400, "empty prompt");
 
   // Authorize the source Asset: exists, owned by the caller, lifecycle `ready`.
@@ -174,7 +211,7 @@ export async function createDesign(
 
   const taskDef = {
     scene: effectiveConfig.providerScene,
-    provider: effectiveConfig.provider,
+    provider: effectiveProvider,
     model: effectiveConfig.model,
     prompt,
     sourceKey: asset.storage_key,
@@ -200,7 +237,10 @@ export async function createDesign(
 
     if (!created) {
       // Free grant is ensured on every verified new-task path (ADR 0002); idempotent.
-      await ensureFreeCreditGrant(env, userId);
+      // Public Demo skips ensureFreeCreditGrant entirely (ADR 0008).
+      if (!isDemo(env)) {
+        await ensureFreeCreditGrant(env, userId);
+      }
 
       // Credit gate BEFORE the hold. createTaskWithHold re-checks atomically.
       const available = await getAvailableCredits(env, userId);
@@ -355,7 +395,6 @@ export async function runGeneration(
 
   const provider = getProvider(task.provider, env);
   const req = await buildProviderRequest(env, task);
-
   let providerTaskId: string;
   try {
     const accepted = await provider.submit(req);
@@ -443,9 +482,8 @@ async function buildProviderRequest(env: Env, task: TaskRow): Promise<ProviderRe
  * Resolve the source object to short-lived private access for the provider.
  * Presigned GET when R2 S3 credentials are configured; otherwise an internal
  * `private:` reference (local/test). Either way this value never leaves the
- * Worker and is never persisted on the Design row.
  */
-async function resolveSourceAccess(env: Env, key: string): Promise<string> {
+export async function resolveSourceAccess(env: Env, key: string): Promise<string> {
   if (
     env.ENVIRONMENT !== "local" &&
     env.R2_ACCOUNT_ID !== "local-dev-account" &&
@@ -459,7 +497,7 @@ async function resolveSourceAccess(env: Env, key: string): Promise<string> {
         accessKeyId: env.R2_ACCESS_KEY_ID,
         secretAccessKey: env.R2_SECRET_ACCESS_KEY,
       },
-      { bucket: PRIVATE_BUCKET, key, expiresInSec: SOURCE_ACCESS_TTL_SEC }
+      { bucket: getPrivateBucketName(env), key, expiresInSec: SOURCE_ACCESS_TTL_SEC }
     );
     return signed.url;
   }

@@ -2,7 +2,7 @@ import { authorizeVerified } from "@/lib/ai/http";
 import { createUploadIntent } from "@/lib/intake/intake-service";
 import { presignPutUrl, type PresignCredentials } from "@/lib/intake/presign";
 import { UploadIntentSchema } from "@/lib/validation/schemas";
-
+import { getPrivateBucketName } from "@/lib/env/policy";
 // `POST /api/assets/upload-intent` (ADR 0003 / Ticket 06 AC1).
 // Authenticated (verified user only). Creates an Asset `pending-upload` and
 // returns a 10-minute presigned PUT to the R2 S3 API quarantine key. The
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
       presignedUrl = `/api/assets/${intent.assetId}/upload`;
     } else if (creds.accountId && creds.accessKeyId && creds.secretAccessKey) {
       const presigned = await presignPutUrl(creds, {
-        bucket: "homedesign-private",
+        bucket: getPrivateBucketName(env),
         key: intent.key,
         contentType: mimeType,
         expiresInSec: intent.expiresInSec,
