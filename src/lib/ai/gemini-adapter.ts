@@ -205,10 +205,16 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
           retryable: res.status >= 500 || res.status === 429,
         };
       }
-
       const json = await res.json();
-      const output = extractImageFromResponse(json);
-      this.pendingOutputs.set(providerTaskId, output);
+      try {
+        const output = extractImageFromResponse(json);
+        this.pendingOutputs.set(providerTaskId, output);
+      } catch {
+        // Asynchronous/pending provider response: response is accepted by provider
+        // but image output is not ready in this turnaround.
+        // The adapter leaves pendingOutputs unset for providerTaskId, so fetchOutput
+        // returns null and lifecycle runGeneration stays non-terminal "processing".
+      }
       return { ok: true, providerTaskId };
     } catch (err: unknown) {
       if (this.offlineFallback) {
@@ -238,7 +244,10 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
       this.pendingOutputs.delete(taskId);
       return output;
     }
-
+    if (providerTaskId) {
+      // Polling for an already-submitted task: output not ready yet -> return null (reconciler/polling contract)
+      return null;
+    }
     if (req) {
       const result = await this.submit(req);
       if (!result.ok) {

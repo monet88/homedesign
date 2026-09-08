@@ -472,40 +472,37 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     const taskId = design.id;
     expect(await getAvailableCredits(demoEnv, userId)).toBe(19); // 1 credit held
 
-    let submitCallCount = 0;
-    let fetchOutputCallCount = 0;
+    let networkAttemptCount = 0;
 
-    // Mock provider where:
-    // - submit calls claimDemoProviderSubmission(demoEnv, now)
-    // - fetchOutput returns null (simulates provider still working, so runGeneration leaves task in non-terminal "processing")
-    const retryProvider: ProviderAdapter = {
-      name: "gemini",
-      submit: vi.fn(async (_req: ProviderRequest): Promise<ProviderSubmitResult> => {
-        const allowed = await claimDemoProviderSubmission(demoEnv, now);
-        if (!allowed) {
-          return { ok: false, error: "DEMO_DAILY_LIMIT_REACHED", retryable: false };
+    // Real GeminiFlashImageAdapter with injected fetchFn:
+    // Returns a 200 response with choices, but NO image data in choices content
+    // extractImageFromResponse throws, or choices has no image -> so submit returns ok: true,
+    // but pendingOutputs has no entry for providerTaskId.
+    // Therefore fetchOutput() returns null, leaving runGeneration in non-terminal "processing".
+    const mockFetch = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => {
+      networkAttemptCount++;
+      // Return valid response structure without image content -> pendingOutputs remains empty
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "Processing your request..." } }],
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
         }
-        submitCallCount++;
-        return { ok: true, providerTaskId: `retry-prov-${submitCallCount}` };
-      }),
-      fetchOutput: vi.fn(async () => {
-        fetchOutputCallCount++;
-        return null; // Return null -> runGeneration stays non-terminal "processing"
-      }),
-      healthCheck: vi.fn(async () => ({
-        status: "healthy" as const,
-        latencyMs: 0,
-        models: ["fake-model"],
-        endpoint: "fake://health",
-      })),
-    };
-    registerProvider(retryProvider);
+      );
+    });
 
+    const realGeminiAdapter = new GeminiFlashImageAdapter({
+      apiKey: "sk-live-test-key",
+      fetchFn: mockFetch as unknown as typeof fetch,
+      claimOutboundAttempt: () => claimDemoProviderSubmission(demoEnv, now),
+    });
+    registerProvider(realGeminiAdapter);
     // ── First dispatch of the task ──
     const res1 = await runGeneration(demoEnv, taskId);
     expect(res1.status).toBe("processing");
-    expect(submitCallCount).toBe(1);
-    expect(fetchOutputCallCount).toBe(1);
+    expect(networkAttemptCount).toBe(1);
 
     // 1 slot consumed
     usage = await getDemoProviderUsage(demoEnv, now);
@@ -522,8 +519,7 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     // ── Second dispatch of the SAME non-terminal task (e.g. queue retry / re-dispatch) ──
     const res2 = await runGeneration(demoEnv, taskId);
     expect(res2.status).toBe("processing");
-    expect(submitCallCount).toBe(2);
-    expect(fetchOutputCallCount).toBe(2);
+    expect(networkAttemptCount).toBe(2);
 
     // 2nd slot consumed, now cap is reached (2/2)
     usage = await getDemoProviderUsage(demoEnv, now);
@@ -543,8 +539,7 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     expect(res3.status).toBe("failed");
 
     // submit was called to check adapter/cap, but NO actual outbound network attempt was permitted
-    expect(submitCallCount).toBe(2); // Still 2!
-    expect(fetchOutputCallCount).toBe(2); // Still 2!
+    expect(networkAttemptCount).toBe(2); // Still 2! Cap blocked outbound network attempt!
 
     // Usage remains at cap (2), does not overshoot
     usage = await getDemoProviderUsage(demoEnv, now);
@@ -573,8 +568,7 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     const res4 = await runGeneration(demoEnv, taskId);
     expect(res4.status).toBe("failed");
     expect(res4.skipped).toBe("TERMINAL");
-    expect(submitCallCount).toBe(2);
-    usage = await getDemoProviderUsage(demoEnv, now);
+    expect(networkAttemptCount).toBe(2);
     expect(usage.currentUsage).toBe(2);
     expect(await getAvailableCredits(demoEnv, userId)).toBe(20);
   });

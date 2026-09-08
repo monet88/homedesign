@@ -65,39 +65,17 @@ if [[ "$TOKEN_DETAILS_RES" != *"\"success\":true"* ]]; then
   echo "Cannot prove required write permissions for Workers Scripts, Custom Domains, D1, R2, or Queues."
   exit 1
 fi
+# Verify required write and admin permissions are present in the token's policies structurally via verify-token-policy.mjs
+# Captures zone ID from query for zone scope validation if available
+ZONE_ID=$(echo "$ZONE_QUERY_RES" 2>/dev/null | grep -o '"id":"[^"]*' | head -1 | cut -d'"' -f4 || true)
+ACCOUNT_ID=$(npx wrangler whoami 2>/dev/null | grep -o '[a-f0-9]\{32\}' | head -1 || true)
 
-# Verify required write and admin permissions are present in the token's policies
-# Required groups:
-# - Workers Scripts: "Workers Scripts Write" or "Workers Scripts"
-# - Custom Domains / Routes: "Workers Routes Write" or "Workers Custom Domains Write" or "Zone:Read" + "DNS:Write" / "DNS Write"
-# - D1: "D1 Write"
-# - R2: "Workers R2 Storage Write" or "R2 Write"
-# - Queues: "Workers Queues Write" or "Queues Write"
-MISSING_PERMISSIONS=()
-
-if [[ "$TOKEN_DETAILS_RES" != *"Workers Scripts Write"* && "$TOKEN_DETAILS_RES" != *"Workers Scripts"* ]]; then
-  MISSING_PERMISSIONS+=("Workers Scripts:Write")
-fi
-
-if [[ "$TOKEN_DETAILS_RES" != *"D1 Write"* && "$TOKEN_DETAILS_RES" != *"D1"* ]]; then
-  MISSING_PERMISSIONS+=("D1:Write")
-fi
-
-if [[ "$TOKEN_DETAILS_RES" != *"R2 Storage Write"* && "$TOKEN_DETAILS_RES" != *"R2 Write"* && "$TOKEN_DETAILS_RES" != *"R2"* ]]; then
-  MISSING_PERMISSIONS+=("R2:Write")
-fi
-
-if [[ "$TOKEN_DETAILS_RES" != *"Queues Write"* && "$TOKEN_DETAILS_RES" != *"Queues"* ]]; then
-  MISSING_PERMISSIONS+=("Queues:Write")
-fi
-
-if [[ ${#MISSING_PERMISSIONS[@]} -gt 0 ]]; then
-  echo "ERROR: Token lacks required write permission groups: ${MISSING_PERMISSIONS[*]}"
-  echo "Failing closed before mutating any Cloudflare resources."
+echo "$TOKEN_DETAILS_RES" | node "$(dirname "$0")/verify-token-policy.mjs" - "$ACCOUNT_ID" "$ZONE_ID" || {
+  echo "ERROR: Structural token policy verification failed."
+  echo "The token must possess an ALLOW policy covering write/edit permissions for Workers Scripts, Custom Domains/Zone, D1, R2, and Queues with matching resource scopes."
   exit 1
-fi
-echo "OK: Authoritative token policy introspection confirmed required write permission groups."
-
+}
+echo "OK: Authoritative token policy introspection confirmed required write permission groups and resource scopes."
 # 1c. Zone preflight: verify access and permissions for 'monet.uno' zone (non-mutating GET)
 echo "==> Preflighting Cloudflare Zone capability for 'monet.uno' (zones?name=monet.uno)"
 ZONE_QUERY_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/zones?name=monet.uno" 2>/dev/null) || {

@@ -403,8 +403,7 @@ test.describe("Public Demo Real End-to-End Journey (ADR 0008 / Issue #72)", () =
       };
       expect(shareViewJson.data?.assets).toBeDefined();
       const foundAsset = shareViewJson.data?.assets.find((a) => a.id === chosenAsset.id);
-
-      // 3b. Exercise anonymous shared-asset delivery route for the selected asset
+      expect(foundAsset).toBeDefined();
       const sharedAssetRes = await anonPage.request.get(
         `/api/share/${encodeURIComponent(realShareToken)}/assets/${chosenAsset.id}`
       );
@@ -417,6 +416,7 @@ test.describe("Public Demo Real End-to-End Journey (ADR 0008 / Issue #72)", () =
 
       // 3c. Direct private download without share token remains denied for anonymous visitor
       const directDownloadRes = await anonPage.request.get(`/api/assets/${chosenAsset.id}/download`);
+      expect(directDownloadRes.status()).toBe(401);
       const directDownloadJson = (await directDownloadRes.json()) as { error?: string };
       expect(directDownloadJson.error).toBe("UNAUTHENTICATED");
 

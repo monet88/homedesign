@@ -380,10 +380,10 @@ export async function deliverShareAsset(
   // Issue #72 & ADR 0005: Raw R2 object keys and reusable signed URLs must stay out of the
   // public share response surface. All environments serve authorized asset bytes directly
   // through the Worker HD_PRIVATE binding with inline disposition and no-store caching.
+  // Stream the R2 object body directly rather than buffering up-to-50MB in memory.
   const obj = await env.HD_PRIVATE.get(authorized.storageKey);
   if (!obj) return null;
-  const bytes = await obj.arrayBuffer();
-  return new Response(bytes, {
+  return new Response(obj.body as unknown as BodyInit, {
     status: 200,
     headers: {
       "Content-Type": authorized.mimeType,
