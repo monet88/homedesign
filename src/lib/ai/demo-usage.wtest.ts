@@ -295,7 +295,7 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
       ...env,
       ENVIRONMENT: "demo",
       DEMO_DAILY_PROVIDER_LIMIT: "50",
-      AI_API_KEY: "sk-live-test-key",
+      AI_API_KEY: "test-live-provider-key",
     } as unknown as Env;
 
     const userId = "user-cap-test";
@@ -393,7 +393,7 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
       ...env,
       ENVIRONMENT: "demo",
       DEMO_DAILY_PROVIDER_LIMIT: "1", // limit = 1
-      AI_API_KEY: "sk-live-test-key",
+      AI_API_KEY: "test-live-provider-key",
     } as unknown as Env;
 
     const userId = "user-fp-test";
@@ -454,7 +454,7 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
       ...env,
       ENVIRONMENT: "demo",
       DEMO_DAILY_PROVIDER_LIMIT: "2", // limit = 2
-      AI_API_KEY: "sk-live-test-key",
+      AI_API_KEY: "test-live-provider-key",
     } as unknown as Env;
 
     const userId = "user-same-task-retry";
@@ -499,7 +499,7 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     });
 
     const realGeminiAdapter = new GeminiFlashImageAdapter({
-      apiKey: "sk-live-test-key",
+      apiKey: "test-live-provider-key",
       fetchFn: mockFetch as unknown as typeof fetch,
       claimOutboundAttempt: () => claimDemoProviderSubmission(demoEnv, now),
     });
@@ -590,7 +590,7 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
       ...env,
       ENVIRONMENT: "demo",
       DEMO_DAILY_PROVIDER_LIMIT: "3", // limit = 3
-      AI_API_KEY: "sk-live-test-key",
+      AI_API_KEY: "test-live-provider-key",
     } as unknown as Env;
     const now = new Date();
     let usage = await getDemoProviderUsage(demoEnv, now);
@@ -603,7 +603,7 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     });
 
     const adapter = new GeminiFlashImageAdapter({
-      apiKey: "sk-live-test-key",
+      apiKey: "test-live-provider-key",
       fetchFn: mockFetch as unknown as typeof fetch,
       claimOutboundAttempt: () => claimDemoProviderSubmission(demoEnv, now),
     });
@@ -662,7 +662,7 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     const demoEnvWithKey = {
       ...env,
       ENVIRONMENT: "demo",
-      AI_API_KEY: "sk-live-demo-key",
+      AI_API_KEY: "test-live-demo-key",
     } as unknown as Env;
 
     const userId = "user-demo-provider-rules";

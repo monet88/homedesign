@@ -107,7 +107,7 @@ describe("environment policy matrix (ticket #18 & Issue #72)", () => {
     expect(isLiveApiKeyConfigured("test")).toBe(false);
     expect(isLiveApiKeyConfigured("offline")).toBe(false);
     expect(isLiveApiKeyConfigured("mock")).toBe(false);
-    expect(isLiveApiKeyConfigured("sk-real-secret-key-12345")).toBe(true);
+    expect(isLiveApiKeyConfigured("test-live-provider-key")).toBe(true);
   });
 
   it("isExplicitOfflineMarker identifies offline vars and markers", () => {
@@ -115,8 +115,8 @@ describe("environment policy matrix (ticket #18 & Issue #72)", () => {
     expect(isExplicitOfflineMarker({ AI_OFFLINE: "true" })).toBe(true);
     expect(isExplicitOfflineMarker(undefined, "fake")).toBe(true);
     expect(isExplicitOfflineMarker(undefined, "offline")).toBe(true);
-    expect(isExplicitOfflineMarker(undefined, "sk-live-key")).toBe(false);
-    expect(isExplicitOfflineMarker({ AI_OFFLINE: "0" }, "sk-live-key")).toBe(false);
+    expect(isExplicitOfflineMarker(undefined, "test-live-provider-key")).toBe(false);
+    expect(isExplicitOfflineMarker({ AI_OFFLINE: "0" }, "test-live-provider-key")).toBe(false);
   });
 
   it("isOfflineProviderAllowed permits non-prod/non-demo and forbids prod and demo", () => {

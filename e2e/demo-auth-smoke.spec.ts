@@ -83,7 +83,7 @@ test.describe("Public Demo Auth & Google Live Smoke (ADR 0008, Issue #72)", () =
     const signUpRes = await request.post("/api/auth/sign-up/email", {
       data: {
         email: "demo-test@example.com",
-        password: "Password123!",
+        password: "test-password-123!",
         name: "Demo Tester",
       },
     });

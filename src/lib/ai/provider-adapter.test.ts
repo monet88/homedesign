@@ -200,9 +200,10 @@ describe("provider registry & selection policy matrix (Ticket #33)", () => {
     });
 
     it("demo with offline marker fails closed for gemini", async () => {
+      const offlineMarker = "offline";
       const provider = getProvider("gemini", {
         ENVIRONMENT: "demo",
-        AI_API_KEY: "offline",
+        AI_API_KEY: offlineMarker,
       });
       expect(provider).toBeInstanceOf(RealProviderAdapter);
       expect(await provider.submit(REQ)).toEqual({ ok: false, error: "PROVIDER_NOT_CONFIGURED", retryable: false });

@@ -36,7 +36,7 @@ function prodEnv(): Env {
 }
 
 function demoEnv(): Env {
-  return { ...(env as unknown as Env), ENVIRONMENT: "demo", AI_API_KEY: "sk-live-demo-key" };
+  return { ...(env as unknown as Env), ENVIRONMENT: "demo", AI_API_KEY: "test-live-demo-key" };
 }
 
 let userId: string;
