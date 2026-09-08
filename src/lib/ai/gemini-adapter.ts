@@ -206,15 +206,8 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
         };
       }
       const json = await res.json();
-      try {
-        const output = extractImageFromResponse(json);
-        this.pendingOutputs.set(providerTaskId, output);
-      } catch {
-        // Asynchronous/pending provider response: response is accepted by provider
-        // but image output is not ready in this turnaround.
-        // The adapter leaves pendingOutputs unset for providerTaskId, so fetchOutput
-        // returns null and lifecycle runGeneration stays non-terminal "processing".
-      }
+      const output = extractImageFromResponse(json);
+      this.pendingOutputs.set(providerTaskId, output);
       return { ok: true, providerTaskId };
     } catch (err: unknown) {
       if (this.offlineFallback) {

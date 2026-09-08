@@ -188,7 +188,7 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
     const targetAccount = "acct_target_123456";
     const targetZone = "zone_target_789012";
 
-    // 1. Valid Token with all required write groups and correct scopes -> SUCCEEDS (exit 0)
+    // 1. Valid Token with all required write groups directly bound to target account/zone scopes -> SUCCEEDS (exit 0)
     const validToken = {
       success: true,
       result: {
@@ -203,7 +203,6 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
             },
             permission_groups: [
               { name: "Workers Scripts Write" },
-              { name: "Workers Routes Write" },
               { name: "D1 Write" },
               { name: "Workers R2 Storage Write" },
               { name: "Workers Queues Write" },
@@ -216,7 +215,6 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
             },
             permission_groups: [
               { name: "Zone Read" },
-              { name: "DNS Write" },
             ],
           },
         ],
@@ -229,7 +227,143 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
     expect(validRes.status).toBe(0);
     expect(validRes.stdout).toContain("OK: Cloudflare token policy verified");
 
-    // 2. Read-Only permissions -> FAILS (exit 1) and lists missing write groups
+    // 2. Write on wrong account + unrelated target-scope policy -> FAILS (exit 1)
+    // The policy covering targetAccount only has an unrelated permission (e.g. Audit Logs Read),
+    // while the write permissions are scoped to a different account.
+    const decoupledToken = {
+      success: true,
+      result: {
+        id: "tok_decoupled",
+        name: "decoupled-token",
+        status: "active",
+        policies: [
+          {
+            effect: "allow",
+            resources: {
+              "com.cloudflare.api.account.unrelated_account_999": "*",
+            },
+            permission_groups: [
+              { name: "Workers Scripts Write" },
+              { name: "D1 Write" },
+              { name: "Workers R2 Storage Write" },
+              { name: "Workers Queues Write" },
+            ],
+          },
+          {
+            effect: "allow",
+            resources: {
+              [`com.cloudflare.api.account.${targetAccount}`]: "*",
+            },
+            permission_groups: [
+              { name: "Audit Logs Read" },
+            ],
+          },
+          {
+            effect: "allow",
+            resources: {
+              [`com.cloudflare.api.account.zone.${targetZone}`]: "*",
+            },
+            permission_groups: [
+              { name: "Zone Read" },
+            ],
+          },
+        ],
+      },
+    };
+    const decoupledRes = spawnSync("node", [verifyScriptPath, "-", targetAccount, targetZone], {
+      input: JSON.stringify(decoupledToken),
+      encoding: "utf8",
+    });
+    expect(decoupledRes.status).toBe(1);
+    expect(decoupledRes.stderr).toContain("Missing required write permission groups: Workers Scripts, D1, R2, Queues");
+
+    // 3. Zone Read alone without Workers Scripts Write -> FAILS (exit 1)
+    const zoneOnlyToken = {
+      success: true,
+      result: {
+        id: "tok_zone_only",
+        name: "zone-only-token",
+        status: "active",
+        policies: [
+          {
+            effect: "allow",
+            resources: {
+              [`com.cloudflare.api.account.zone.${targetZone}`]: "*",
+            },
+            permission_groups: [
+              { name: "Zone Read" },
+            ],
+          },
+        ],
+      },
+    };
+    const zoneOnlyRes = spawnSync("node", [verifyScriptPath, "-", targetAccount, targetZone], {
+      input: JSON.stringify(zoneOnlyToken),
+      encoding: "utf8",
+    });
+    expect(zoneOnlyRes.status).toBe(1);
+    expect(zoneOnlyRes.stderr).toContain("Missing required write permission groups: Workers Scripts, D1, R2, Queues");
+    expect(zoneOnlyRes.stderr).toContain(`Resource scope errors: Token allow policies do not cover target account ${targetAccount}`);
+
+    // 4. No account scope -> FAILS (exit 1)
+    const noAccountScopeToken = {
+      success: true,
+      result: {
+        id: "tok_no_acct_scope",
+        name: "no-acct-scope",
+        status: "active",
+        policies: [
+          {
+            effect: "allow",
+            resources: {
+              [`com.cloudflare.api.account.zone.${targetZone}`]: "*",
+            },
+            permission_groups: [
+              { name: "Zone Read" },
+            ],
+          },
+        ],
+      },
+    };
+    const noAccountRes = spawnSync("node", [verifyScriptPath, "-", targetAccount, targetZone], {
+      input: JSON.stringify(noAccountScopeToken),
+      encoding: "utf8",
+    });
+    expect(noAccountRes.status).toBe(1);
+    expect(noAccountRes.stderr).toContain(`Token allow policies do not cover target account ${targetAccount}`);
+
+    // 5. No zone scope -> FAILS (exit 1)
+    const noZoneScopeToken = {
+      success: true,
+      result: {
+        id: "tok_no_zone_scope",
+        name: "no-zone-scope",
+        status: "active",
+        policies: [
+          {
+            effect: "allow",
+            resources: {
+              [`com.cloudflare.api.account.${targetAccount}`]: "*",
+            },
+            permission_groups: [
+              { name: "Workers Scripts Write" },
+              { name: "D1 Write" },
+              { name: "Workers R2 Storage Write" },
+              { name: "Workers Queues Write" },
+            ],
+          },
+        ],
+      },
+    };
+    const noZoneRes = spawnSync("node", [verifyScriptPath, "-", targetAccount, targetZone], {
+      input: JSON.stringify(noZoneScopeToken),
+      encoding: "utf8",
+    });
+    expect(noZoneRes.status).toBe(1);
+    expect(noZoneRes.stderr).toContain(`Missing required write permission groups: Zone`);
+    expect(noZoneRes.stderr).toContain(`Token allow policies do not cover target zone ${targetZone}`);
+
+    // 6. Read-Only names -> FAILS (exit 1) and lists missing write groups
     const readOnlyToken = {
       success: true,
       result: {
@@ -249,6 +383,15 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
               { name: "Workers Queues Read" },
             ],
           },
+          {
+            effect: "allow",
+            resources: {
+              [`com.cloudflare.api.account.zone.${targetZone}`]: "*",
+            },
+            permission_groups: [
+              { name: "Zone Read" },
+            ],
+          },
         ],
       },
     };
@@ -257,40 +400,26 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
       encoding: "utf8",
     });
     expect(readOnlyRes.status).toBe(1);
-    expect(readOnlyRes.stderr).toContain("Missing required write permission groups: Workers Scripts, Custom Domains / Routes, D1, R2, Queues");
+    expect(readOnlyRes.stderr).toContain("Missing required write permission groups: Workers Scripts, D1, R2, Queues");
 
-    // 3. Wrong Account Scope -> FAILS (exit 1) with scope error
-    const wrongScopeToken = {
+    // 7. Malformed policy structures -> FAILS (exit 1)
+    const malformedToken = {
       success: true,
       result: {
-        id: "tok_wrong_scope",
-        name: "wrong-scope-token",
+        id: "tok_malformed",
+        name: "malformed-token",
         status: "active",
-        policies: [
-          {
-            effect: "allow",
-            resources: {
-              "com.cloudflare.api.account.different_account_999": "*",
-            },
-            permission_groups: [
-              { name: "Workers Scripts Write" },
-              { name: "Workers Routes Write" },
-              { name: "D1 Write" },
-              { name: "Workers R2 Storage Write" },
-              { name: "Workers Queues Write" },
-            ],
-          },
-        ],
+        policies: ["not-an-object"],
       },
     };
-    const wrongScopeRes = spawnSync("node", [verifyScriptPath, "-", targetAccount, targetZone], {
-      input: JSON.stringify(wrongScopeToken),
+    const malformedRes = spawnSync("node", [verifyScriptPath, "-", targetAccount, targetZone], {
+      input: JSON.stringify(malformedToken),
       encoding: "utf8",
     });
-    expect(wrongScopeRes.status).toBe(1);
-    expect(wrongScopeRes.stderr).toContain(`Resource scope errors: Token allow policies do not cover target account ${targetAccount}`);
+    expect(malformedRes.status).toBe(1);
+    expect(malformedRes.stderr).toContain("Malformed policy structure");
 
-    // 4. Inactive or disabled token -> FAILS (exit 1)
+    // 8. Inactive or disabled token -> FAILS (exit 1)
     const inactiveToken = {
       success: true,
       result: {

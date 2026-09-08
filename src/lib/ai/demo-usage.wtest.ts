@@ -475,16 +475,17 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     let networkAttemptCount = 0;
 
     // Real GeminiFlashImageAdapter with injected fetchFn:
-    // Returns a 200 response with choices, but NO image data in choices content
-    // extractImageFromResponse throws, or choices has no image -> so submit returns ok: true,
-    // but pendingOutputs has no entry for providerTaskId.
-    // Therefore fetchOutput() returns null, leaving runGeneration in non-terminal "processing".
+    // Receives valid JSON with choices, parses image output, sets its pendingOutputs.
+    // To test same-task retry where a task remains non-terminal ("processing"),
+    // we wrap the real GeminiFlashImageAdapter in a ProviderAdapter whose submit delegates
+    // to the real adapter (exercising real claimOutboundAttempt, headers, options, and network fetch)
+    // while fetchOutput returns null (simulating async/in-flight polling where output is not ready yet).
     const mockFetch = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => {
       networkAttemptCount++;
-      // Return valid response structure without image content -> pendingOutputs remains empty
+      const b64 = Buffer.from(validPngBytes()).toString("base64");
       return new Response(
         JSON.stringify({
-          choices: [{ message: { content: "Processing your request..." } }],
+          choices: [{ message: { images: [{ image_url: { url: `data:image/png;base64,${b64}` } }] } }],
         }),
         {
           status: 200,
@@ -498,7 +499,14 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
       fetchFn: mockFetch as unknown as typeof fetch,
       claimOutboundAttempt: () => claimDemoProviderSubmission(demoEnv, now),
     });
-    registerProvider(realGeminiAdapter);
+
+    const asyncPollingAdapter: ProviderAdapter = {
+      name: "gemini",
+      submit: (req: ProviderRequest) => realGeminiAdapter.submit(req),
+      fetchOutput: async (_req?: ProviderRequest, _providerTaskId?: string) => null,
+      healthCheck: () => realGeminiAdapter.healthCheck(),
+    };
+    registerProvider(asyncPollingAdapter);
     // ── First dispatch of the task ──
     const res1 = await runGeneration(demoEnv, taskId);
     expect(res1.status).toBe("processing");

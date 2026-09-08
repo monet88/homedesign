@@ -47,7 +47,38 @@ if [[ "$TOKEN_VERIFY_RES" != *"\"status\":\"active\""* && "$TOKEN_VERIFY_RES" !=
 fi
 echo "OK: CLOUDFLARE_API_TOKEN is valid and active."
 
-# 1b. Authoritative Token Policy & Permission Introspection
+# 1b. Zone preflight: verify access and permissions for 'monet.uno' zone (non-mutating GET)
+echo "==> Preflighting Cloudflare Zone capability for 'monet.uno' (zones?name=monet.uno)"
+ZONE_QUERY_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/zones?name=monet.uno" 2>/dev/null) || {
+  echo "ERROR: Failed network request to query zone 'monet.uno'."
+  exit 1
+}
+
+if [[ "$ZONE_QUERY_RES" != *"\"name\":\"monet.uno\""* ]]; then
+  echo "ERROR: Unable to access zone 'monet.uno' with provided CLOUDFLARE_API_TOKEN."
+  echo "The token must have Zone:Read permissions on the 'monet.uno' zone."
+  exit 1
+fi
+echo "OK: Zone 'monet.uno' is accessible."
+
+# Parse and require non-empty ZONE_ID and ACCOUNT_ID
+ZONE_ID=$(echo "$ZONE_QUERY_RES" | grep -o '"id":"[^"]*' | head -1 | cut -d'"' -f4 || true)
+if [[ -z "$ZONE_ID" ]]; then
+  echo "ERROR: Could not parse non-empty zone ID for 'monet.uno' from zone query response."
+  echo "Failing closed before mutating any Cloudflare resources."
+  exit 1
+fi
+
+ACCOUNT_ID=$(npx wrangler whoami 2>/dev/null | grep -o '[a-f0-9]\{32\}' | head -1 || true)
+if [[ -z "$ACCOUNT_ID" ]]; then
+  echo "ERROR: Could not parse non-empty account ID from wrangler whoami output."
+  echo "Failing closed before mutating any Cloudflare resources."
+  exit 1
+fi
+
+echo "OK: Verified target Account ID (${ACCOUNT_ID}) and Zone ID (${ZONE_ID})."
+
+# 1c. Authoritative Token Policy & Permission Introspection
 TOKEN_ID=$(echo "$TOKEN_VERIFY_RES" | grep -o '"id":"[^"]*' | head -1 | cut -d'"' -f4)
 if [[ -z "$TOKEN_ID" ]]; then
   echo "ERROR: Could not parse token ID from verify response."
@@ -62,34 +93,17 @@ TOKEN_DETAILS_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" 
 
 if [[ "$TOKEN_DETAILS_RES" != *"\"success\":true"* ]]; then
   echo "ERROR: Authoritative token policy introspection failed (requires 'User: API Tokens: Read' permission)."
-  echo "Cannot prove required write permissions for Workers Scripts, Custom Domains, D1, R2, or Queues."
+  echo "Cannot prove required write permissions for Workers Scripts, D1, R2, Queues, and Zone Read."
   exit 1
 fi
-# Verify required write and admin permissions are present in the token's policies structurally via verify-token-policy.mjs
-# Captures zone ID from query for zone scope validation if available
-ZONE_ID=$(echo "$ZONE_QUERY_RES" 2>/dev/null | grep -o '"id":"[^"]*' | head -1 | cut -d'"' -f4 || true)
-ACCOUNT_ID=$(npx wrangler whoami 2>/dev/null | grep -o '[a-f0-9]\{32\}' | head -1 || true)
 
+# Verify required write and zone permissions are present in the token's policies structurally via verify-token-policy.mjs
 echo "$TOKEN_DETAILS_RES" | node "$(dirname "$0")/verify-token-policy.mjs" - "$ACCOUNT_ID" "$ZONE_ID" || {
   echo "ERROR: Structural token policy verification failed."
-  echo "The token must possess an ALLOW policy covering write/edit permissions for Workers Scripts, Custom Domains/Zone, D1, R2, and Queues with matching resource scopes."
+  echo "The token must possess ALLOW policies directly covering write permissions for Workers Scripts, D1, R2, and Queues on target account ${ACCOUNT_ID} and Zone Read on target zone ${ZONE_ID}."
   exit 1
 }
 echo "OK: Authoritative token policy introspection confirmed required write permission groups and resource scopes."
-# 1c. Zone preflight: verify access and permissions for 'monet.uno' zone (non-mutating GET)
-echo "==> Preflighting Cloudflare Zone capability for 'monet.uno' (zones?name=monet.uno)"
-ZONE_QUERY_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/zones?name=monet.uno" 2>/dev/null) || {
-  echo "ERROR: Failed network request to query zone 'monet.uno'."
-  exit 1
-}
-
-if [[ "$ZONE_QUERY_RES" != *"\"name\":\"monet.uno\""* ]]; then
-  echo "ERROR: Unable to access zone 'monet.uno' with provided CLOUDFLARE_API_TOKEN."
-  echo "The token must have Zone:Read or DNS:Write permissions on the 'monet.uno' zone to attach the Custom Domain."
-  exit 1
-fi
-echo "OK: Zone 'monet.uno' is accessible."
-# 1d. Core Cloudflare resource capabilities (D1, R2, Queues)
 echo "==> Preflighting Cloudflare D1 capability"
 npx wrangler d1 list > /dev/null
 

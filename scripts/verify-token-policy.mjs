@@ -4,31 +4,31 @@
  * Structural Cloudflare API Token Policy Verification (Issue #72, ADR 0008).
  *
  * Parses Cloudflare user/tokens/:id details response and verifies that:
- * 1. Token status is active.
- * 2. Token contains an ALLOW policy granting exact write/edit permission groups for:
- *    - Workers Scripts (Workers Scripts Write / Workers Scripts)
- *    - Custom Domains / Routes (Workers Routes Write / Workers Custom Domains Write / Zone Read + DNS Write)
- *    - D1 (D1 Write)
- *    - R2 (Workers R2 Storage Write / R2 Write)
- *    - Queues (Workers Queues Write / Queues Write)
+ * 1. Target Account ID and Target Zone ID are provided and non-empty.
+ * 2. Token status is active.
  * 3. Token policies do not deny the targeted account or zone.
- * 4. Resource scopes cover the target account ID and target zone ID (or all accounts/zones "*").
+ * 4. Token contains ALLOW policies that bind each required capability directly
+ *    to an enclosing resource scope covering the target resource:
+ *    - Account-scoped capabilities (must cover target account):
+ *      - "Workers Scripts" (Workers Scripts Write / Workers Scripts Edit)
+ *      - "D1" (D1 Write / D1 Edit)
+ *      - "R2" (Workers R2 Storage Write / R2 Write / Workers R2 Storage Edit / R2 Edit)
+ *      - "Queues" (Workers Queues Write / Queues Write / Workers Queues Edit / Queues Edit)
+ *    - Zone-scoped capabilities (must cover target zone):
+ *      - "Zone" (Zone Read / Zone Write / Zone Edit)
+ *
+ * Permissions are NEVER decoupled from resource scopes: each capability must be
+ * satisfied by an ALLOW policy whose resources actually cover the required scope.
  */
 
 import { readFileSync } from "node:fs";
 import process from "node:process";
 
-// Canonical permission group names documented by Cloudflare
-export const REQUIRED_CAPABILITIES = {
+// Required account-scoped capability definitions and canonical documented write/edit aliases
+export const REQUIRED_ACCOUNT_CAPABILITIES = {
   "Workers Scripts": [
     "Workers Scripts Write",
     "Workers Scripts Edit",
-  ],
-  "Custom Domains / Routes": [
-    "Workers Routes Write",
-    "Workers Custom Domains Write",
-    "Zone Read",
-    "DNS Write",
   ],
   "D1": [
     "D1 Write",
@@ -48,7 +48,58 @@ export const REQUIRED_CAPABILITIES = {
   ],
 };
 
+// Required zone-scoped capability definitions
+export const REQUIRED_ZONE_CAPABILITIES = {
+  "Zone": [
+    "Zone Read",
+    "Zone Write",
+    "Zone Edit",
+  ],
+};
+
+function policyCoversAccount(resources, targetAccount) {
+  if (!resources || typeof resources !== "object") return false;
+  return Object.keys(resources).some((key) => {
+    return (
+      key === "com.cloudflare.api.account.*" ||
+      key === `com.cloudflare.api.account.${targetAccount}`
+    );
+  });
+}
+
+function policyCoversZone(resources, targetZone) {
+  if (!resources || typeof resources !== "object") return false;
+  return Object.keys(resources).some((key) => {
+    return (
+      key === "com.cloudflare.api.account.zone.*" ||
+      key === `com.cloudflare.api.account.zone.${targetZone}`
+    );
+  });
+}
+
 export function verifyTokenPolicies(rawJson, options = {}) {
+  const targetAccount = options.targetAccountId?.trim();
+  const targetZone = options.targetZoneId?.trim();
+
+  // Fail closed if target account or zone ID is missing
+  if (!targetAccount) {
+    return {
+      valid: false,
+      missingPermissions: [],
+      scopeErrors: ["Target account ID is required for verification"],
+      error: "Missing required target account ID",
+    };
+  }
+
+  if (!targetZone) {
+    return {
+      valid: false,
+      missingPermissions: [],
+      scopeErrors: ["Target zone ID is required for verification"],
+      error: "Missing required target zone ID",
+    };
+  }
+
   let parsed;
   if (typeof rawJson === "string") {
     try {
@@ -83,96 +134,105 @@ export function verifyTokenPolicies(rawJson, options = {}) {
     };
   }
 
-  const policies = parsed.result.policies || [];
+  const policies = parsed.result.policies;
   if (!Array.isArray(policies) || policies.length === 0) {
     return {
       valid: false,
-      missingPermissions: Object.keys(REQUIRED_CAPABILITIES),
+      missingPermissions: [
+        ...Object.keys(REQUIRED_ACCOUNT_CAPABILITIES),
+        ...Object.keys(REQUIRED_ZONE_CAPABILITIES),
+      ],
       scopeErrors: [],
       error: "Token has no policies defined",
     };
   }
 
-  // Check for any explicit DENY policies on target account/zone
-  const targetAccount = options.targetAccountId?.trim();
-  const targetZone = options.targetZoneId?.trim();
-
+  // Validate policy structure and check for DENY policies on target resources
   for (const policy of policies) {
+    if (!policy || typeof policy !== "object") {
+      return {
+        valid: false,
+        missingPermissions: [],
+        scopeErrors: [],
+        error: "Malformed policy structure: policy is not an object",
+      };
+    }
     if (policy.effect === "deny") {
       const res = JSON.stringify(policy.resources || {});
-      if (
-        (targetAccount && res.includes(targetAccount)) ||
-        (targetZone && res.includes(targetZone))
-      ) {
+      if (res.includes(targetAccount) || res.includes(targetZone)) {
         return {
           valid: false,
           missingPermissions: [],
-          scopeErrors: [`Explicit DENY policy found targeting account ${targetAccount || ""} or zone ${targetZone || ""}`],
+          scopeErrors: [`Explicit DENY policy found targeting account ${targetAccount} or zone ${targetZone}`],
           error: "Token contains an explicit DENY policy affecting target resources",
         };
       }
     }
   }
 
-  // Check ALLOW policies
   const allowPolicies = policies.filter((p) => p.effect === "allow");
   if (allowPolicies.length === 0) {
     return {
       valid: false,
-      missingPermissions: Object.keys(REQUIRED_CAPABILITIES),
+      missingPermissions: [
+        ...Object.keys(REQUIRED_ACCOUNT_CAPABILITIES),
+        ...Object.keys(REQUIRED_ZONE_CAPABILITIES),
+      ],
       scopeErrors: [],
       error: "No ALLOW policies found in token",
     };
   }
 
-  // Collect all granted permission group names in allow policies
-  const grantedPermissionNames = new Set();
-  const allAccountResources = [];
-  const allZoneResources = [];
-
-  for (const policy of allowPolicies) {
-    for (const group of policy.permission_groups || []) {
-      if (group && typeof group.name === "string") {
-        grantedPermissionNames.add(group.name.trim());
-      }
-    }
-    const resources = policy.resources || {};
-    for (const key of Object.keys(resources)) {
-      if (key.startsWith("com.cloudflare.api.account.zone")) {
-        allZoneResources.push(key);
-      } else if (key.startsWith("com.cloudflare.api.account")) {
-        allAccountResources.push(key);
-      }
-    }
-  }
-
-  // Verify each required capability
+  // Check account-scoped permissions: must be granted inside an ALLOW policy covering targetAccount
   const missingPermissions = [];
-  for (const [capability, acceptedNames] of Object.entries(REQUIRED_CAPABILITIES)) {
-    const hasPermission = acceptedNames.some((accepted) => grantedPermissionNames.has(accepted));
-    if (!hasPermission) {
+  const scopeErrors = [];
+
+  for (const [capability, acceptedNames] of Object.entries(REQUIRED_ACCOUNT_CAPABILITIES)) {
+    let satisfied = false;
+    for (const policy of allowPolicies) {
+      if (!policyCoversAccount(policy.resources, targetAccount)) {
+        continue;
+      }
+      const groups = policy.permission_groups || [];
+      const hasGroup = groups.some((g) => g && typeof g.name === "string" && acceptedNames.includes(g.name.trim()));
+      if (hasGroup) {
+        satisfied = true;
+        break;
+      }
+    }
+    if (!satisfied) {
       missingPermissions.push(capability);
     }
   }
 
-  // Verify resource scopes cover targeted account & zone if specified
-  const scopeErrors = [];
-  if (targetAccount) {
-    const accountMatches = allAccountResources.some(
-      (resKey) => resKey === "com.cloudflare.api.account.*" || resKey.includes(targetAccount)
-    );
-    if (!accountMatches && allAccountResources.length > 0) {
-      scopeErrors.push(`Token allow policies do not cover target account ${targetAccount}`);
+  // Check zone-scoped permissions: must be granted inside an ALLOW policy covering targetZone
+  for (const [capability, acceptedNames] of Object.entries(REQUIRED_ZONE_CAPABILITIES)) {
+    let satisfied = false;
+    for (const policy of allowPolicies) {
+      if (!policyCoversZone(policy.resources, targetZone)) {
+        continue;
+      }
+      const groups = policy.permission_groups || [];
+      const hasGroup = groups.some((g) => g && typeof g.name === "string" && acceptedNames.includes(g.name.trim()));
+      if (hasGroup) {
+        satisfied = true;
+        break;
+      }
+    }
+    if (!satisfied) {
+      missingPermissions.push(capability);
     }
   }
 
-  if (targetZone) {
-    const zoneMatches = allZoneResources.some(
-      (resKey) => resKey === "com.cloudflare.api.account.zone.*" || resKey.includes(targetZone)
-    );
-    if (!zoneMatches && allZoneResources.length > 0) {
-      scopeErrors.push(`Token allow policies do not cover target zone ${targetZone}`);
-    }
+  // Check overall resource scope coverage evidence
+  const hasAnyAccountScope = allowPolicies.some((p) => policyCoversAccount(p.resources, targetAccount));
+  if (!hasAnyAccountScope) {
+    scopeErrors.push(`Token allow policies do not cover target account ${targetAccount}`);
+  }
+
+  const hasAnyZoneScope = allowPolicies.some((p) => policyCoversZone(p.resources, targetZone));
+  if (!hasAnyZoneScope) {
+    scopeErrors.push(`Token allow policies do not cover target zone ${targetZone}`);
   }
 
   const valid = missingPermissions.length === 0 && scopeErrors.length === 0;
@@ -195,7 +255,7 @@ if (isDirectCli) {
   const targetZoneId = args[2];
 
   if (!jsonPath) {
-    console.error("Usage: node verify-token-policy.mjs <token-details.json | -> [targetAccountId] [targetZoneId]");
+    console.error("Usage: node verify-token-policy.mjs <token-details.json | -> <targetAccountId> <targetZoneId>");
     process.exit(1);
   }
 
