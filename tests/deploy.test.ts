@@ -4,6 +4,10 @@ import { spawnSync } from "node:child_process";
 import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
+import {
+  REQUIRED_ACCOUNT_CAPABILITIES,
+  REQUIRED_ZONE_CAPABILITIES,
+} from "../scripts/verify-token-policy.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 
@@ -43,10 +47,12 @@ describe("wrangler environment isolation (ADR 0006)", () => {
     expect(prodBlock).not.toMatch(/AUTH_BYPASS["\s:]*[1t]/i);
   });
 
-  it("demo sets ENVIRONMENT=demo, DEMO_DAILY_PROVIDER_LIMIT=50, and Custom Domain route", () => {
+  it("demo sets ENVIRONMENT=demo, DEMO_DAILY_PROVIDER_LIMIT=50, AI gateway url and model, and Custom Domain route", () => {
     expect(wrangler).toMatch(/"ENVIRONMENT":\s*"demo"/);
     expect(wrangler).toMatch(/"BETTER_AUTH_URL":\s*"https:\/\/homedesign\.monet\.uno"/);
     expect(wrangler).toMatch(/"DEMO_DAILY_PROVIDER_LIMIT":\s*"50"/);
+    expect(wrangler).toMatch(/"AI_API_BASE_URL":\s*"https:\/\/cliproxy\.monet\.uno\/v1"/);
+    expect(wrangler).toMatch(/"AI_DEFAULT_MODEL":\s*"gemini-3.1-flash-image"/);
     expect(wrangler).toMatch(/"pattern":\s*"homedesign\.monet\.uno"/);
     expect(wrangler).toMatch(/"custom_domain":\s*true/);
     const demoBlock = wrangler.split('"demo"')[1] ?? "";
@@ -167,12 +173,11 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
   it("implements authoritative non-mutating capability preflights for token policies, zone, D1, R2, Queues before any mutation", () => {
     const script = read("scripts/demo-provision.sh");
 
-    // Token self-verification and authoritative policy introspection
+    // Token self-verification and optional policy introspection
     expect(script).toContain("user/tokens/verify");
     expect(script).toContain("user/tokens/${TOKEN_ID}");
-    expect(script).toContain("User: API Tokens: Read");
     expect(script).toContain("verify-token-policy.mjs");
-
+    expect(script).not.toContain("CLOUDFLARE_AUDIT_TOKEN");
     // Zone capability check
     expect(script).toContain("zones?name=monet.uno");
 
@@ -723,6 +728,381 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
     });
     expect(zoneDenyRes.status).toBe(1);
     expect(zoneDenyRes.stderr).toContain("DENY policy found");
+
+    // 11. User token with Write but no Read (e.g. Workers Scripts Write, D1 Write, R2 Write, Queues Write) -> SUCCEEDS (exit 0)
+    const writeOnlyToken = {
+      success: true,
+      result: {
+        id: "tok_write_only",
+        name: "write-only-token",
+        status: "active",
+        policies: [
+          {
+            effect: "allow",
+            resources: {
+              [`com.cloudflare.api.account.${targetAccount}`]: "*",
+            },
+            permission_groups: [
+              { name: "Workers Scripts Write" },
+              { name: "D1 Write" },
+              { name: "Workers R2 Storage Write" },
+              { name: "Workers Queues Write" },
+            ],
+          },
+          {
+            effect: "allow",
+            resources: {
+              [`com.cloudflare.api.account.zone.${targetZone}`]: "*",
+            },
+            permission_groups: [
+              { name: "Zone Read" },
+            ],
+          },
+        ],
+      },
+    };
+    const writeOnlyRes = spawnSync("node", [verifyScriptPath, "-", targetAccount, targetZone], {
+      input: JSON.stringify(writeOnlyToken),
+      encoding: "utf8",
+    });
+    expect(writeOnlyRes.status).toBe(0);
+    expect(writeOnlyRes.stdout).toContain("OK: Cloudflare token policy verified");
+
+    // 12. Account-owned token path with documented account-scoped policy shapes -> SUCCEEDS (exit 0)
+    const accountOwnedToken = {
+      success: true,
+      result: {
+        id: "tok_account_owned",
+        name: "account-ci-token",
+        status: "active",
+        policies: [
+          {
+            effect: "allow",
+            resources: {
+              [`com.cloudflare.api.account.${targetAccount}`]: "*",
+            },
+            permission_groups: [
+              { name: "Workers Scripts Write" },
+              { name: "D1 Write" },
+              { name: "Workers R2 Storage Write" },
+              { name: "Workers Queues Write" },
+            ],
+          },
+          {
+            effect: "allow",
+            resources: {
+              [`com.cloudflare.api.account.zone.${targetZone}`]: "*",
+            },
+            permission_groups: [
+              { name: "Zone Read" },
+            ],
+          },
+        ],
+      },
+    };
+    const accountOwnedRes = spawnSync("node", [verifyScriptPath, "-", targetAccount, targetZone], {
+      input: JSON.stringify(accountOwnedToken),
+      encoding: "utf8",
+    });
+    expect(accountOwnedRes.status).toBe(0);
+    expect(accountOwnedRes.stdout).toContain("OK: Cloudflare token policy verified");
+    // 13. Unsupported / ambiguous introspection payload (missing result/policies or malformed) -> FAILS (exit 1)
+    const ambiguousRes = spawnSync("node", [verifyScriptPath, "-", targetAccount, targetZone], {
+      input: JSON.stringify({ success: true, result: null }),
+      encoding: "utf8",
+    });
+    expect(ambiguousRes.status).toBe(1);
+    expect(ambiguousRes.stderr).toContain("Token details response indicates failure or missing result");
+
+    // 14. Insufficient deploy permissions (e.g. missing Queues Write) -> FAILS (exit 1)
+    const missingQueuesToken = {
+      success: true,
+      result: {
+        id: "tok_missing_queues",
+        name: "missing-queues-token",
+        status: "active",
+        policies: [
+          {
+            effect: "allow",
+            resources: {
+              [`com.cloudflare.api.account.${targetAccount}`]: "*",
+            },
+            permission_groups: [
+              { name: "Workers Scripts Write" },
+              { name: "D1 Write" },
+              { name: "Workers R2 Storage Write" },
+            ],
+          },
+          {
+            effect: "allow",
+            resources: {
+              [`com.cloudflare.api.account.zone.${targetZone}`]: "*",
+            },
+            permission_groups: [
+              { name: "Zone Read" },
+            ],
+          },
+        ],
+      },
+    };
+    const missingQueuesRes = spawnSync("node", [verifyScriptPath, "-", targetAccount, targetZone], {
+      input: JSON.stringify(missingQueuesToken),
+      encoding: "utf8",
+    });
+    expect(missingQueuesRes.status).toBe(1);
+    expect(missingQueuesRes.stderr).toContain("Missing required write permission groups: Queues");
+
+    // 14. Required permission allowlist excludes unrelated permissions (DNS Write, Workers Routes Write, Pages, KV, AI, User/Account Tokens)
+    expect(Object.keys(REQUIRED_ACCOUNT_CAPABILITIES)).toEqual(["Workers Scripts", "D1", "R2", "Queues"]);
+    expect(Object.keys(REQUIRED_ZONE_CAPABILITIES)).toEqual(["Zone"]);
+
+    const allAcceptedPerms = [
+      ...Object.values(REQUIRED_ACCOUNT_CAPABILITIES).flat(),
+      ...Object.values(REQUIRED_ZONE_CAPABILITIES).flat(),
+    ];
+    // Must NOT require DNS Write, Routes, Pages, KV, AI, Tokens Read/Write
+    expect(allAcceptedPerms).not.toContain("DNS Write");
+    expect(allAcceptedPerms).not.toContain("Workers Routes Write");
+    expect(allAcceptedPerms).not.toContain("Pages Write");
+    expect(allAcceptedPerms).not.toContain("Workers KV Storage Write");
+    expect(allAcceptedPerms).not.toContain("Workers AI Write");
+    expect(allAcceptedPerms).not.toContain("AI Gateway Write");
+    expect(allAcceptedPerms).not.toContain("User: API Tokens: Read");
+    expect(allAcceptedPerms).not.toContain("User: API Tokens: Write");
+    expect(allAcceptedPerms).not.toContain("Account: API Tokens: Read");
+  });
+
+  it("proceeds with resource access preflight when token introspection is unavailable and avoids premature rejection", () => {
+    // Hermetically execute demo-provision.sh with curl and npx shims
+    const bashPath = process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/bash";
+    const tempDir = mkdtempSync(join(tmpdir(), "demo-provision-no-intro-"));
+    const curlShim = join(tempDir, "curl");
+    const npxShim = join(tempDir, "npx");
+
+    // Create curl mock that answers verify, zone query, but fails introspection (code 9109)
+    const curlScript = `#!/usr/bin/env node
+const fs = require("fs");
+const args = process.argv.slice(2);
+const url = args.find(a => a.startsWith("http://") || a.startsWith("https://"));
+if (!url) {
+  process.exit(1);
+}
+if (url.includes("/user/tokens/verify")) {
+  console.log(JSON.stringify({
+    success: true,
+    result: { id: "tok_deploy_123", status: "active" }
+  }));
+  process.exit(0);
+}
+
+if (url.includes("/zones?name=monet.uno")) {
+  console.log(JSON.stringify({
+    success: true,
+    result: [{
+      id: "zone_monet_uno_456",
+      name: "monet.uno",
+      account: { id: "acct_monet_789" }
+    }]
+  }));
+  process.exit(0);
+}
+
+if (url.includes("/tokens/tok_deploy_123")) {
+  // Simulate introspection forbidden / unauthorized (code 9109)
+  console.log(JSON.stringify({
+    success: false,
+    errors: [{ code: 9109, message: "Unauthorized to access requested resource" }]
+  }));
+  process.exit(0);
+}
+
+process.exit(1);
+`;
+
+    // Create npx mock: records commands and answers list and whoami cleanly
+    const logPath = join(tempDir, "mutations.log").replace(/\\/g, "/");
+    const npxScript = `#!/usr/bin/env node
+const fs = require("fs");
+const args = process.argv.slice(2);
+const cmd = args.join(" ");
+
+if (args.includes("whoami")) {
+  console.log("Logged in with User API Token");
+  process.exit(0);
+}
+
+fs.appendFileSync(${JSON.stringify(logPath)}, cmd + String.fromCharCode(10));
+process.exit(0);
+`;
+
+    // Write shims
+    writeFileSync(curlShim, `#!/usr/bin/env sh\nnode "${curlShim}.cjs" "$@"\n`, "utf8");
+    writeFileSync(`${curlShim}.cjs`, curlScript, "utf8");
+    chmodSync(curlShim, 0o755);
+
+    writeFileSync(npxShim, `#!/usr/bin/env sh\nnode "${npxShim}.cjs" "$@"\n`, "utf8");
+    writeFileSync(`${npxShim}.cjs`, npxScript, "utf8");
+    chmodSync(npxShim, 0o755);
+
+    try {
+      const res = spawnSync(bashPath, ["scripts/demo-provision.sh", "--preflight-only"], {
+        cwd: ROOT,
+        env: {
+          ...process.env,
+          CLOUDFLARE_API_TOKEN: "mock_cf_deploy_token",
+          CURL_BIN: curlShim,
+          WRANGLER_BIN: npxShim,
+          PATH: `${tempDir}${delimiter}${process.env.PATH ?? ""}`,
+        },
+        encoding: "utf8",
+      });
+
+      // Must NOT fail solely on introspection failure
+      expect(res.status).toBe(0);
+      expect(res.stdout).toContain("NOTICE: Token policy introspection unavailable");
+      expect(res.stdout).toContain("Preflighting non-mutating resource access on target account");
+      expect(res.stdout).toContain("Checking D1 access");
+      expect(res.stdout).toContain("Checking R2 access");
+      expect(res.stdout).toContain("Checking Queues access");
+      expect(res.stdout).toContain("NOTE: GET/list probes confirm authentication and resource access; write capability is enforced fail-closed at each idempotent step");
+
+      // Checked read access via wrangler
+      const mutationCalls = readFileSync(logPath, "utf8");
+      expect(mutationCalls).toContain("d1 list");
+      expect(mutationCalls).toContain("r2 bucket list");
+      expect(mutationCalls).toContain("queues list");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed before mutations when optional introspection succeeds but lacks a required deploy permission", () => {
+    const bashPath = process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/bash";
+    const tempDir = mkdtempSync(join(tmpdir(), "demo-provision-intro-missing-"));
+    const curlShim = join(tempDir, "curl");
+    const npxShim = join(tempDir, "npx");
+
+    const targetAccount = "acct_monet_789";
+    const targetZone = "zone_monet_uno_456";
+    const curlScript = `#!/usr/bin/env node
+const fs = require("fs");
+const args = process.argv.slice(2);
+const url = args.find(a => a.startsWith("http://") || a.startsWith("https://"));
+if (!url) {
+  process.exit(1);
+}
+
+if (url.includes("/user/tokens/verify")) {
+  console.log(JSON.stringify({
+    success: true,
+    result: { id: "tok_deploy_123", status: "active" }
+  }));
+  process.exit(0);
+}
+
+if (url.includes("/zones?name=monet.uno")) {
+  console.log(JSON.stringify({
+    success: true,
+    result: [{
+      id: "${targetZone}",
+      name: "monet.uno",
+      account: { id: "${targetAccount}" }
+    }]
+  }));
+  process.exit(0);
+}
+
+if (url.includes("/tokens/tok_deploy_123")) {
+  // Returns policies MISSING Queues Write
+  console.log(JSON.stringify({
+    success: true,
+    result: {
+      id: "tok_deploy_123",
+      status: "active",
+      policies: [
+        {
+          effect: "allow",
+          resources: {
+            "com.cloudflare.api.account.${targetAccount}": "*"
+          },
+          permission_groups: [
+            { name: "Workers Scripts Write" },
+            { name: "D1 Write" },
+            { name: "Workers R2 Storage Write" }
+          ]
+        },
+        {
+          effect: "allow",
+          resources: {
+            "com.cloudflare.api.account.zone.${targetZone}": "*"
+          },
+          permission_groups: [
+            { name: "Zone Read" }
+          ]
+        }
+      ]
+    }
+  }));
+  process.exit(0);
+}
+
+process.exit(1);
+`;
+
+    const logPath = join(tempDir, "mutations.log").replace(/\\/g, "/");
+    const npxScript = `#!/usr/bin/env node
+const fs = require("fs");
+const args = process.argv.slice(2);
+const cmd = args.join(" ");
+
+if (args.includes("whoami")) {
+  console.log("Logged in with User API Token");
+  process.exit(0);
+}
+
+fs.appendFileSync(${JSON.stringify(logPath)}, cmd + String.fromCharCode(10));
+process.exit(0);
+`;
+
+    writeFileSync(curlShim, `#!/usr/bin/env sh\nnode "${curlShim}.cjs" "$@"\n`, "utf8");
+    writeFileSync(`${curlShim}.cjs`, curlScript, "utf8");
+    chmodSync(curlShim, 0o755);
+
+    writeFileSync(npxShim, `#!/usr/bin/env sh\nnode "${npxShim}.cjs" "$@"\n`, "utf8");
+    writeFileSync(`${npxShim}.cjs`, npxScript, "utf8");
+    chmodSync(npxShim, 0o755);
+
+    try {
+      const res = spawnSync(bashPath, ["scripts/demo-provision.sh", "--dry-run"], {
+        cwd: ROOT,
+        env: {
+          ...process.env,
+          CLOUDFLARE_API_TOKEN: "mock_deploy_token",
+          CURL_BIN: curlShim,
+          WRANGLER_BIN: npxShim,
+          PATH: `${tempDir}${delimiter}${process.env.PATH ?? ""}`,
+        },
+        encoding: "utf8",
+      });
+
+      // Must fail closed before mutations
+      expect(res.status).toBe(1);
+      expect(res.stdout).toContain("Structural token policy verification failed");
+      expect(res.stdout).toContain("Active token policies explicitly lack required write permissions for Workers Scripts, D1, R2, Queues");
+
+      let mutationCalls = "";
+      try {
+        mutationCalls = readFileSync(logPath, "utf8");
+      } catch {
+        mutationCalls = "";
+      }
+      expect(mutationCalls).not.toContain("d1 create");
+      expect(mutationCalls).not.toContain("r2 bucket create");
+      expect(mutationCalls).not.toContain("queues create");
+      expect(mutationCalls).not.toContain("deploy");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
 

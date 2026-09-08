@@ -11,13 +11,18 @@
 #   build and free-first bundle gate without creating remote resources or modifying state.
 set -euo pipefail
 
+CURL_BIN="${CURL_BIN:-curl}"
+WRANGLER_BIN="${WRANGLER_BIN:-}"
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-
 DRY_RUN=false
+PREFLIGHT_ONLY=false
 for arg in "$@"; do
   if [[ "$arg" == "--dry-run" ]]; then
     DRY_RUN=true
+  elif [[ "$arg" == "--preflight-only" ]]; then
+    PREFLIGHT_ONLY=true
   fi
 done
 
@@ -35,7 +40,7 @@ npx wrangler whoami
 
 # 1a. Cloudflare API Token introspection preflight (non-mutating GET)
 echo "==> Preflighting Cloudflare API Token status and introspection (user/tokens/verify)"
-TOKEN_VERIFY_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/user/tokens/verify" 2>/dev/null) || {
+TOKEN_VERIFY_RES=$("$CURL_BIN" -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/user/tokens/verify" 2>/dev/null) || {
   echo "ERROR: Failed network request to verify Cloudflare API Token."
   exit 1
 }
@@ -49,7 +54,7 @@ echo "OK: CLOUDFLARE_API_TOKEN is valid and active."
 
 # 1b. Zone preflight: verify access and permissions for 'monet.uno' zone (non-mutating GET)
 echo "==> Preflighting Cloudflare Zone capability for 'monet.uno' (zones?name=monet.uno)"
-ZONE_QUERY_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/zones?name=monet.uno" 2>/dev/null) || {
+ZONE_QUERY_RES=$("$CURL_BIN" -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/zones?name=monet.uno" 2>/dev/null) || {
   echo "ERROR: Failed network request to query zone 'monet.uno'."
   exit 1
 }
@@ -117,40 +122,58 @@ export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
 echo "OK: Verified authoritative target Account ID (${ACCOUNT_ID}) and Zone ID (${ZONE_ID}) from zone 'monet.uno'."
 echo "OK: Pinned CLOUDFLARE_ACCOUNT_ID=${ACCOUNT_ID} for Wrangler operations."
 
-# 1c. Authoritative Token Policy & Permission Introspection
+# 1c. Optional Token Policy Introspection & Authoritative Resource Access Preflight
 TOKEN_ID=$(echo "$TOKEN_VERIFY_RES" | grep -o '"id":"[^"]*' | head -1 | cut -d'"' -f4)
 if [[ -z "$TOKEN_ID" ]]; then
   echo "ERROR: Could not parse token ID from verify response."
   exit 1
 fi
 
-echo "==> Introspecting token policy details via user/tokens/${TOKEN_ID}"
-TOKEN_DETAILS_RES=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/user/tokens/${TOKEN_ID}" 2>/dev/null) || {
-  echo "ERROR: Failed network request to introspect Cloudflare API Token details."
-  exit 1
-}
-
+echo "==> Probing optional token policy details (stronger evidence when permitted)"
+TOKEN_DETAILS_RES=$("$CURL_BIN" -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/user/tokens/${TOKEN_ID}" 2>/dev/null) || true
 if [[ "$TOKEN_DETAILS_RES" != *"\"success\":true"* ]]; then
-  echo "ERROR: Authoritative token policy introspection failed (requires 'User: API Tokens: Read' permission)."
-  echo "Cannot prove required write permissions for Workers Scripts, D1, R2, Queues, and Zone Read."
-  exit 1
+  TOKEN_DETAILS_RES=$("$CURL_BIN" -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/tokens/${TOKEN_ID}" 2>/dev/null) || true
 fi
 
-# Verify required write and zone permissions are present in the token's policies structurally via verify-token-policy.mjs
-echo "$TOKEN_DETAILS_RES" | node "$(dirname "$0")/verify-token-policy.mjs" - "$ACCOUNT_ID" "$ZONE_ID" || {
-  echo "ERROR: Structural token policy verification failed."
-  echo "The token must possess ALLOW policies directly covering write permissions for Workers Scripts, D1, R2, and Queues on target account ${ACCOUNT_ID} and Zone Read on target zone ${ZONE_ID}."
+if [[ "$TOKEN_DETAILS_RES" == *"\"success\":true"* ]]; then
+  echo "==> Token policy details endpoint accessible; verifying required deployment permissions structurally"
+  echo "$TOKEN_DETAILS_RES" | node "$(dirname "$0")/verify-token-policy.mjs" - "$ACCOUNT_ID" "$ZONE_ID" || {
+    echo "ERROR: Structural token policy verification failed."
+    echo "Active token policies explicitly lack required write permissions for Workers Scripts, D1, R2, Queues on account ${ACCOUNT_ID} or Zone Read on zone ${ZONE_ID}."
+    exit 1
+  }
+  echo "OK: Authoritative token policy introspection confirmed required write permission groups and resource scopes."
+else
+  echo "NOTICE: Token policy introspection unavailable (token lacks API Tokens Read/Write; not required for deployment)."
+  echo "Proceeding with non-mutating resource access preflights on target account/zone."
+fi
+
+echo "==> Preflighting non-mutating resource access on target account"
+echo "--> Checking D1 access..."
+npx wrangler d1 list > /dev/null || {
+  echo "ERROR: Failed non-mutating preflight access to D1 on account ${ACCOUNT_ID}."
   exit 1
 }
-echo "OK: Authoritative token policy introspection confirmed required write permission groups and resource scopes."
-echo "==> Preflighting Cloudflare D1 capability"
-npx wrangler d1 list > /dev/null
 
-echo "==> Preflighting Cloudflare R2 capability"
-npx wrangler r2 bucket list > /dev/null
+echo "--> Checking R2 access..."
+npx wrangler r2 bucket list > /dev/null || {
+  echo "ERROR: Failed non-mutating preflight access to R2 on account ${ACCOUNT_ID}."
+  exit 1
+}
 
-echo "==> Preflighting Cloudflare Queues capability"
-npx wrangler queues list > /dev/null
+echo "--> Checking Queues access..."
+npx wrangler queues list > /dev/null || {
+  echo "ERROR: Failed non-mutating preflight access to Queues on account ${ACCOUNT_ID}."
+  exit 1
+}
+
+echo "OK: Non-mutating resource access preflights confirmed access to D1, R2, and Queues on target account."
+echo "NOTE: GET/list probes confirm authentication and resource access; write capability is enforced fail-closed at each idempotent step."
+
+if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
+  echo "OK: Preflight capability checks completed successfully."
+  exit 0
+fi
 # 2. Check required deployment secrets hooks (without printing or exposing secret values)
 echo "==> 2/9: Verifying deployment secrets presence (hooks check)"
 REQUIRED_SECRETS=(

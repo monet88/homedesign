@@ -300,7 +300,9 @@
         "ENVIRONMENT": "demo",
         "BETTER_AUTH_URL": "https://homedesign.monet.uno",
         "HD_PRIVATE_BUCKET_NAME": "hd-demo-private",
-        "DEMO_DAILY_PROVIDER_LIMIT": "50"
+        "DEMO_DAILY_PROVIDER_LIMIT": "50",
+        "AI_API_BASE_URL": "https://cliproxy.monet.uno/v1",
+        "AI_DEFAULT_MODEL": "gemini-3.1-flash-image"
       },
       "d1_databases": [
         {
