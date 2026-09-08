@@ -184,7 +184,12 @@ export async function createDesign(
   } else {
     prompt = buildPrompt(config);
   }
-
+  if (isDemo(env) && effectiveConfig.provider !== effectiveProvider) {
+    effectiveConfig = {
+      ...effectiveConfig,
+      provider: effectiveProvider,
+    };
+  }
   if (!prompt) throw new DesignError("INVALID_INTENT", 400, "empty prompt");
 
   // Authorize the source Asset: exists, owned by the caller, lifecycle `ready`.
@@ -232,7 +237,10 @@ export async function createDesign(
 
     if (!created) {
       // Free grant is ensured on every verified new-task path (ADR 0002); idempotent.
-      await ensureFreeCreditGrant(env, userId);
+      // Public Demo skips ensureFreeCreditGrant entirely (ADR 0008).
+      if (!isDemo(env)) {
+        await ensureFreeCreditGrant(env, userId);
+      }
 
       // Credit gate BEFORE the hold. createTaskWithHold re-checks atomically.
       const available = await getAvailableCredits(env, userId);

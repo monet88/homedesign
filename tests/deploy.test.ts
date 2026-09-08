@@ -435,6 +435,62 @@ describe("demo-provision script (ADR 0008 / Issue #72)", () => {
     });
     expect(inactiveRes.status).toBe(1);
     expect(inactiveRes.stderr).toContain("Token status is 'disabled', expected 'active'");
+
+    // 9. Account wildcard DENY policy -> FAILS (exit 1)
+    const accountWildcardDenyToken = {
+      success: true,
+      result: {
+        id: "tok_deny_acct_wildcard",
+        name: "deny-acct-wildcard-token",
+        status: "active",
+        policies: [
+          ...validToken.result.policies,
+          {
+            effect: "deny",
+            resources: {
+              "com.cloudflare.api.account.*": "*",
+            },
+            permission_groups: [
+              { name: "Workers Scripts Write" },
+            ],
+          },
+        ],
+      },
+    };
+    const acctDenyRes = spawnSync("node", [verifyScriptPath, "-", targetAccount, targetZone], {
+      input: JSON.stringify(accountWildcardDenyToken),
+      encoding: "utf8",
+    });
+    expect(acctDenyRes.status).toBe(1);
+    expect(acctDenyRes.stderr).toContain("DENY policy found");
+
+    // 10. Zone wildcard DENY policy -> FAILS (exit 1)
+    const zoneWildcardDenyToken = {
+      success: true,
+      result: {
+        id: "tok_deny_zone_wildcard",
+        name: "deny-zone-wildcard-token",
+        status: "active",
+        policies: [
+          ...validToken.result.policies,
+          {
+            effect: "deny",
+            resources: {
+              "com.cloudflare.api.account.zone.*": "*",
+            },
+            permission_groups: [
+              { name: "Zone Read" },
+            ],
+          },
+        ],
+      },
+    };
+    const zoneDenyRes = spawnSync("node", [verifyScriptPath, "-", targetAccount, targetZone], {
+      input: JSON.stringify(zoneWildcardDenyToken),
+      encoding: "utf8",
+    });
+    expect(zoneDenyRes.status).toBe(1);
+    expect(zoneDenyRes.stderr).toContain("DENY policy found");
   });
 });
 

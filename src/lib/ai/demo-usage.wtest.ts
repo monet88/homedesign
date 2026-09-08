@@ -13,6 +13,7 @@ import {
   createDesign,
   runGeneration,
   getTask,
+  getDesign,
 } from "@/lib/ai/lifecycle";
 import {
   getAvailableCredits,
@@ -422,9 +423,12 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     });
 
     const taskId = briefDesign.id;
+    const fpDesignRow = await getDesign(demoEnv, taskId);
+    expect(fpDesignRow?.provider).toBe("gemini");
+    const fpConfigJson = JSON.parse(fpDesignRow?.config_json ?? "{}");
+    expect(fpConfigJson.provider).toBe("gemini");
     const stageRunBefore = await getStageRunByDesignId(demoEnv, taskId);
     expect(stageRunBefore?.status).toBe("processing");
-
     // Run generation when cap is exhausted
     const genRes = await runGeneration(demoEnv, taskId);
     expect(genRes.status).toBe("failed");
@@ -675,7 +679,10 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     });
     const taskOmitted = await getTask(demoEnvWithKey, designOmitted.id);
     expect(taskOmitted?.provider).toBe("gemini");
-
+    const designRowOmitted = await getDesign(demoEnvWithKey, designOmitted.id);
+    expect(designRowOmitted?.provider).toBe("gemini");
+    const configJson = JSON.parse(designRowOmitted?.config_json ?? "{}");
+    expect(configJson.provider).toBe("gemini");
     // 2. Explicit fake provider in demo is rejected fail-closed before any billable work
     let caughtFakeErr: unknown = null;
     try {

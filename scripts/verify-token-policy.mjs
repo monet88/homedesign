@@ -158,8 +158,9 @@ export function verifyTokenPolicies(rawJson, options = {}) {
       };
     }
     if (policy.effect === "deny") {
-      const res = JSON.stringify(policy.resources || {});
-      if (res.includes(targetAccount) || res.includes(targetZone)) {
+      const deniesAccount = policyCoversAccount(policy.resources, targetAccount);
+      const deniesZone = policyCoversZone(policy.resources, targetZone);
+      if (deniesAccount || deniesZone) {
         return {
           valid: false,
           missingPermissions: [],

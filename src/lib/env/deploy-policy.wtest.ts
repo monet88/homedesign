@@ -172,7 +172,11 @@ describe("demo policy matrix (ADR 0008, Issue #72)", () => {
     ).bind(userId).first<{ cnt: number }>();
     expect(holdRow?.cnt).toBe(0);
 
-    // 6. Available credits remains strictly 0
+    // 6. Available credits remains strictly 0 and no free-grant ledger entry was created
+    const ledgerRow = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM credit_ledger WHERE user_id = ?1`
+    ).bind(userId).first<{ cnt: number }>();
+    expect(ledgerRow?.cnt).toBe(0);
     expect(await getAvailableCredits(d, userId)).toBe(0);
   });
   it("mock payment returns 403 in demo", async () => {
