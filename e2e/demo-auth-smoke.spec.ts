@@ -12,7 +12,20 @@ import { test, expect } from "@playwright/test";
 // 4. If an operator-provided runtime storage state is supplied (PLAYWRIGHT_STORAGE_STATE),
 //    it verifies the authenticated session has 0 credits initially and cannot create workloads.
 
+const liveGoogleSmokeEnabled = process.env.DEMO_LIVE_GOOGLE_SMOKE === "1";
+
 test.describe("Public Demo Auth & Google Live Smoke (ADR 0008, Issue #72)", () => {
+  test.skip(
+    !liveGoogleSmokeEnabled,
+    "Live Google smoke runs separately from deterministic CI; set DEMO_LIVE_GOOGLE_SMOKE=1 against the deployed Demo"
+  );
+  test.beforeEach(async ({}, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "chromium-desktop",
+      "Live Google smoke runs once on the desktop browser project"
+    );
+  });
+
   test("client-config endpoint returns non-empty googleClientId without secrets or sensitive tokens", async ({
     request,
   }) => {
@@ -88,14 +101,9 @@ test.describe("Public Demo Auth & Google Live Smoke (ADR 0008, Issue #72)", () =
       },
     });
 
-    // If running against demo environment, email signup MUST be banned with 403
-    if (signUpRes.status() === 403) {
-      const body = (await signUpRes.json()) as { error?: string };
-      expect(body.error).toBe("EMAIL_SIGNUP_BANNED_IN_DEMO");
-    } else {
-      // In local testing environment, status can be non-403 (testing economy allowed)
-      expect([200, 400, 403, 422]).toContain(signUpRes.status());
-    }
+    expect(signUpRes.status()).toBe(403);
+    const body = (await signUpRes.json()) as { error?: string };
+    expect(body.error).toBe("EMAIL_SIGNUP_BANNED_IN_DEMO");
   });
 
   test("authenticated operator session (when provided via runtime storageState) proves valid session on homedesign.monet.uno and starts with 0 credits", async ({
