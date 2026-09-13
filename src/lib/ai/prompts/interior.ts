@@ -15,8 +15,10 @@ function pick(preset: string | undefined, custom: string | undefined, fallback: 
 
 /**
  * Interior redesign template (Ticket #27, ADR 0007).
- * Structured 4-layer prompt: Task & Scene, PBR Materiality & Palette,
- * Structural Invariants, Quality/Daylight & Optics, plus optional Custom Requirements.
+ * Structured 3-tier architectural prompt:
+ * 1. Task & Preserved Architectural Enclosure (Structural Invariants)
+ * 2. Spatial Furnishing & Materiality (PBR, Lighting, Layout, Accents)
+ * 3. Photographic Standards & Optics (Digest Realism, Occlusion)
  */
 export function buildInteriorPrompt(intent: InteriorIntent): string {
   if (intent.mode === "edit") {
@@ -28,12 +30,26 @@ export function buildInteriorPrompt(intent: InteriorIntent): string {
   const colorScheme = pick(intent.colorScheme, intent.customColorScheme, FALLBACK_COLOR_SCHEME);
 
   const lines = [
-    `Redesign this ${roomType} in a ${style} direction.`,
-    `Apply ${colorScheme} with high-detail physically based rendering (PBR) materials, tactile fabrics, natural wood grains, and realistic surface finishes across updated furniture, lighting, and decor.`,
-    `Strictly preserve existing walls, ceiling heights, doors, window placements, structural columns, and room layout without geometric warping.`,
-    `Create a photorealistic interior render with natural scale, balanced daylight entering naturally through openings, accurate global illumination, and eye-level architectural perspective.`,
+    `TASK: Photorealistic architectural interior redesign of the provided room image into a ${style} ${roomType}.`,
+    "",
+    "1. PRESERVED ARCHITECTURAL ENCLOSURE (LOCK INVARIANTS):",
+    "- Strictly lock and preserve the exact existing wall planes, ceiling height, corner boundaries, and floor level from the input photo.",
+    "- Keep all existing window openings, mullion grids, radiator units, and doorways at their exact location, dimension, and scale; daylight must enter strictly through existing openings.",
+    "- Do not add, remove, or reposition structural walls, columns, or architectural boundaries.",
+    "",
+    "2. SPATIAL FURNISHING & MATERIAL SPECIFICATION:",
+    `- Apply ${colorScheme} with high-detail physically based rendering (PBR) materials, tactile fabrics, natural wood grains, and realistic surface finishes across updated furniture, lighting, and decor.`,
+    "- Main Seating & Layout: Select low-profile, ergonomic seating tailored to the room volume, leaving natural traffic circulation paths.",
+    "- Centerpiece & Styling: Incorporate a complementary coffee table or centerpiece with tasteful tabletop accessories (e.g. ceramic vessel, design monograph).",
+    "- Floor Anchoring: Ground the seating arrangement with a large textured natural-fiber or wool area rug, exposing perimeter wood/stone floor margins.",
+    "- Lighting & Ambiance: Install a sculptural designer pendant or chandelier from ceiling center emitting warm 2700K ambient illumination, balanced with natural daylight.",
+    "- Accents & Biophilic: Add an artisanal indoor plant in a textured planter in an alcove or corner, paired with minimalist wall art tailored to the style.",
+    "",
+    "3. PHOTOGRAPHIC & MATERIALITY STANDARDS:",
+    "- High-end architectural digest interior photography, eye-level 28mm lens, balanced natural exposure.",
+    "- PBR textures with visible fabric micro-weave, authentic matte wood grains, tactile stone/plaster, and soft contact ambient occlusion shadows under all furniture.",
+    "- Perfectly straight vertical architectural lines, crisp focus, zero lens distortion, zero CGI plastic glare.",
   ];
-
   const requirements = intent.requirements?.trim();
   if (requirements) lines.push(`Custom requirements: ${requirements}`);
 

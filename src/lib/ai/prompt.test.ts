@@ -30,10 +30,25 @@ import {
 import type { RoomBriefProposal } from "@/lib/floor-plan/types";
 
 const INTERIOR_TEMPLATE = [
-  "Redesign this living room in a modern direction.",
-  "Apply warm neutrals with high-detail physically based rendering (PBR) materials, tactile fabrics, natural wood grains, and realistic surface finishes across updated furniture, lighting, and decor.",
-  "Strictly preserve existing walls, ceiling heights, doors, window placements, structural columns, and room layout without geometric warping.",
-  "Create a photorealistic interior render with natural scale, balanced daylight entering naturally through openings, accurate global illumination, and eye-level architectural perspective.",
+  "TASK: Photorealistic architectural interior redesign of the provided room image into a modern living room.",
+  "",
+  "1. PRESERVED ARCHITECTURAL ENCLOSURE (LOCK INVARIANTS):",
+  "- Strictly lock and preserve the exact existing wall planes, ceiling height, corner boundaries, and floor level from the input photo.",
+  "- Keep all existing window openings, mullion grids, radiator units, and doorways at their exact location, dimension, and scale; daylight must enter strictly through existing openings.",
+  "- Do not add, remove, or reposition structural walls, columns, or architectural boundaries.",
+  "",
+  "2. SPATIAL FURNISHING & MATERIAL SPECIFICATION:",
+  "- Apply warm neutrals with high-detail physically based rendering (PBR) materials, tactile fabrics, natural wood grains, and realistic surface finishes across updated furniture, lighting, and decor.",
+  "- Main Seating & Layout: Select low-profile, ergonomic seating tailored to the room volume, leaving natural traffic circulation paths.",
+  "- Centerpiece & Styling: Incorporate a complementary coffee table or centerpiece with tasteful tabletop accessories (e.g. ceramic vessel, design monograph).",
+  "- Floor Anchoring: Ground the seating arrangement with a large textured natural-fiber or wool area rug, exposing perimeter wood/stone floor margins.",
+  "- Lighting & Ambiance: Install a sculptural designer pendant or chandelier from ceiling center emitting warm 2700K ambient illumination, balanced with natural daylight.",
+  "- Accents & Biophilic: Add an artisanal indoor plant in a textured planter in an alcove or corner, paired with minimalist wall art tailored to the style.",
+  "",
+  "3. PHOTOGRAPHIC & MATERIALITY STANDARDS:",
+  "- High-end architectural digest interior photography, eye-level 28mm lens, balanced natural exposure.",
+  "- PBR textures with visible fabric micro-weave, authentic matte wood grains, tactile stone/plaster, and soft contact ambient occlusion shadows under all furniture.",
+  "- Perfectly straight vertical architectural lines, crisp focus, zero lens distortion, zero CGI plastic glare.",
 ].join("\n");
 
 const EXTERIOR_TEMPLATE = [
@@ -57,10 +72,25 @@ describe("interior prompt template (structured 4-layer PBR & Optics)", () => {
   it("falls back to origin defaults when nothing is selected", () => {
     expect(buildInteriorPrompt({ mode: "redesign" })).toBe(
       [
-        "Redesign this the room in a custom design direction.",
-        "Apply a custom color palette with high-detail physically based rendering (PBR) materials, tactile fabrics, natural wood grains, and realistic surface finishes across updated furniture, lighting, and decor.",
-        "Strictly preserve existing walls, ceiling heights, doors, window placements, structural columns, and room layout without geometric warping.",
-        "Create a photorealistic interior render with natural scale, balanced daylight entering naturally through openings, accurate global illumination, and eye-level architectural perspective.",
+        "TASK: Photorealistic architectural interior redesign of the provided room image into a custom design the room.",
+        "",
+        "1. PRESERVED ARCHITECTURAL ENCLOSURE (LOCK INVARIANTS):",
+        "- Strictly lock and preserve the exact existing wall planes, ceiling height, corner boundaries, and floor level from the input photo.",
+        "- Keep all existing window openings, mullion grids, radiator units, and doorways at their exact location, dimension, and scale; daylight must enter strictly through existing openings.",
+        "- Do not add, remove, or reposition structural walls, columns, or architectural boundaries.",
+        "",
+        "2. SPATIAL FURNISHING & MATERIAL SPECIFICATION:",
+        "- Apply a custom color palette with high-detail physically based rendering (PBR) materials, tactile fabrics, natural wood grains, and realistic surface finishes across updated furniture, lighting, and decor.",
+        "- Main Seating & Layout: Select low-profile, ergonomic seating tailored to the room volume, leaving natural traffic circulation paths.",
+        "- Centerpiece & Styling: Incorporate a complementary coffee table or centerpiece with tasteful tabletop accessories (e.g. ceramic vessel, design monograph).",
+        "- Floor Anchoring: Ground the seating arrangement with a large textured natural-fiber or wool area rug, exposing perimeter wood/stone floor margins.",
+        "- Lighting & Ambiance: Install a sculptural designer pendant or chandelier from ceiling center emitting warm 2700K ambient illumination, balanced with natural daylight.",
+        "- Accents & Biophilic: Add an artisanal indoor plant in a textured planter in an alcove or corner, paired with minimalist wall art tailored to the style.",
+        "",
+        "3. PHOTOGRAPHIC & MATERIALITY STANDARDS:",
+        "- High-end architectural digest interior photography, eye-level 28mm lens, balanced natural exposure.",
+        "- PBR textures with visible fabric micro-weave, authentic matte wood grains, tactile stone/plaster, and soft contact ambient occlusion shadows under all furniture.",
+        "- Perfectly straight vertical architectural lines, crisp focus, zero lens distortion, zero CGI plastic glare.",
       ].join("\n")
     );
   });
@@ -75,7 +105,7 @@ describe("interior prompt template (structured 4-layer PBR & Optics)", () => {
       colorScheme: "warm neutrals",
       customColorScheme: "muted greens",
     });
-    expect(prompt).toContain("Redesign this reading nook in a wabi-sabi direction.");
+    expect(prompt).toContain("into a wabi-sabi reading nook.");
     expect(prompt).toContain("Apply muted greens with high-detail");
     expect(prompt).not.toContain("living room");
     expect(prompt).not.toContain("modern");
