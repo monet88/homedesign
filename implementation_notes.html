@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Implementation notes — Skills và Cloudflare deploy</title>
+  <style>
+    body { max-width: 780px; margin: 40px auto; padding: 0 20px; color: #202124; font: 16px/1.6 system-ui, sans-serif; }
+    h1 { margin-bottom: .2rem; } h2 { margin-top: 2rem; } code { background: #f3f4f6; padding: .1rem .3rem; }
+    .note { color: #5f6368; }
+  </style>
+</head>
+<body>
+  <h1>Skills và Cloudflare deploy</h1>
+  <p class="note">Ghi chú duy trì cho thay đổi project-local ngày 2026-09-13.</p>
+  <h2>Quyết định</h2>
+  <p>Năm skills backup được đặt tại <code>.agents/skills</code>, giữ nguyên cấu trúc và nội dung. Thư mục này bị Git ignore nên chỉ có hiệu lực trên workspace hiện tại.</p>
+  <h2>Phạm vi</h2>
+  <p>Deploy dùng environment <code>demo</code> tại <code>design.7app.online</code>, kết nối D1 <code>homeds</code> đã có sẵn trong cùng Cloudflare account. Worker <code>homedesign-demo</code> được tạo và custom domain được deploy; R2 và Queue chỉ dùng các binding đã có, không provision resource mới.</p>
+  <h2>Trade-off</h2>
+  <p>Cloudflare được chọn thay cho Vercel vì đây là runtime và binding gốc của dự án. Domain <code>design.7app.online</code> thay thế domain Monet cũ vì zone và D1 đã được xác minh cùng account.</p>
+  <h2>Bảo trì</h2>
+  <p>Không lưu credential trong repository. D1 <code>homeds</code> đã nhận đủ migrations. OAuth Web Client riêng cho HomeDesign đã được tạo; <code>BETTER_AUTH_SECRET</code>, <code>GOOGLE_CLIENT_ID</code> và <code>GOOGLE_CLIENT_SECRET</code> chỉ nằm trong <code>.env.local</code> và Cloudflare Worker Secrets. Smoke check đã xác nhận domain và public client-config; kiểm thử đăng nhập tương tác chưa được chạy để không tạo user session OAuth. Firebase Admin service account không là dependency runtime của HomeDesign. Khi cập nhật skills backup, copy lại vào <code>.agents/skills</code> và đối chiếu SHA-256 trước khi dùng.</p>
+</body>
+</html>

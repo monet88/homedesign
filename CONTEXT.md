@@ -46,3 +46,11 @@
 4. **Asset & Project Library** — Projects, Assets, Activity, Private/Favorite/Share.
 5. **Floor Plan Processing** — Recognition → 2D → 3D → 360° (tách pipeline).
 6. **Admin & Operations** — Admin Dashboard (`/admin`), User & Credit Management, Task Monitor, Provider Health Check.
+
+## Session state — Sprint 1 Cloudflare + OAuth deploy (2026-09-13)
+
+- **Rollback anchor:** `bca7718` before local deployment configuration changes.
+- **Completed:** Project-local skills imported; demo D1 binding moved to `homeds`; migrations applied; Google OAuth Web Client created through the project Owner profile; its values are only in ignored `.env.local` and Cloudflare Worker Secrets; `homedesign-demo` deployed to `https://design.7app.online`.
+- **Verified:** deployment exists, root URL returns HTTP 200, public auth client-config returns a syntactically valid Google Client ID, focused deploy tests pass, and TypeScript typecheck passes.
+- **Not verified:** an interactive end-user OAuth login was deliberately not run, so it does not create a real user session. Full behavioral audit of generation, credits, library, admin, and floor-plan journeys is Sprint 2.
+- **Next:** Read `plans/260913-1810-behavioral-audit-and-production-readiness/plan.md` and the latest handoff before changing user-facing auth or generation behavior. Never record credentials in this file.

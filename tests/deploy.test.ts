@@ -29,7 +29,7 @@ describe("wrangler environment isolation (ADR 0006)", () => {
     expect(wrangler).toMatch(/"database_name":\s*"hd-dev"/);
     expect(wrangler).toMatch(/"database_name":\s*"hd-staging"/);
     expect(wrangler).toMatch(/"database_name":\s*"hd-prod"/);
-    expect(wrangler).toMatch(/"database_name":\s*"hd-demo"/);
+    expect(wrangler).toMatch(/"database_name":\s*"homeds"/);
   });
 
   it("remote environments avoid the shared local id and demo records its provisioned D1 id", () => {
@@ -37,7 +37,7 @@ describe("wrangler environment isolation (ADR 0006)", () => {
       expect(wrangler).toContain(marker);
     }
     expect(wrangler).not.toContain("__PROVISIONED_DEMO__");
-    expect(wrangler).toMatch(/"database_name":\s*"hd-demo"[\s\S]*?"database_id":\s*"[0-9a-f-]{36}"/);
+    expect(wrangler).toMatch(/"database_name":\s*"homeds"[\s\S]*?"database_id":\s*"[0-9a-f-]{36}"/);
     const remoteSection = wrangler.split('"env"')[1] ?? "";
     expect(remoteSection).not.toContain('"database_id": "local"');
   });
@@ -51,11 +51,11 @@ describe("wrangler environment isolation (ADR 0006)", () => {
 
   it("demo sets ENVIRONMENT=demo, DEMO_DAILY_PROVIDER_LIMIT=50, AI gateway url and model, and Custom Domain route", () => {
     expect(wrangler).toMatch(/"ENVIRONMENT":\s*"demo"/);
-    expect(wrangler).toMatch(/"BETTER_AUTH_URL":\s*"https:\/\/homedesign\.monet\.uno"/);
+    expect(wrangler).toMatch(/"BETTER_AUTH_URL":\s*"https:\/\/design\.7app\.online"/);
     expect(wrangler).toMatch(/"DEMO_DAILY_PROVIDER_LIMIT":\s*"50"/);
     expect(wrangler).toMatch(/"AI_API_BASE_URL":\s*"https:\/\/cliproxy\.monet\.uno\/v1"/);
     expect(wrangler).toMatch(/"AI_DEFAULT_MODEL":\s*"gemini-3.1-flash-image"/);
-    expect(wrangler).toMatch(/"pattern":\s*"homedesign\.monet\.uno"/);
+    expect(wrangler).toMatch(/"pattern":\s*"design\.7app\.online"/);
     expect(wrangler).toMatch(/"custom_domain":\s*true/);
     const demoBlock = wrangler.split('"demo"')[1] ?? "";
     expect(demoBlock).not.toMatch(/AUTH_BYPASS["\s:]*[1t]/i);
