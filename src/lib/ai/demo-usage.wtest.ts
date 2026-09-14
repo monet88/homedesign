@@ -52,7 +52,7 @@ async function applyMigrations(db: D1Database) {
     "DROP TABLE IF EXISTS credit_ledger",
     "DROP TABLE IF EXISTS queue_events",
     "DROP TABLE IF EXISTS assets",
-    "DROP TABLE IF EXISTS demo_provider_usage",
+    "DROP TABLE IF EXISTS demo_daily_provider_usage",
     "DROP TABLE IF EXISTS user",
   ];
   for (const sql of drops) {
@@ -61,9 +61,10 @@ async function applyMigrations(db: D1Database) {
 
   await db.batch([
     db.prepare(
-      `CREATE TABLE IF NOT EXISTS demo_provider_usage (
-        usage_date TEXT PRIMARY KEY,
-        usage_count INTEGER NOT NULL DEFAULT 0,
+      `CREATE TABLE IF NOT EXISTS demo_daily_provider_usage (
+        day_key TEXT PRIMARY KEY,
+        submission_count INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )`
     ),
@@ -310,8 +311,8 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
     const now = new Date();
     const today = getBangkokDateString(now);
     await env.DB.prepare(
-      `INSERT INTO demo_provider_usage (usage_date, usage_count, updated_at)
-       VALUES (?1, 49, ?2)`
+      `INSERT INTO demo_daily_provider_usage (day_key, submission_count, created_at, updated_at)
+       VALUES (?1, 49, ?2, ?2)`
     ).bind(today, now.getTime()).run();
 
     let usage = await getDemoProviderUsage(demoEnv, now);
@@ -405,8 +406,8 @@ describe("Deterministic Lifecycle & Boundary under Provider Cap (ADR 0008, Issue
 
     // Cap already reached (1/1)
     await env.DB.prepare(
-      `INSERT INTO demo_provider_usage (usage_date, usage_count, updated_at)
-       VALUES (?1, 1, ?2)`
+      `INSERT INTO demo_daily_provider_usage (day_key, submission_count, created_at, updated_at)
+       VALUES (?1, 1, ?2, ?2)`
     ).bind(today, now.getTime()).run();
 
     // Create Floor Plan project and place room marker
