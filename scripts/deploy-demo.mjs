@@ -19,25 +19,40 @@ if (!token) {
   process.exit(1);
 }
 
-console.log("==> Cloudflare API Token detected. Initiating deployment to --env demo (design.7app.online)...");
-
+console.log("==> Step 1: Building Cloudflare Worker bundle...");
+const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
 const npxCmd = process.platform === "win32" ? "npx.cmd" : "npx";
-const child = spawn(npxCmd, ["opennextjs-cloudflare", "deploy", "--env", "demo"], {
+
+const buildChild = spawn(npmCmd, ["run", "build:worker"], {
   shell: true,
-  env: {
-    ...process.env,
-    CLOUDFLARE_API_TOKEN: token,
-    CLOUDFLARE_ENV: "demo",
-    CI: "true",
-  },
   stdio: "inherit",
 });
 
-child.on("close", (code) => {
-  if (code === 0) {
-    console.log("\n==> DEPLOYMENT SUCCESSFUL! Worker deployed to https://design.7app.online");
-  } else {
-    console.error(`\n==> DEPLOYMENT FAILED with exit code ${code}`);
-    process.exit(code ?? 1);
+buildChild.on("close", (buildCode) => {
+  if (buildCode !== 0) {
+    console.error(`ERROR: Worker build failed with exit code ${buildCode}`);
+    process.exit(buildCode ?? 1);
   }
+
+  console.log("\n==> Step 2: Cloudflare API Token detected. Initiating deployment to --env demo (design.7app.online)...");
+  const child = spawn(npxCmd, ["opennextjs-cloudflare", "deploy", "--env", "demo"], {
+    shell: true,
+    env: {
+      ...process.env,
+      CLOUDFLARE_API_TOKEN: token,
+      CLOUDFLARE_ENV: "demo",
+      CI: "true",
+    },
+    stdio: "inherit",
+  });
+
+  child.on("close", (code) => {
+    if (code === 0) {
+      console.log("\n==> DEPLOYMENT SUCCESSFUL! Worker deployed to https://design.7app.online");
+    } else {
+      console.error(`\n==> DEPLOYMENT FAILED with exit code ${code}`);
+      process.exit(code ?? 1);
+    }
+  });
 });
+

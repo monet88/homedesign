@@ -22,6 +22,9 @@ export async function GET(
     if (msg === "PRESET_NOT_FOUND") {
       return Response.json({ error: "PRESET_NOT_FOUND" }, { status: 404 });
     }
+    if (msg === "PRESET_FORBIDDEN" || msg === "FORBIDDEN") {
+      return Response.json({ error: "FORBIDDEN", message: "Bạn không có quyền truy cập preset này" }, { status: 403 });
+    }
     return designErrorResponse(err);
   }
 }
