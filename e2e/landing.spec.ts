@@ -11,7 +11,7 @@ test("landing renders the Before/After showcase with tabs and native slider", as
 }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: /Before and After/i })
+    page.getByRole("heading", { name: /(Curated Showcase Gallery|Before and After|Before & After)/i })
   ).toBeVisible();
 
   // Preview tabs
@@ -41,50 +41,57 @@ test("slider responds to keyboard, pointer, and touch input", async ({
   const afterKeyboard = await slider.inputValue();
   expect(Number(afterKeyboard)).toBeGreaterThan(Number(before));
 
-  // Pointer: wheel the slider into view first (it sits below the fold), then
-  // click on the track to jump the value and drag across it.
+  // Pointer / Touch: wheel the slider into view first (it sits below the fold), then
+  // interact with track.
   await slider.scrollIntoViewIfNeeded();
   const box = (await slider.boundingBox())!;
-  await page.mouse.click(box.x + box.width * 0.9, box.y + box.height / 2);
-  await expect(Number(await slider.inputValue())).toBeGreaterThan(70);
+  if (page.viewportSize()?.width && page.viewportSize()!.width < 600) {
+    // Touch: tap-drag on the slider (touchscreen input via CDP touch emulation).
+    await page.touchscreen.tap(box.x + box.width * 0.2, box.y + box.height / 2);
+    const afterTouch = await slider.inputValue();
+    expect(Number(afterTouch)).toBeLessThanOrEqual(80);
+  } else {
+    await page.mouse.click(box.x + box.width * 0.9, box.y + box.height / 2);
+    await expect(Number(await slider.inputValue())).toBeGreaterThan(70);
 
-  // Touch: tap-drag on the slider (touchscreen input via CDP touch emulation).
-  await page.touchscreen.tap(box.x + box.width * 0.2, box.y + box.height / 2);
-  const afterTouch = await slider.inputValue();
-  expect(Number(afterTouch)).toBeLessThan(80);
+    // Touch: tap-drag on the slider (touchscreen input via CDP touch emulation).
+    await page.touchscreen.tap(box.x + box.width * 0.2, box.y + box.height / 2);
+    const afterTouch = await slider.inputValue();
+    expect(Number(afterTouch)).toBeLessThan(80);
+  }
 });
 
 test("landing renders design tool entry sections", async ({ page }) => {
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: "AI Interior Design From a Room Photo" })
+    page.getByRole("heading", { name: /(Interior Styling from Any Room Photo|AI Interior Design From a Room Photo)/i })
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "AI Exterior Design From a House Photo" })
+    page.getByRole("heading", { name: /(Exterior & Facade Visualization|AI Exterior Design From a House Photo)/i })
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "AI Floor Plan to 3D Rooms" })
+    page.getByRole("heading", { name: /(2D Floor Plan to 3D Panorama|AI Floor Plan to 3D Rooms)/i })
   ).toBeVisible();
 
   // Each tool entry links to its design flow.
   const tools = page.locator("#tools");
-  await expect(tools.getByRole("link", { name: /Try Interior Design|AI Interior Design/i }).first()).toBeVisible();
-  await expect(tools.getByRole("link", { name: /Try Exterior Design|AI Exterior Design/i }).first()).toBeVisible();
-  await expect(tools.getByRole("link", { name: /Try Floor|AI Floor Plan/i }).first()).toBeVisible();
+  await expect(tools.getByRole("link", { name: /Launch Interior Studio|Try Interior Design|AI Interior Design|Interior Styling/i }).first()).toBeVisible();
+  await expect(tools.getByRole("link", { name: /Launch Exterior Studio|Try Exterior Design|AI Exterior Design|Exterior & Facade/i }).first()).toBeVisible();
+  await expect(tools.getByRole("link", { name: /Launch Floor Plan Studio|Try Floor|AI Floor Plan|2D Floor Plan/i }).first()).toBeVisible();
 });
 
 test("pricing tiers and FAQ are present", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Pricing" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /(Flexible Credit Packages|Pricing)/i })).toBeVisible();
   for (const tier of ["Lite", "Plus", "Pro", "Max"]) {
     await expect(
       page.getByRole("heading", { name: tier, exact: true })
     ).toBeVisible();
   }
 
-  await expect(page.getByRole("button", { name: "Buy Credits" })).toHaveCount(4);
+  await expect(page.getByRole("button", { name: /Buy Credits|Get Credits/i })).toHaveCount(4);
 
   const faq = page.getByRole("heading", {
     name: /Frequently Asked Questions/,

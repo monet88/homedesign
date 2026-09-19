@@ -13,6 +13,7 @@ export interface ShareView {
   kind: string;
   updatedAt: number;
   assets: ShareViewAsset[];
+  sourceAsset?: ShareViewAsset | null;
 }
 export interface ShareAssetRef {
   projectId: string;
@@ -322,11 +323,47 @@ export async function getShareViewByToken(env: Env, token: string): Promise<Shar
     });
   }
 
+  // Look for source asset of the project (for Before/After comparison)
+  const sourceRow = await env.DB.prepare(
+    `SELECT a.id, a.mime_type
+     FROM projects p
+     JOIN assets a ON a.id = p.source_asset_id
+     WHERE p.id = ?1
+       AND a.lifecycle = 'ready'
+       AND a.storage_key IS NOT NULL`
+  )
+    .bind(share.projectId)
+    .first<{ id: string; mime_type: string }>();
+
+  let sourceAsset: ShareViewAsset | null = sourceRow
+    ? { id: sourceRow.id, mimeType: sourceRow.mime_type }
+    : null;
+
+  if (!sourceAsset) {
+    const fallbackSourceRow = await env.DB.prepare(
+      `SELECT a.id, a.mime_type
+       FROM project_assets pa
+       JOIN assets a ON a.id = pa.asset_id
+       WHERE pa.project_id = ?1
+         AND pa.role = 'source'
+         AND a.lifecycle = 'ready'
+         AND a.storage_key IS NOT NULL
+       LIMIT 1`
+    )
+      .bind(share.projectId)
+      .first<{ id: string; mime_type: string }>();
+
+    if (fallbackSourceRow) {
+      sourceAsset = { id: fallbackSourceRow.id, mimeType: fallbackSourceRow.mime_type };
+    }
+  }
+
   return {
     name: share.projectName,
     kind: share.projectKind,
     updatedAt: share.projectUpdatedAt,
     assets: validAssets,
+    sourceAsset,
   };
 }
 
@@ -340,7 +377,8 @@ export async function authorizeShareAssetDelivery(
   const share = await resolveActiveShare(env, token);
   if (!share) return null;
 
-  const row = await env.DB.prepare(
+  // 1. Check if it is a share-selected generated asset
+  const genRow = await env.DB.prepare(
     `SELECT a.storage_key, a.mime_type
      FROM project_assets pa_share
      JOIN project_assets pa_gen
@@ -357,14 +395,50 @@ export async function authorizeShareAssetDelivery(
     .bind(share.projectId, assetId)
     .first<{ storage_key: string; mime_type: string }>();
 
-  if (!row?.storage_key) return null;
-
-  if (share.projectKind === "floor-plan") {
-    const active = await isFloorPlanOutputActive(env, share.projectId, assetId);
-    if (!active) return null;
+  if (genRow?.storage_key) {
+    if (share.projectKind === "floor-plan") {
+      const active = await isFloorPlanOutputActive(env, share.projectId, assetId);
+      if (!active) return null;
+    }
+    return { storageKey: genRow.storage_key, mimeType: genRow.mime_type };
   }
 
-  return { storageKey: row.storage_key, mimeType: row.mime_type };
+  // 2. Check if it is the source asset of the project (for Before/After slider)
+  const sourceRow = await env.DB.prepare(
+    `SELECT a.storage_key, a.mime_type
+     FROM projects p
+     JOIN assets a ON a.id = p.source_asset_id
+     WHERE p.id = ?1
+       AND p.source_asset_id = ?2
+       AND a.lifecycle = 'ready'
+       AND a.storage_key IS NOT NULL`
+  )
+    .bind(share.projectId, assetId)
+    .first<{ storage_key: string; mime_type: string }>();
+
+  if (sourceRow?.storage_key) {
+    return { storageKey: sourceRow.storage_key, mimeType: sourceRow.mime_type };
+  }
+
+  // Fallback to project_assets with role = 'source'
+  const fallbackSourceRow = await env.DB.prepare(
+    `SELECT a.storage_key, a.mime_type
+     FROM project_assets pa
+     JOIN assets a ON a.id = pa.asset_id
+     WHERE pa.project_id = ?1
+       AND pa.asset_id = ?2
+       AND pa.role = 'source'
+       AND a.lifecycle = 'ready'
+       AND a.storage_key IS NOT NULL`
+  )
+    .bind(share.projectId, assetId)
+    .first<{ storage_key: string; mime_type: string }>();
+
+  if (fallbackSourceRow?.storage_key) {
+    return { storageKey: fallbackSourceRow.storage_key, mimeType: fallbackSourceRow.mime_type };
+  }
+
+  return null;
 }
 
 export async function deliverShareAsset(

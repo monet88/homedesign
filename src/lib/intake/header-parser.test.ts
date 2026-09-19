@@ -4,8 +4,10 @@ import {
   parseImageHeader,
   parsePngDimensions,
   parseJpegDimensions,
+  parseWebpDimensions,
   hasPngMagic,
   hasJpegMagic,
+  hasWebpMagic,
   hasPngIend,
   validateDimensions,
   MAX_MEGAPIXELS,
@@ -13,7 +15,7 @@ import {
   PNG_MAGIC,
   JPEG_MAGIC,
 } from "@/lib/intake/header-parser";
-import { validPngBytes, validJpegBytes, MAGIC, truncatedPngBytes } from "@/lib/fixtures/images";
+import { validPngBytes, validJpegBytes, validWebpBytes, MAGIC, truncatedPngBytes } from "@/lib/fixtures/images";
 
 describe("header parser — magic detection", () => {
   it("detects PNG magic", () => {
@@ -24,16 +26,23 @@ describe("header parser — magic detection", () => {
     expect(hasJpegMagic(validJpegBytes())).toBe(true);
   });
 
+  it("detects WebP magic", () => {
+    expect(hasWebpMagic(validWebpBytes())).toBe(true);
+  });
+
   it("rejects too-short buffer", () => {
     expect(hasPngMagic(new Uint8Array(0))).toBe(false);
     expect(hasPngMagic(new Uint8Array([0x89]))).toBe(false);
     expect(hasJpegMagic(new Uint8Array(0))).toBe(false);
+    expect(hasWebpMagic(new Uint8Array(0))).toBe(false);
+    expect(hasWebpMagic(new Uint8Array([0x52, 0x49, 0x46, 0x46]))).toBe(false);
   });
 
   it("rejects invalid magic", () => {
     const bad = new TextEncoder().encode("not-an-image");
     expect(hasPngMagic(bad)).toBe(false);
     expect(hasJpegMagic(bad)).toBe(false);
+    expect(hasWebpMagic(bad)).toBe(false);
   });
 });
 
@@ -149,6 +158,19 @@ describe("header parser — JPEG dimensions", () => {
   });
 });
 
+describe("header parser — WebP dimensions", () => {
+  it("parses valid 1x1 lossless WebP", () => {
+    const dims = parseWebpDimensions(validWebpBytes());
+    expect(dims).not.toBeNull();
+    expect(dims!.width).toBe(1);
+    expect(dims!.height).toBe(1);
+  });
+
+  it("rejects buffer too short for WebP header", () => {
+    expect(parseWebpDimensions(new Uint8Array(14))).toBeNull();
+  });
+});
+
 describe("header parser — parseImageHeader (format detection)", () => {
   it("detects and parses PNG", () => {
     const result = parseImageHeader(validPngBytes());
@@ -162,6 +184,14 @@ describe("header parser — parseImageHeader (format detection)", () => {
     expect(result).not.toBeNull();
     expect(result!.format).toBe("jpeg");
     expect(result!.dimensions.width).toBe(1);
+  });
+
+  it("detects and parses WebP", () => {
+    const result = parseImageHeader(validWebpBytes());
+    expect(result).not.toBeNull();
+    expect(result!.format).toBe("webp");
+    expect(result!.dimensions.width).toBe(1);
+    expect(result!.dimensions.height).toBe(1);
   });
 
   it("rejects invalid image bytes", () => {

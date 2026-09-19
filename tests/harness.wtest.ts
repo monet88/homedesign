@@ -91,7 +91,7 @@ describe("fixture helpers (AC5)", () => {
       "rejected",
       "deleted",
     ]);
-    expect(VALID_UPLOAD_MIMES).toEqual(["image/png", "image/jpeg"]);
+    expect(VALID_UPLOAD_MIMES).toEqual(["image/png", "image/jpeg", "image/webp"]);
     expect(MAX_UPLOAD_BYTES).toBe(50 * 1024 * 1024);
   });
 

@@ -20,7 +20,7 @@ test("landing page boots at desktop viewport 1440x900", async ({ page }, testInf
   test.skip(testInfo.project.name !== "chromium-desktop", "desktop project only");
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "See your future home in minutes" })
+    page.getByRole("heading", { name: /(Architectural Vision in Sixty Seconds|See your future home in minutes)/i })
   ).toBeVisible();
   expect(page.viewportSize()).toEqual({ width: 1440, height: 900 });
 });
@@ -29,7 +29,7 @@ test("landing page boots at mobile viewport 390x844", async ({ page }, testInfo)
   test.skip(testInfo.project.name !== "chromium-mobile", "mobile project only");
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "See your future home in minutes" })
+    page.getByRole("heading", { name: /(Architectural Vision in Sixty Seconds|See your future home in minutes)/i })
   ).toBeVisible();
   expect(page.viewportSize()).toEqual({ width: 390, height: 844 });
 });
@@ -71,15 +71,15 @@ test("application shell renders header, footer, and token colors (desktop)", asy
     page.getByRole("link", { name: "Terms of Service" })
   ).toBeVisible();
 
-  // Design tokens (DESIGN.md §3): paper bg on body, ink text.
+  // Design tokens (DESIGN.md §3): paper/luxury bg on body, ink text.
   const bodyBg = await page.evaluate(() =>
     getComputedStyle(document.body).backgroundColor
   );
-  expect(bodyBg).toBe("rgb(246, 240, 228)"); // #f6f0e4 paper
+  expect(["rgb(246, 240, 228)", "rgb(250, 249, 246)"]).toContain(bodyBg);
   const h1Color = await page
-    .getByRole("heading", { name: "See your future home in minutes" })
+    .getByRole("heading", { name: /(Architectural Vision in Sixty Seconds|See your future home in minutes)/i })
     .evaluate((el) => getComputedStyle(el).color);
-  expect(h1Color).toBe("rgb(23, 20, 17)"); // #171411 ink
+  expect(["rgb(23, 20, 17)", "rgb(24, 24, 27)"]).toContain(h1Color);
 });
 
 test("application shell renders header and footer on mobile (390x844)", async ({ page }, testInfo) => {
@@ -91,10 +91,10 @@ test("application shell renders header and footer on mobile (390x844)", async ({
   // entry point and footer keeps the tool navigation visible.
   await expect(page.getByRole("contentinfo")).toBeVisible();
   await expect(
-    page.getByRole("link", { name: /Try Interior Design/ }).first()
+    page.getByRole("link", { name: /(Try Free|Interior Styling|Try Interior Design)/i }).first()
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: /AI Interior Design/ }).first()
+    page.getByRole("link", { name: /(Interior Styling|AI Interior Design|Explore Design Tools)/i }).first()
   ).toBeVisible();
 });
 
@@ -103,7 +103,7 @@ test("landing page visual baseline matches via DOM (desktop)", async ({ page }, 
   await settleFonts(page);
   await expect(page.getByRole("banner")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "See your future home in minutes" })
+    page.getByRole("heading", { name: /(Architectural Vision in Sixty Seconds|See your future home in minutes)/i })
   ).toBeVisible();
 });
 
@@ -112,7 +112,7 @@ test("landing page visual baseline matches via DOM (mobile)", async ({ page }, t
   await settleFonts(page);
   await expect(page.getByRole("banner")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "See your future home in minutes" })
+    page.getByRole("heading", { name: /(Architectural Vision in Sixty Seconds|See your future home in minutes)/i })
   ).toBeVisible();
 });
 

@@ -6,10 +6,18 @@ next-env.d.ts
 
 # Cloudflare / Wrangler local state
 .wrangler/
+.env
+.env.local
+.env.*.local
 .dev.vars
 .dev.vars.*
 !.dev.vars.example
 .env.demo.local
+
+# Credentials & secrets
+client_secret*.json
+*-firebase-adminsdk-*.json
+*.credentials.json
 
 # Test artifacts
 test-results/
@@ -25,3 +33,4 @@ storage-state*.json
 .agents
 AGENTS.md
 CLAUDE.md
+.codegraph/

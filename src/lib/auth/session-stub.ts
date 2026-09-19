@@ -15,6 +15,8 @@
 import { useEffect, useState } from "react";
 
 export interface SessionUser {
+  /** User unique identifier. */
+  id?: string;
   /** Display name (falls back to email local-part). */
   name: string;
   /** Initial rendered in the avatar. */
@@ -32,9 +34,11 @@ export interface Session {
   user: SessionUser | null;
   /** Hook point for ticket #03: credit badge (Available Credits, spec US 12). */
   credits: number | null;
+  /** False once initial session resolution has completed. */
+  loading?: boolean;
 }
 
-const ANONYMOUS: Session = { user: null, credits: null };
+const ANONYMOUS: Session = { user: null, credits: null, loading: false };
 
 /**
  * Anonymous is the default state until a real session arrives. Return a
@@ -49,13 +53,14 @@ export function getAnonymousSession(): Session {
  * Pure helper — unit-tested (see src/lib/auth/session-stub.test.ts).
  */
 export function deriveSessionUser(input: {
+  id?: string | null;
   name?: string | null;
   email?: string | null;
   role?: "admin" | "user" | null;
 }): SessionUser {
   const name = input.name?.trim() || input.email?.trim() || "Guest";
   const initial = (name[0] ?? "G").toUpperCase();
-  return { name, initial, email: input.email ?? undefined, role: input.role ?? "user" };
+  return { id: input.id ?? undefined, name, initial, email: input.email ?? undefined, role: input.role ?? "user" };
 }
 
 interface GetSessionResponse {
@@ -98,16 +103,20 @@ interface GetCreditsResponse {
  * Returns `null` when anonymous.
  */
 export async function fetchSession(): Promise<GetSessionResponse | null> {
-  const res = await fetch("/api/auth/get-session", {
-    method: "GET",
-    headers: { Accept: "application/json" },
-    credentials: "same-origin",
-    cache: "no-store",
-  });
-  if (!res.ok) return null;
-  const data = (await res.json()) as GetSessionResponse | null;
-  if (!data?.user) return null;
-  return data;
+  try {
+    const res = await fetch("/api/auth/get-session", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as GetSessionResponse | null;
+    if (!data?.user) return null;
+    return data;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -115,16 +124,20 @@ export async function fetchSession(): Promise<GetSessionResponse | null> {
  * anonymous or unverified (401/403).
  */
 export async function fetchCredits(): Promise<number | null> {
-  const res = await fetch("/api/credits", {
-    method: "GET",
-    headers: { Accept: "application/json" },
-    credentials: "same-origin",
-    cache: "no-store",
-  });
-  if (!res.ok) return null;
-  const data = (await res.json()) as GetCreditsResponse;
-  if (data?.code !== 0 || typeof data.data?.available !== "number") return null;
-  return data.data.available;
+  try {
+    const res = await fetch("/api/credits", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as GetCreditsResponse;
+    if (data?.code !== 0 || typeof data.data?.available !== "number") return null;
+    return data.data.available;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -132,40 +145,63 @@ export async function fetchCredits(): Promise<number | null> {
  */
 export async function toShellSession(data: GetSessionResponse | null): Promise<Session> {
   if (!data) return getAnonymousSession();
-  const { email, name, emailVerified, role } = data.user;
+  const { id, email, name, emailVerified, role } = data.user;
   const user: SessionUser = {
-    ...deriveSessionUser({ name, email, role }),
+    ...deriveSessionUser({ id, name, email, role }),
     email: email ?? undefined,
     emailVerified: emailVerified ?? false,
     role: role ?? "user",
   };
   const credits = await fetchCredits();
-  return { user, credits };
+  return { user, credits, loading: false };
+}
+
+export const SESSION_CHANGED_EVENT = "homedesign:session-changed";
+
+export function triggerSessionRefresh(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(SESSION_CHANGED_EVENT));
+  }
 }
 
 /**
  * React hook the shell uses to read the current session.
  *
  * Real BetterAuth-backed implementation (ticket #03): polls on mount and
- * re-checks on window focus, per ADR 0001 `GET /api/auth/get-session`.
+ * re-checks on window focus and session-changed events, per ADR 0001.
  */
 export function useSession(): Session {
-  const [session, setSession] = useState<Session>(getAnonymousSession);
+  const [session, setSession] = useState<Session>(() => ({
+    user: null,
+    credits: null,
+    loading: true,
+  }));
 
   useEffect(() => {
     let cancelled = false;
 
     async function refresh() {
-      const data = await fetchSession();
-      if (!cancelled) setSession(await toShellSession(data));
+      try {
+        const data = await fetchSession();
+        if (!cancelled) {
+          const shell = await toShellSession(data);
+          setSession({ ...shell, loading: false });
+        }
+      } catch {
+        if (!cancelled) {
+          setSession((prev) => ({ ...prev, loading: false }));
+        }
+      }
     }
 
     void refresh();
-    const onFocus = () => void refresh();
-    window.addEventListener("focus", onFocus);
+    const onRefresh = () => void refresh();
+    window.addEventListener("focus", onRefresh);
+    window.addEventListener(SESSION_CHANGED_EVENT, onRefresh);
     return () => {
       cancelled = true;
-      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("focus", onRefresh);
+      window.removeEventListener(SESSION_CHANGED_EVENT, onRefresh);
     };
   }, []);
 

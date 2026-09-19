@@ -1,4 +1,4 @@
-// Cliproxy Gemini Flash Image Adapter (Ticket #21, ADR 0007, spec §AI Provider Adapter Layer).
+// OpenAI-compatible Gemini Flash Image Adapter (Ticket #21, ADR 0007, spec §AI Provider Adapter Layer).
 //
 // Bridges the HomeDesign generation pipeline with Cliproxy's OpenAI-compatible
 // multimodal `/v1/chat/completions` endpoint running `gemini-3.1-flash-image`.
@@ -21,8 +21,9 @@ import type {
   HealthCheckResult,
 } from "@/lib/ai/types";
 import { validJpegBytes } from "@/lib/fixtures/images";
+import { executeWithResilience, isRetryableError, type ResilienceOptions } from "@/lib/ai/resilience";
 
-export const DEFAULT_AI_API_BASE_URL = "https://cliproxy.monet.uno/v1";
+export const DEFAULT_AI_API_BASE_URL = "https://pro.autommo.online/v1";
 export const DEFAULT_AI_DEFAULT_MODEL = "gemini-3.1-flash-image";
 export const FALLBACK_AI_API_KEY = "";
 export interface GeminiAdapterOptions {
@@ -34,6 +35,7 @@ export interface GeminiAdapterOptions {
   environment?: string;
   offlineFallback?: boolean;
   claimOutboundAttempt?: () => Promise<boolean>;
+  resilience?: ResilienceOptions;
 }
 
 export class GeminiFlashImageAdapter implements ProviderAdapter {
@@ -46,6 +48,7 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
   private readonly environment: string;
   private readonly offlineFallback: boolean;
   private readonly claimOutboundAttempt?: () => Promise<boolean>;
+  private readonly resilience?: ResilienceOptions;
   private readonly pendingOutputs = new Map<string, ProviderOutput>();
 
   constructor(options: GeminiAdapterOptions = {}) {
@@ -54,24 +57,30 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
       (typeof process !== "undefined" ? process.env?.ENVIRONMENT : undefined) ??
       "local";
     this.environment = env;
-    this.baseUrl = (
+    const rawApiKey =
+      options.apiKey ??
+      (typeof process !== "undefined" ? process.env?.AI_API_KEY : undefined);
+    this.apiKey = rawApiKey ? rawApiKey.replace(/^["']|["']$/g, "").trim() : undefined;
+    const rawBaseUrl = (
       options.baseUrl ??
       (typeof process !== "undefined" ? process.env?.AI_API_BASE_URL : undefined) ??
       DEFAULT_AI_API_BASE_URL
     )
       .trim()
       .replace(/\/+$/, "");
-    this.apiKey =
-      options.apiKey ??
-      (typeof process !== "undefined" ? process.env?.AI_API_KEY : undefined);
+    this.baseUrl =
+      this.apiKey?.startsWith("AIzaSy") && (rawBaseUrl.includes("autommo.online") || rawBaseUrl.includes("generativelanguage.googleapis.com"))
+        ? "https://generativelanguage.googleapis.com"
+        : rawBaseUrl;
     this.defaultModel =
       options.defaultModel ??
       (typeof process !== "undefined" ? process.env?.AI_DEFAULT_MODEL : undefined) ??
-      DEFAULT_AI_DEFAULT_MODEL;
+      (this.apiKey?.startsWith("AIzaSy") ? "gemini-2.5-flash-image" : DEFAULT_AI_DEFAULT_MODEL);
     this.bucket = options.bucket;
-    this.fetchFn = options.fetchFn ?? fetch.bind(globalThis);
+    this.fetchFn = (options.fetchFn ?? fetch).bind(globalThis);
     this.offlineFallback = options.offlineFallback ?? false;
     this.claimOutboundAttempt = options.claimOutboundAttempt;
+    this.resilience = options.resilience;
   }
 
   async resolveImageToDataUri(input: string): Promise<string> {
@@ -81,7 +90,8 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
     }
     if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
       try {
-        const res = await this.fetchFn(trimmed);
+        const safeFetch = this.fetchFn;
+        const res = await safeFetch(trimmed);
         if (res.ok) {
           const contentType = res.headers.get("content-type") || "image/jpeg";
           const arrayBuffer = await res.arrayBuffer();
@@ -134,46 +144,93 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
       return { ok: false, error: "PROVIDER_NOT_CONFIGURED", retryable: false };
     }
 
-    // 3. Multimodal content construction
-    const contents: Array<
-      { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }
-    > = [{ type: "text", text: req.prompt }];
+    const isNativeGemini =
+      this.baseUrl.includes("generativelanguage.googleapis.com") ||
+      (this.apiKey?.startsWith("AIzaSy") && !this.baseUrl.includes("localhost"));
 
-    if (req.options?.image_input && req.options.image_input.length > 0) {
-      for (const img of req.options.image_input) {
-        try {
-          const dataUri = await this.resolveImageToDataUri(img);
-          contents.push({ type: "image_url", image_url: { url: dataUri } });
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          return { ok: false, error: `IMAGE_RESOLUTION_FAILED: ${msg}`, retryable: false };
-        }
-      }
+    const systemPrompt = `${getSystemPrompt(req.scene)}\n${getNegativeConstraints()}`;
+    let model = this.defaultModel;
+    if (req.model && (req.model.startsWith("gemini-") || req.model.startsWith("models/gemini-"))) {
+      model = req.model.replace(/^models\//, "");
+    }
+    if (isNativeGemini && (model === "gemini-3.1-flash-image" || !model.startsWith("gemini-"))) {
+      model = "gemini-2.5-flash-image";
     }
 
-    const model =
-      req.model && req.model !== "gemini-2.5-flash-image" ? req.model : this.defaultModel;
-    const systemPrompt = `${getSystemPrompt(req.scene)}\n${getNegativeConstraints()}`;
-    const payload = {
-      model,
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
-          role: "user",
-          content: contents,
-        },
-      ],
-    };
+    let endpoint = "";
+    let headers: Record<string, string> = { "Content-Type": "application/json" };
+    let requestBody: string = "";
 
-    const endpoint = getChatCompletionsEndpoint(this.baseUrl);
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (this.apiKey) {
-      headers["Authorization"] = `Bearer ${this.apiKey}`;
+    if (isNativeGemini) {
+      endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+      headers["x-goog-api-key"] = this.apiKey;
+
+      const parts: Array<Record<string, unknown>> = [];
+      if (req.options?.image_input && req.options.image_input.length > 0) {
+        for (const img of req.options.image_input) {
+          try {
+            const dataUri = await this.resolveImageToDataUri(img);
+            const commaIdx = dataUri.indexOf(",");
+            const header = commaIdx !== -1 ? dataUri.substring(0, commaIdx) : "";
+            const b64 = commaIdx !== -1 ? dataUri.substring(commaIdx + 1) : dataUri;
+            const mimeMatch = header.match(/data:([^;]+)/);
+            const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+            parts.push({
+              inlineData: {
+                mimeType,
+                data: b64,
+              },
+            });
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { ok: false, error: `IMAGE_RESOLUTION_FAILED: ${msg}`, retryable: false };
+          }
+        }
+      }
+      parts.push({ text: `${systemPrompt}\n\n${req.prompt}` });
+      requestBody = JSON.stringify({
+        contents: [{ parts }],
+        generationConfig: {
+          responseModalities: ["IMAGE", "TEXT"],
+        },
+      });
+    } else {
+      // 3. OpenAI-compatible multimodal content construction
+      const contents: Array<
+        { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }
+      > = [{ type: "text", text: req.prompt }];
+
+      if (req.options?.image_input && req.options.image_input.length > 0) {
+        for (const img of req.options.image_input) {
+          try {
+            const dataUri = await this.resolveImageToDataUri(img);
+            contents.push({ type: "image_url", image_url: { url: dataUri } });
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { ok: false, error: `IMAGE_RESOLUTION_FAILED: ${msg}`, retryable: false };
+          }
+        }
+      }
+
+      const payload = {
+        model,
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt,
+          },
+          {
+            role: "user",
+            content: contents,
+          },
+        ],
+      };
+
+      endpoint = getChatCompletionsEndpoint(this.baseUrl);
+      if (this.apiKey) {
+        headers["Authorization"] = `Bearer ${this.apiKey}`;
+      }
+      requestBody = JSON.stringify(payload);
     }
 
     // Outbound network attempt seam: claim daily submission slot right before fetch
@@ -184,31 +241,45 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
       }
     }
     try {
-      const res = await this.fetchFn(endpoint, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-      });
+      const safeFetch = this.fetchFn;
+      const executeCall = async () => {
+        const res = await safeFetch(endpoint, {
+          method: "POST",
+          headers,
+          body: requestBody,
+        });
 
-      if (!res.ok) {
-        const errText = await res.text().catch(() => "");
-        if (this.offlineFallback) {
-          this.pendingOutputs.set(providerTaskId, {
-            bytes: fixturePngBytes(),
-            contentType: "image/png",
-          });
-          return { ok: true, providerTaskId };
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "");
+          if (this.offlineFallback) {
+            this.pendingOutputs.set(providerTaskId, {
+              bytes: fixturePngBytes(),
+              contentType: "image/png",
+            });
+            return { ok: true, providerTaskId } as ProviderSubmitResult;
+          }
+          const isRetryable = res.status >= 500 || res.status === 429 || res.status === 408;
+          if (this.resilience && isRetryable) {
+            const err = new Error(`AI_PROVIDER_ERROR_${res.status}: ${errText || res.statusText}`);
+            (err as { status?: number }).status = res.status;
+            throw err;
+          }
+          return {
+            ok: false as const,
+            error: `AI_PROVIDER_ERROR_${res.status}: ${errText || res.statusText}`,
+            retryable: isRetryable,
+          };
         }
-        return {
-          ok: false,
-          error: `AI_PROVIDER_ERROR_${res.status}: ${errText || res.statusText}`,
-          retryable: res.status >= 500 || res.status === 429,
-        };
+        const json = await res.json();
+        const output = extractImageFromResponse(json);
+        this.pendingOutputs.set(providerTaskId, output);
+        return { ok: true as const, providerTaskId };
+      };
+
+      if (this.resilience) {
+        return await executeWithResilience(executeCall, this.resilience);
       }
-      const json = await res.json();
-      const output = extractImageFromResponse(json);
-      this.pendingOutputs.set(providerTaskId, output);
-      return { ok: true, providerTaskId };
+      return await executeCall();
     } catch (err: unknown) {
       if (this.offlineFallback) {
         this.pendingOutputs.set(providerTaskId, {
@@ -218,7 +289,13 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
         return { ok: true, providerTaskId };
       }
       const msg = err instanceof Error ? err.message : String(err);
-      return { ok: false, error: `AI_PROVIDER_NETWORK_ERROR: ${msg}`, retryable: true };
+      return {
+        ok: false,
+        error: msg.startsWith("AI_PROVIDER_") || msg.startsWith("CIRCUIT_BREAKER_")
+          ? msg
+          : `AI_PROVIDER_NETWORK_ERROR: ${msg}`,
+        retryable: isRetryableError(err as Error),
+      };
     }
   }
 
@@ -257,7 +334,13 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
   }
 
   async healthCheck(): Promise<HealthCheckResult> {
-    const endpoint = getModelsEndpoint(this.baseUrl);
+    const isNativeGemini =
+      this.baseUrl.includes("generativelanguage.googleapis.com") ||
+      (this.apiKey?.startsWith("AIzaSy") && !this.baseUrl.includes("localhost"));
+
+    const endpoint = isNativeGemini
+      ? "https://generativelanguage.googleapis.com/v1beta/models"
+      : getModelsEndpoint(this.baseUrl);
 
     if (!this.apiKey || !isLiveApiKeyConfigured(this.apiKey)) {
       return {
@@ -274,10 +357,15 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
-      const headers: Record<string, string> = {
-        Authorization: `Bearer ${this.apiKey}`,
-      };
-      const res = await this.fetchFn(endpoint, {
+      const headers: Record<string, string> = {};
+      if (isNativeGemini) {
+        headers["x-goog-api-key"] = this.apiKey;
+      } else {
+        headers["Authorization"] = `Bearer ${this.apiKey}`;
+      }
+
+      const safeFetch = this.fetchFn;
+      const res = await safeFetch(endpoint, {
         method: "GET",
         headers,
         signal: controller.signal,
@@ -297,7 +385,7 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
           ? json.models
           : [];
       const models = (rawList as Array<{ id?: string; name?: string }>)
-        .map((m) => m.id || m.name)
+        .map((m) => (m.id || m.name || "").replace(/^models\//, ""))
         .filter((id): id is string => typeof id === "string" && id.length > 0);
 
       return { status: "healthy", latencyMs, models, endpoint };
@@ -321,12 +409,15 @@ export class GeminiFlashImageAdapter implements ProviderAdapter {
 export function getChatCompletionsEndpoint(baseUrl: string): string {
   const clean = baseUrl.trim().replace(/\/+$/, "");
   if (clean.endsWith("/chat/completions")) return clean;
+  if (clean.endsWith("/openai")) return `${clean}/chat/completions`;
   if (clean.endsWith("/v1")) return `${clean}/chat/completions`;
   return `${clean}/v1/chat/completions`;
 }
 
 export function getModelsEndpoint(baseUrl: string): string {
   const clean = baseUrl.trim().replace(/\/+$/, "");
+  if (clean.endsWith("/models")) return clean;
+  if (clean.endsWith("/openai")) return `${clean}/models`;
   if (clean.endsWith("/v1")) return `${clean}/models`;
   return `${clean}/v1/models`;
 }
@@ -488,6 +579,27 @@ export function extractImageFromResponse(json: unknown): ProviderOutput {
     }
     if (typeof firstData.url === "string" && firstData.url.startsWith("data:")) {
       return extractDataUri(firstData.url);
+    }
+  }
+
+  // 3. Google Gemini native generateContent: candidates[0].content.parts[...].inlineData
+  if (Array.isArray(res.candidates) && res.candidates.length > 0) {
+    const candidate = res.candidates[0] as Record<string, unknown>;
+    const content = candidate.content as Record<string, unknown> | undefined;
+    if (content && Array.isArray(content.parts)) {
+      for (const part of content.parts) {
+        if (part && typeof part === "object") {
+          const p = part as Record<string, unknown>;
+          const inlineData = p.inlineData as { mimeType?: string; data?: string } | undefined;
+          if (inlineData && typeof inlineData.data === "string") {
+            const bytes = base64ToBytes(inlineData.data);
+            return {
+              bytes,
+              contentType: inlineData.mimeType || detectMimeType(bytes) || "image/png",
+            };
+          }
+        }
+      }
     }
   }
 

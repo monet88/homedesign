@@ -10,6 +10,8 @@ import { FloorPlanError } from "@/lib/floor-plan/errors";
 export interface RouteSession {
   env: AuthEnv;
   userId: string;
+  userEmail?: string;
+  userRole?: string;
 }
 
 export async function authorizeVerified(
@@ -30,7 +32,12 @@ export async function authorizeVerified(
       { status: (err as { status?: number }).status ?? 403 }
     );
   }
-  return { env, userId: session.user.id };
+  return {
+    env,
+    userId: session.user.id,
+    userEmail: session.user.email,
+    userRole: session.user.role,
+  };
 }
 
 /** Map a thrown error to the documented `{ error }` envelope. */

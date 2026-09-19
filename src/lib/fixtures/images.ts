@@ -35,6 +35,13 @@ export function validJpegBytes(): Uint8Array {
   return base64ToBytes(b64);
 }
 
+/** Minimal valid WebP: RIFF + 1x1 VP8L lossless bitstream. */
+export function validWebpBytes(): Uint8Array {
+  const b64 = "UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==";
+  return base64ToBytes(b64);
+}
+
+
 /** Truncated/invalid bytes: wrong magic, so validation must reject. */
 export function invalidImageBytes(): Uint8Array {
   return new TextEncoder().encode("not-an-image");
@@ -59,7 +66,7 @@ export function spoofedMimeBytes(): { bytes: Uint8Array; mime: string; name: str
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 /** Valid MIME types accepted for intake. */
-export const VALID_UPLOAD_MIMES = ["image/png", "image/jpeg"] as const;
+export const VALID_UPLOAD_MIMES = ["image/png", "image/jpeg", "image/webp"] as const;
 
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);

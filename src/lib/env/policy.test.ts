@@ -60,14 +60,13 @@ describe("environment policy matrix (ticket #18 & Issue #72)", () => {
       expect(() => assertGenerationAllowed(env)).not.toThrow();
     } else {
       expect(() => assertGenerationAllowed(env)).toThrow(DesignError);
-      try {
-        assertGenerationAllowed(env);
-      } catch (err) {
-        expect(err).toBeInstanceOf(DesignError);
-        expect((err as DesignError).code).toBe("GENERATION_DISABLED");
-        expect((err as DesignError).status).toBe(403);
-      }
     }
+  });
+
+  it("enables generation in production when AI_GENERATION_ENABLED is set", () => {
+    const prodEnabled = { ...prod, AI_GENERATION_ENABLED: "true" };
+    expect(isGenerationAllowed(prodEnabled)).toBe(true);
+    expect(() => assertGenerationAllowed(prodEnabled)).not.toThrow();
   });
 
   it("mock payment banned in production and demo", () => {

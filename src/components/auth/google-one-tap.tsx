@@ -3,15 +3,21 @@
 import { useEffect, useRef } from "react";
 import { createAuthClient } from "better-auth/react";
 import { oneTapClient } from "better-auth/client/plugins";
-import { useSession } from "@/lib/auth/session-stub";
+import { useSession, triggerSessionRefresh } from "@/lib/auth/session-stub";
 
 /** Prompt Google One Tap for anonymous visitors when GOOGLE_CLIENT_ID is configured. */
 export function GoogleOneTapPrompt() {
-  const { user } = useSession();
+  const { user, loading } = useSession();
   const prompted = useRef(false);
 
   useEffect(() => {
+    // Wait until initial session check finishes to prevent race condition
+    if (loading) return;
+
+    // Avoid running on sign-in page where primary OAuth button already exists, or for logged-in users
     if (user || prompted.current) return;
+    if (typeof window !== "undefined" && window.location.pathname === "/sign-in") return;
+
     prompted.current = true;
 
     async function prompt() {
@@ -27,8 +33,16 @@ export function GoogleOneTapPrompt() {
         });
 
         await client.oneTap({
-          fetchOptions: { credentials: "include" },
-          callbackURL: window.location.pathname,
+          fetchOptions: {
+            credentials: "include",
+            onSuccess: () => {
+              triggerSessionRefresh();
+              window.location.reload();
+            },
+          },
+          callbackURL: typeof window !== "undefined" ? window.location.href : "/",
+        }).catch(() => {
+          // Gracefully ignore user dismissals or unconfigured origin errors
         });
       } catch {
         // One Tap is best-effort; email/password sign-in remains available.
@@ -36,7 +50,7 @@ export function GoogleOneTapPrompt() {
     }
 
     void prompt();
-  }, [user]);
+  }, [user, loading]);
 
   return null;
 }

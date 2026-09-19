@@ -45,9 +45,20 @@ export function isFreeGrantAllowed(env: Pick<Env, "ENVIRONMENT">): boolean {
   return isTestingEconomyAllowed(env);
 }
 
-/** Billable generation is disabled in production until policy is settled. Demo allows generation with real provider. */
-export function isGenerationAllowed(env: Pick<Env, "ENVIRONMENT">): boolean {
-  return !isProduction(env);
+/**
+ * Billable generation policy (ADR 0006, ADR 0008).
+ * - Demo: allows generation with daily quota guard (DEMO_DAILY_PROVIDER_LIMIT).
+ * - Production: enabled when AI_GENERATION_ENABLED="true" (commercial release toggle),
+ *   otherwise blocked by default to prevent unauthorized provider billing.
+ */
+export function isGenerationAllowed(
+  env: Pick<Env, "ENVIRONMENT"> & { AI_GENERATION_ENABLED?: string }
+): boolean {
+  if (isProduction(env)) {
+    const enabled = env.AI_GENERATION_ENABLED?.trim().toLowerCase();
+    return enabled === "1" || enabled === "true" || enabled === "yes";
+  }
+  return true;
 }
 
 /** Email/password sign-up is banned in production (ADR 0006) and demo (ADR 0008). */

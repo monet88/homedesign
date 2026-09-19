@@ -269,6 +269,7 @@ async function applyMigrations(db: D1Database) {
           ref_type TEXT,
           ref_id TEXT,
           grant_key TEXT,
+          workspace_id TEXT,
           created_at INTEGER NOT NULL
         )`
       ),
@@ -288,6 +289,7 @@ async function applyMigrations(db: D1Database) {
           ref_type TEXT NOT NULL,
           ref_id TEXT NOT NULL,
           ledger_hold_id TEXT,
+          workspace_id TEXT,
           created_at INTEGER NOT NULL,
           settled_at INTEGER,
           released_at INTEGER
@@ -299,6 +301,19 @@ async function applyMigrations(db: D1Database) {
       db.prepare(
         `CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_holds_ref_active
           ON credit_holds(ref_type, ref_id) WHERE status = 'active'`
+      ),
+      db.prepare(
+        `CREATE TABLE IF NOT EXISTS referrals (
+          id TEXT PRIMARY KEY,
+          referrer_id TEXT NOT NULL,
+          referee_id TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          reward_credits INTEGER NOT NULL DEFAULT 10,
+          fingerprint TEXT,
+          ip_hash TEXT,
+          created_at INTEGER NOT NULL,
+          activated_at INTEGER
+        )`
       ),
     ]);
 }

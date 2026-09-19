@@ -34,10 +34,10 @@ async function seedUser(emailVerified = 1): Promise<string> {
 
 async function seedProject(
   userId: string,
-  overrides: { name?: string; kind?: string; favorite?: number; visibility?: string } = {}
+  overrides: { name?: string; kind?: string; favorite?: number; visibility?: string; updatedAt?: number } = {}
 ): Promise<string> {
   const id = crypto.randomUUID();
-  const now = Date.now();
+  const now = overrides.updatedAt ?? Date.now();
   await env.DB.prepare(
     `INSERT INTO projects (id, user_id, kind, name, status, source_asset_id, favorite, visibility, created_at, updated_at)
      VALUES (?1, ?2, ?3, ?4, 'draft', NULL, ?5, ?6, ?7, ?7)`
@@ -103,8 +103,9 @@ describe("listProjects", () => {
 
   it("lists projects with default updated-desc sort", async () => {
     const userId = await seedUser();
-    const p1 = await seedProject(userId, { name: "Older", kind: "interior" });
-    const p2 = await seedProject(userId, { name: "Newer", kind: "exterior" });
+    const now = Date.now();
+    const p1 = await seedProject(userId, { name: "Older", kind: "interior", updatedAt: now - 1000 });
+    const p2 = await seedProject(userId, { name: "Newer", kind: "exterior", updatedAt: now });
 
     const result = await listProjects(env, userId);
     expect(result.items.map((p) => p.id)).toEqual([p2, p1]);
@@ -432,6 +433,7 @@ async function applyMigrations(db: D1Database) {
         kind TEXT NOT NULL CHECK (kind IN ('interior','exterior','floor-plan')),
         name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', source_asset_id TEXT,
         favorite INTEGER NOT NULL DEFAULT 0, visibility TEXT NOT NULL DEFAULT 'private',
+        workspace_id TEXT,
         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       )`
     ),
@@ -498,6 +500,7 @@ async function applyMigrations(db: D1Database) {
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
         entry_type TEXT NOT NULL CHECK (entry_type IN ('grant','payment','usage','hold','release')),
         amount INTEGER NOT NULL, reason TEXT NOT NULL, ref_type TEXT, ref_id TEXT, grant_key TEXT,
+        workspace_id TEXT,
         created_at INTEGER NOT NULL
       )`
     ),
@@ -514,6 +517,7 @@ async function applyMigrations(db: D1Database) {
         amount INTEGER NOT NULL CHECK (amount > 0),
         status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','settled','released')),
         ref_type TEXT NOT NULL, ref_id TEXT NOT NULL, ledger_hold_id TEXT,
+        workspace_id TEXT,
         created_at INTEGER NOT NULL, settled_at INTEGER, released_at INTEGER
       )`
     ),

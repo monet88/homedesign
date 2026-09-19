@@ -19,11 +19,14 @@ export interface Env {
   // Vars
   ENVIRONMENT: string;
 
-  // AI Provider (Ticket #21 / ADR 0007 / Issue #72)
+  // AI Provider (Ticket #21 / ADR 0007 / Issue #72 / Multi-Model Engine)
   AI_API_BASE_URL?: string;
   AI_API_KEY?: string;
   AI_DEFAULT_MODEL?: string;
   AI_OFFLINE?: string;
+  FAL_AI_API?: string;
+  REPLICATE_API?: string;
+  KIE_AI_API?: string;
 
   // Daily provider submissions limit (Issue #72 / ADR 0008). Default 50 in demo.
   DEMO_DAILY_PROVIDER_LIMIT?: string;
@@ -50,6 +53,16 @@ export interface Env {
   OUTBOX_ACCESS_SECRET?: string;
   /** Explicit flag to allow local tooling outbox access. */
   ALLOW_LOCAL_OUTBOX_ACCESS?: string;
+  // Stripe Monetization (Ticket 3.1)
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  // SePay & VietQR Monetization (Ticket 3.2)
+  SEPAY_API_KEY?: string;
+  SEPAY_WEBHOOK_TOKEN?: string;
+  VIETQR_BANK_ID?: string;
+  VIETQR_ACCOUNT_NO?: string;
+  VIETQR_ACCOUNT_NAME?: string;
+  VIETQR_TEMPLATE?: string;
   // OpenNext requires this self-reference service binding.
   WORKER_SELF_REFERENCE: Fetcher;
   ASSETS: Fetcher;

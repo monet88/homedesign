@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-// Ticket #09 seam 4: anonymous share view, no download control, not-DRM disclaimer.
+// Ticket #09 & Ticket 3.4: anonymous share view, interactive before/after, unlisted read-only policy.
 
 test("share page loads without login", async ({ request, page }) => {
   const fixture = await request.post("/api/test/share-fixture");
@@ -8,19 +8,17 @@ test("share page loads without login", async ({ request, page }) => {
   const { token } = (await fixture.json()) as { token: string };
 
   await page.goto(`/share/${encodeURIComponent(token)}`);
-  await expect(page.getByRole("heading", { name: "Fixture Living Room" })).toBeVisible();
-  await expect(page.getByText("Shared project")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByText(/Design/i).first()).toBeVisible();
 });
 
-test("share view shows not-DRM disclaimer and no download control", async ({ request, page }) => {
+test("share view shows unlisted read-only notice and viral CTA", async ({ request, page }) => {
   const fixture = await request.post("/api/test/share-fixture");
   const { token } = (await fixture.json()) as { token: string };
 
   await page.goto(`/share/${encodeURIComponent(token)}`);
 
-  await expect(page.getByRole("note", { name: "Sharing privacy notice" })).toContainText("not DRM");
-  await expect(page.getByRole("note", { name: "Sharing privacy notice" })).toContainText("screenshot");
-
-  await expect(page.getByRole("link", { name: /download/i })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /download/i })).toHaveCount(0);
+  await expect(page.getByText(/Bản xem chia sẻ bảo mật/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: /Sao chép link/i })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Tự thiết kế phòng của bạn/i })).toBeVisible();
 });

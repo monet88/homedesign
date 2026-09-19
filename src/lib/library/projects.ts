@@ -25,9 +25,24 @@ export async function listProjects(
     // Sort changed — ignore stale cursor.
   }
 
-  const conditions: string[] = ["p.user_id = ?1"];
-  const params: (string | number)[] = [userId];
-  let paramIdx = 1;
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+  let paramIdx = 0;
+
+  if (filters.workspaceId) {
+    paramIdx++;
+    conditions.push(`p.workspace_id = ?${paramIdx}`);
+    params.push(filters.workspaceId);
+    paramIdx++;
+    conditions.push(
+      `EXISTS (SELECT 1 FROM workspace_members wm WHERE wm.workspace_id = p.workspace_id AND wm.user_id = ?${paramIdx})`
+    );
+    params.push(userId);
+  } else {
+    paramIdx++;
+    conditions.push(`p.user_id = ?${paramIdx}`);
+    params.push(userId);
+  }
 
   if (filters.kind) {
     paramIdx++;
@@ -64,15 +79,14 @@ export async function listProjects(
   params.push(PROJECT_PAGE_SIZE + 1);
 
   const sql = `
-    SELECT p.id, p.name, p.kind, p.status, p.favorite, p.visibility, p.created_at, p.updated_at, p.source_asset_id
+    SELECT p.id, p.name, p.kind, p.status, p.favorite, p.visibility, p.created_at, p.updated_at, p.source_asset_id, p.workspace_id
     FROM projects p
     ${where}
     ${orderBy}
     ${limitSql}
   `;
 
-
-  const result = await env.DB.prepare(sql).bind(...params).all<{
+  let rows: Array<{
     id: string;
     name: string;
     kind: string;
@@ -82,9 +96,48 @@ export async function listProjects(
     created_at: number;
     updated_at: number;
     source_asset_id: string | null;
-  }>();
+    workspace_id?: string | null;
+  }> = [];
 
-  const rows = result.results ?? [];
+  try {
+    const result = await env.DB.prepare(sql).bind(...params).all<{
+      id: string;
+      name: string;
+      kind: string;
+      status: string;
+      favorite: number;
+      visibility: string;
+      created_at: number;
+      updated_at: number;
+      source_asset_id: string | null;
+      workspace_id: string | null;
+    }>();
+    rows = result.results ?? [];
+  } catch (err) {
+    if (!filters.workspaceId && String(err).includes("no such column: p.workspace_id")) {
+      const fallbackSql = `
+        SELECT p.id, p.name, p.kind, p.status, p.favorite, p.visibility, p.created_at, p.updated_at, p.source_asset_id
+        FROM projects p
+        ${where}
+        ${orderBy}
+        ${limitSql}
+      `;
+      const fallbackResult = await env.DB.prepare(fallbackSql).bind(...params).all<{
+        id: string;
+        name: string;
+        kind: string;
+        status: string;
+        favorite: number;
+        visibility: string;
+        created_at: number;
+        updated_at: number;
+        source_asset_id: string | null;
+      }>();
+      rows = fallbackResult.results ?? [];
+    } else {
+      throw err;
+    }
+  }
   const hasMore = rows.length > PROJECT_PAGE_SIZE;
   const items: ProjectListItem[] = rows.slice(0, PROJECT_PAGE_SIZE).map((row) => ({
     id: row.id,
@@ -96,6 +149,7 @@ export async function listProjects(
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     sourceAssetId: row.source_asset_id,
+    workspaceId: row.workspace_id ?? null,
   }));
 
   const next = hasMore

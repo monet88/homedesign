@@ -10,6 +10,7 @@ export interface ProjectListItem {
   createdAt: number;
   updatedAt: number;
   sourceAssetId: string | null;
+  workspaceId?: string | null;
 }
 
 export interface AssetListItem {
@@ -51,6 +52,7 @@ export interface ProjectFilters {
   visibility?: string | null;
   search?: string | null;
   sort?: "updated-desc" | "created-desc" | "name-asc" | null;
+  workspaceId?: string | null;
 }
 
 export interface AssetFilters {

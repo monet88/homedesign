@@ -38,6 +38,25 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     );
   }
 
+  const url = new URL(request.url);
+  const isView = url.searchParams.get("view") === "1" || url.searchParams.get("inline") === "1";
+
+  // For inline view (<img> tags inside Studio, Assets, and Activity), stream directly
+  // from native R2 binding. This eliminates 302 redirect round-trips, CORS blocks, and broken images.
+  if (isView && env.HD_PRIVATE) {
+    const obj = await env.HD_PRIVATE.get(row.storage_key);
+    if (obj) {
+      const bytes = await obj.arrayBuffer();
+      return new Response(bytes, {
+        headers: {
+          "Content-Type": row.mime_type,
+          "Content-Disposition": "inline",
+          "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+        },
+      });
+    }
+  }
+
   const creds: PresignCredentials = {
     accountId: env.R2_ACCOUNT_ID ?? "",
     accessKeyId: env.R2_ACCESS_KEY_ID ?? "",
@@ -45,6 +64,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   };
 
   if (
+    !isView &&
     env.ENVIRONMENT !== "local" &&
     env.R2_ACCOUNT_ID !== "local-dev-account" &&
     creds.accountId &&
@@ -59,8 +79,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     return Response.redirect(signed.url, 302);
   }
 
-  // Local/dev fallback: stream through the Worker so tests without S3
-  // credentials still get an authorized download.
+  // Fallback: stream through Worker
   const obj = await env.HD_PRIVATE.get(row.storage_key);
   if (!obj) {
     return Response.json({ error: "OBJECT_NOT_FOUND" }, { status: 404 });
@@ -69,8 +88,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   return new Response(bytes, {
     headers: {
       "Content-Type": row.mime_type,
-      "Content-Disposition": `attachment; filename="${row.id}.png"`,
-      "Cache-Control": "private, no-store",
+      "Content-Disposition": isView ? "inline" : `attachment; filename="${row.id}.png"`,
+      "Cache-Control": isView ? "public, max-age=86400" : "private, no-store",
     },
   });
 }

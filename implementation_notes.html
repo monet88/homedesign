@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Implementation Notes — Sprint 10 Phase 02: VR Tour Studio & Viewer</title>
+  <style>
+    :root {
+      --bg: #090d13;
+      --card-bg: #121824;
+      --border: rgba(212, 175, 55, 0.25);
+      --gold: #d4af37;
+      --gold-light: #f3e5ab;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --code-bg: #05080c;
+      --success: #10b981;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      margin: 0;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+      margin-bottom: 32px;
+    }
+    h1 {
+      color: var(--gold);
+      margin: 0 0 8px 0;
+      font-size: 28px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      background: rgba(212, 175, 55, 0.15);
+      color: var(--gold);
+      border: 1px solid var(--gold);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    section {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    h2 {
+      color: var(--gold-light);
+      margin-top: 0;
+      font-size: 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding-bottom: 10px;
+    }
+    h3 {
+      color: var(--gold);
+      font-size: 15px;
+      margin: 16px 0 8px 0;
+    }
+    p, li {
+      font-size: 14px;
+      color: var(--text);
+    }
+    ul {
+      padding-left: 20px;
+    }
+    code {
+      background: var(--code-bg);
+      color: var(--gold);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 13px;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 14px;
+      overflow-x: auto;
+      font-size: 13px;
+    }
+    .status-tag {
+      color: var(--success);
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <span class="badge">Living Spec & PR Documentation</span>
+      <h1>Sprint 10 — Phase 02: Interactive VR Tour Viewer & Studio Editor</h1>
+      <p style="color: var(--text-muted); margin: 6px 0 0 0;">
+        Dự án: HomeDesign AI Architecture Studio · Nhánh: <code>feature/sprint-10-3d-panorama-vr-tour</code> · Trạng thái: <span class="status-tag">Verified & Production Ready</span>
+      </p>
+    </header>
+
+    <section>
+      <h2>1. Unspecified & Implicit Decisions</h2>
+      <ul>
+        <li>
+          <strong>Cơ chế phân phối Asset công khai qua Token (Token-Authorized Delivery):</strong>
+          Trong đặc tả gốc chưa quy định cách khách vãng lai truy cập ảnh Panorama khi mở link <code>/tour/[token]</code>. Nếu dùng route mặc định <code>/api/assets/[id]/download</code> sẽ bị chặn HTTP 401/403 do yêu cầu xác thực phiên đăng nhập. Chúng em đã thiết kế bổ sung endpoint <code>GET /api/tours/share/[token]/assets/[assetId]</code> và hàm <code>deliverTourSceneAsset</code> để stream trực tiếp dữ liệu từ Cloudflare R2 thông qua token chia sẻ hợp lệ.
+        </li>
+        <li>
+          <strong>Trang Quản Lý Tập Trung (Studio Dashboard tại <code>/tour</code>):</strong>
+          Hệ thống cung cấp trang quản trị tour cho KTS để liệt kê danh sách tour, hiển thị số phòng và điểm ghim, tạo tour mới và mở trực tiếp modal <code>TourEditorModal</code>.
+        </li>
+        <li>
+          <strong>Tự Động Thích Ứng (ResizeObserver & WebGL Context Lost):</strong>
+          Pannellum có thể bị đơ hoặc vỡ layout khi xoay ngang điện thoại hoặc thay đổi kích thước cửa sổ. Chúng em tích hợp <code>ResizeObserver</code> tự động gọi <code>viewer.resize()</code> và bắt sự kiện <code>webglcontextlost</code> để fallback mượt mà sang ảnh 360 phẳng tĩnh (Equirectangular) mà không làm crash trình duyệt.
+        </li>
+        <li>
+          <strong>Bổ sung <code>id</code> vào <code>SessionUser</code>:</strong>
+          Giao diện xem tour cần kiểm tra xem người dùng đang đăng nhập có phải là chủ sở hữu của tour không (để hiển thị nút "Chỉnh sửa Tour"). Trường <code>id?: string</code> đã được thêm vào contract <code>SessionUser</code> của ứng dụng.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>2. Deviations from Specification</h2>
+      <ul>
+        <li>
+          <strong>Không phát sinh dependency ngoài:</strong>
+          Tận dụng gói <code>pannellum</code> đã khai báo trong <code>package.json</code> kết hợp với custom SVG icons và Obsidian Gold styling thay vì cài đặt thêm thư viện Three.js cồng kềnh, giúp giảm dung lượng bundle của Cloudflare Worker và tăng tốc độ nạp trang tối đa trên thiết bị di động.
+        </li>
+        <li>
+          <strong>Thêm chế độ kính VR Cardboard (Stereo mode):</strong>
+          Bổ sung phím chia đôi màn hình (Side-by-side) với tâm ngắm cho phép gia chủ đặt điện thoại vào kính VR giá rẻ (Google Cardboard/VR Box) để trải nghiệm không gian 360 thực tế.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>3. Considered Trade-offs</h2>
+      <ul>
+        <li>
+          <strong>Pannellum Equirectangular vs. Full Three.js Mesh Scene:</strong>
+          <em>Lựa chọn:</em> Dùng Pannellum kết hợp CSS 3D overlays.
+          <em>Lý do:</em> Nhẹ hơn 80%, tương thích hoàn hảo với ảnh panorama AI tạo ra (tỉ lệ 2:1 Equirectangular), tích hợp sẵn thuật toán toán học chuyển đổi tọa độ click chuột thành góc Pitch & Yaw trên hình cầu (<code>mouseEventToCoords</code>), tiết kiệm GPU trên smartphone.
+        </li>
+        <li>
+          <strong>Public R2 Asset URL vs. Worker Streaming:</strong>
+          <em>Lựa chọn:</em> Stream trực tiếp qua Worker binding <code>env.HD_PRIVATE</code> với header <code>Cache-Control: public, max-age=86400, stale-while-revalidate=604800</code>.
+          <em>Lý do:</em> Tránh để lộ storage key nội bộ của R2 hoặc presigned URL có thời hạn hết hạn, bảo vệ quyền sở hữu trí tuệ bản vẽ của KTS.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>4. Maintenance & Verification Notes</h2>
+      <ul>
+        <li>
+          <strong>Unit & Integration Tests:</strong>
+          Đã bổ sung bộ test cho <code>PanoramaTourViewer</code>, <code>TourDashboardPage</code>, <code>TourViewPanel</code>, và <code>tour-share-assets</code>. Chạy bằng lệnh:
+          <pre><code>npx vitest run src/components/panorama/panorama-tour-viewer.test.tsx src/app/tour/[token]/tour-page.test.tsx src/app/api/tours/share/[token]/assets/tour-share-assets.test.ts src/app/api/tours/tours-api.test.ts src/app/tour/tour-dashboard.test.tsx</code></pre>
+        </li>
+        <li>
+          <strong>Kiểm tra kiểu dữ liệu:</strong>
+          <pre><code>npm run typecheck</code></pre>
+        </li>
+        <li>
+          <strong>Build & Deploy Cloudflare:</strong>
+          <pre><code>npm run build:worker && opennextjs-cloudflare deploy</code></pre>
+        </li>
+      </ul>
+    </section>
+  </div>
+</body>
+</html>

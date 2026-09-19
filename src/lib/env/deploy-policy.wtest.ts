@@ -237,6 +237,8 @@ describe("demo policy matrix (ADR 0008, Issue #72)", () => {
     const baseDemo = {
       ...(env as unknown as Env),
       ENVIRONMENT: "demo",
+      GOOGLE_CLIENT_ID: undefined,
+      GOOGLE_CLIENT_SECRET: undefined,
       BETTER_AUTH_SECRET: "test-secret-that-is-long-enough-32-chars",
       BETTER_AUTH_URL: "https://homedesign.monet.uno",
     };
@@ -424,7 +426,7 @@ async function applyMigrations(db: D1Database) {
       `CREATE TABLE IF NOT EXISTS credit_ledger (
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL, entry_type TEXT NOT NULL,
         amount INTEGER NOT NULL, reason TEXT NOT NULL,
-        ref_type TEXT, ref_id TEXT, grant_key TEXT, created_at INTEGER NOT NULL
+        ref_type TEXT, ref_id TEXT, grant_key TEXT, workspace_id TEXT, created_at INTEGER NOT NULL
       )`
     ),
     db.prepare(
@@ -435,7 +437,7 @@ async function applyMigrations(db: D1Database) {
       `CREATE TABLE IF NOT EXISTS credit_holds (
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL, amount INTEGER NOT NULL,
         status TEXT NOT NULL, ref_type TEXT NOT NULL, ref_id TEXT NOT NULL,
-        ledger_hold_id TEXT, created_at INTEGER NOT NULL,
+        ledger_hold_id TEXT, workspace_id TEXT, created_at INTEGER NOT NULL,
         settled_at INTEGER, released_at INTEGER
       )`
     ),

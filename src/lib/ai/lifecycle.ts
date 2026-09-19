@@ -25,7 +25,7 @@
 //     it never resurrects the task and never settles a released hold.
 
 import { getProvider } from "@/lib/ai/provider-adapter";
-import { buildExteriorPrompt, buildInteriorPrompt } from "@/lib/ai/prompt";
+import { buildExteriorPrompt, buildInpaintingPrompt, buildInteriorPrompt } from "@/lib/ai/prompt";
 import {
   DesignError,
   isTerminal,
@@ -167,7 +167,7 @@ export async function createDesign(
       throw new DesignError("PROVIDER_NOT_CONFIGURED", 503, "live AI key required in demo");
     }
 
-    // Default/omitted provider in demo resolves to real Gemini/Cliproxy provider
+    // Default/omitted provider in demo resolves to real Gemini/Cliproxy provider (ADR 0008)
     if (rawProvider === undefined || effectiveProvider === "fake") {
       effectiveProvider = "gemini";
     }
@@ -190,6 +190,31 @@ export async function createDesign(
       provider: effectiveProvider,
     };
   }
+  if (effectiveConfig.intent && "customPresetId" in effectiveConfig.intent && effectiveConfig.intent.customPresetId) {
+    try {
+      const { getCustomPreset, formatPresetPromptAdditions } = await import("@/lib/presets/custom-presets");
+      const preset = await getCustomPreset(env, effectiveConfig.intent.customPresetId as string, userId);
+      const addition = formatPresetPromptAdditions(preset);
+      if (addition) {
+        prompt = `${prompt}\n\nSTUDIO CUSTOM STYLING & MATERIAL DIRECTIVE:\n${addition}`;
+      }
+    } catch (err) {
+      console.warn("[PRESET] Failed to load custom preset:", err);
+    }
+  }
+
+  if (effectiveConfig.workspaceId) {
+    const member = await env.DB.prepare(
+      `SELECT role FROM workspace_members WHERE workspace_id = ?1 AND user_id = ?2`
+    ).bind(effectiveConfig.workspaceId, userId).first<{ role: string }>();
+    if (!member) {
+      throw new DesignError("FORBIDDEN", 403, "not a member of this workspace");
+    }
+    if (member.role === "viewer") {
+      throw new DesignError("ROLE_CANNOT_GENERATE", 403, "viewers cannot generate designs in this workspace");
+    }
+  }
+
   if (!prompt) throw new DesignError("INVALID_INTENT", 400, "empty prompt");
 
   // Authorize the source Asset: exists, owned by the caller, lifecycle `ready`.
@@ -238,12 +263,12 @@ export async function createDesign(
     if (!created) {
       // Free grant is ensured on every verified new-task path (ADR 0002); idempotent.
       // Public Demo skips ensureFreeCreditGrant entirely (ADR 0008).
-      if (!isDemo(env)) {
+      if (!isDemo(env) && !effectiveConfig.workspaceId) {
         await ensureFreeCreditGrant(env, userId);
       }
 
       // Credit gate BEFORE the hold. createTaskWithHold re-checks atomically.
-      const available = await getAvailableCredits(env, userId);
+      const available = await getAvailableCredits(env, userId, effectiveConfig.workspaceId);
       if (available < effectiveConfig.cost) {
         throw new DesignError(
           "INSUFFICIENT_CREDITS",
@@ -257,7 +282,8 @@ export async function createDesign(
         userId,
         taskDef,
         effectiveConfig.cost,
-        effectiveConfig.idempotencyKey
+        effectiveConfig.idempotencyKey,
+        effectiveConfig.workspaceId
       );
     }
   } catch (err) {
@@ -330,18 +356,43 @@ async function ensureProject(
   config: DesignConfig,
   sourceAssetId: string
 ): Promise<string> {
-  const existing = await env.DB.prepare(
-    `SELECT id FROM projects WHERE user_id = ?1 AND kind = ?2 AND source_asset_id = ?3`
-  ).bind(userId, config.scene, sourceAssetId).first<{ id: string }>();
+  const wsId = config.workspaceId ?? null;
+  let existing: { id: string } | null = null;
+  try {
+    existing = await env.DB.prepare(
+      wsId
+        ? `SELECT id FROM projects WHERE kind = ?1 AND source_asset_id = ?2 AND workspace_id = ?3`
+        : `SELECT id FROM projects WHERE user_id = ?1 AND kind = ?2 AND source_asset_id = ?3 AND workspace_id IS NULL`
+    ).bind(...(wsId ? [config.scene, sourceAssetId, wsId] : [userId, config.scene, sourceAssetId])).first<{ id: string }>();
+  } catch (err) {
+    if (!wsId && String(err).includes("workspace_id")) {
+      existing = await env.DB.prepare(
+        `SELECT id FROM projects WHERE user_id = ?1 AND kind = ?2 AND source_asset_id = ?3`
+      ).bind(userId, config.scene, sourceAssetId).first<{ id: string }>();
+    } else {
+      throw err;
+    }
+  }
 
   if (existing) return existing.id;
 
   const projectId = crypto.randomUUID();
   const now = Date.now();
-  await env.DB.prepare(
-    `INSERT INTO projects (id, user_id, kind, name, status, source_asset_id, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, 'draft', ?5, ?6, ?6)`
-  ).bind(projectId, userId, config.scene, defaultProjectName(config), sourceAssetId, now).run();
+  try {
+    await env.DB.prepare(
+      `INSERT INTO projects (id, user_id, kind, name, status, source_asset_id, workspace_id, created_at, updated_at)
+       VALUES (?1, ?2, ?3, ?4, 'draft', ?5, ?7, ?6, ?6)`
+    ).bind(projectId, userId, config.scene, defaultProjectName(config), sourceAssetId, now, wsId).run();
+  } catch (err) {
+    if (!wsId && String(err).includes("workspace_id")) {
+      await env.DB.prepare(
+        `INSERT INTO projects (id, user_id, kind, name, status, source_asset_id, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, 'draft', ?5, ?6, ?6)`
+      ).bind(projectId, userId, config.scene, defaultProjectName(config), sourceAssetId, now).run();
+    } else {
+      throw err;
+    }
+  }
 
   await attachAsset(env, projectId, sourceAssetId, "source");
   return projectId;
@@ -394,7 +445,7 @@ export async function runGeneration(
   await setTaskStatus(env, taskId, "processing");
 
   const provider = getProvider(task.provider, env);
-  const req = await buildProviderRequest(env, task);
+  const req = await buildProviderRequest(env, task, design);
   let providerTaskId: string;
   try {
     const accepted = await provider.submit(req);
@@ -462,10 +513,34 @@ export async function runGeneration(
   return { status: "quarantined" };
 }
 
-async function buildProviderRequest(env: Env, task: TaskRow): Promise<ProviderRequest> {
+async function buildProviderRequest(
+  env: Env,
+  task: TaskRow,
+  design?: DesignRow | null
+): Promise<ProviderRequest> {
   const options: ProviderRequest["options"] = {};
   const imageInput = task.source_key ? await resolveSourceAccess(env, task.source_key) : null;
-  if (imageInput) options.image_input = [imageInput];
+
+  let maskDataUrl: string | undefined;
+  if (design?.config_json) {
+    try {
+      const cfg = JSON.parse(design.config_json);
+      if (typeof cfg?.maskDataUrl === "string" && cfg.maskDataUrl.startsWith("data:image/")) {
+        maskDataUrl = cfg.maskDataUrl;
+      }
+    } catch {
+      // Non-fatal if config_json is not JSON
+    }
+  }
+
+  if (maskDataUrl) {
+    options.image_input = imageInput ? [imageInput, maskDataUrl] : [maskDataUrl];
+    (options as Record<string, unknown>).maskDataUrl = maskDataUrl;
+  } else if (imageInput) {
+    options.image_input = [imageInput];
+  }
+
+  const prompt = maskDataUrl ? buildInpaintingPrompt(task.prompt) : task.prompt;
 
   return {
     taskId: task.id,
@@ -473,7 +548,7 @@ async function buildProviderRequest(env: Env, task: TaskRow): Promise<ProviderRe
     scene: task.scene as ProviderRequest["scene"],
     provider: task.provider,
     model: task.model,
-    prompt: task.prompt,
+    prompt,
     options,
   };
 }
@@ -488,6 +563,7 @@ export async function resolveSourceAccess(env: Env, key: string): Promise<string
     env.ENVIRONMENT !== "local" &&
     env.R2_ACCOUNT_ID !== "local-dev-account" &&
     env.R2_ACCOUNT_ID &&
+    !env.R2_ACCOUNT_ID.startsWith("cfk_") &&
     env.R2_ACCESS_KEY_ID &&
     env.R2_SECRET_ACCESS_KEY
   ) {
@@ -626,9 +702,19 @@ export async function completeGeneration(
   await env.DB.prepare(
     `UPDATE ai_tasks SET status = 'ready', updated_at = ?2 WHERE id = ?1 AND status = 'notified'`
   ).bind(taskId, now).run();
-  await env.DB.prepare(
-    `UPDATE designs SET completed_at = ?2, updated_at = ?2 WHERE id = ?1`
-  ).bind(taskId, now).run();
+  try {
+    await env.DB.prepare(
+      `UPDATE designs SET completed_at = ?2, updated_at = ?2 WHERE id = ?1`
+    ).bind(taskId, now).run();
+  } catch (err) {
+    if (String(err).includes("completed_at")) {
+      await env.DB.prepare(
+        `UPDATE designs SET updated_at = ?2 WHERE id = ?1`
+      ).bind(taskId, now).run();
+    } else {
+      throw err;
+    }
+  }
 
   await env.DB.prepare(
     `UPDATE projects SET status = 'ready', updated_at = ?2 WHERE id = ?1`
@@ -850,5 +936,6 @@ async function setTaskStatus(env: Env, taskId: string, status: string): Promise<
 
 function providerErrorCode(err: unknown): string {
   const msg = (err as Error)?.message ?? "PROVIDER_ERROR";
-  return /^[A-Z0-9_]+$/.test(msg) ? msg : "PROVIDER_ERROR";
+  const sanitized = msg.replace(/[^A-Za-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase().slice(0, 64);
+  return sanitized.length > 0 ? sanitized : "PROVIDER_ERROR";
 }

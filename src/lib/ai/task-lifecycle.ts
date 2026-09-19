@@ -7,6 +7,7 @@ import {
   canonicalHash,
   type IdempotencyRecord,
 } from "@/lib/idempotency";
+import { recordWorkspaceAuditLog } from "@/lib/audit/audit-logger";
 
 // ── Task + hold atomic contract ───────────────────────────────────────────────
 
@@ -85,10 +86,12 @@ export async function createTaskWithHold(
   userId: string,
   taskDef: TaskCreateDefinition,
   cost: number,
-  idempotencyKey: string
+  idempotencyKey: string,
+  workspaceId?: string | null
 ): Promise<{ taskId: string; cached: boolean }> {
   const payload = taskCreatePayload(taskDef, cost);
   const fingerprint = await canonicalHash(payload);
+  const wsId = workspaceId ?? null;
 
   // 1. Check existing idempotency key before attempting creation.
   const existing = await env.DB.prepare(
@@ -106,8 +109,8 @@ export async function createTaskWithHold(
     return { taskId: row.id, cached: true };
   }
 
-  // 2. Preflight balance check.
-  const available = await getAvailableCredits(env, userId);
+  // 2. Preflight balance check (workspace or personal).
+  const available = await getAvailableCredits(env, userId, wsId);
   if (available < cost) {
     throw new Error("INSUFFICIENT_CREDITS");
   }
@@ -130,28 +133,34 @@ export async function createTaskWithHold(
 
       // B. Credit ledger hold entry
       env.DB.prepare(
-        `INSERT INTO credit_ledger (id, user_id, amount, entry_type, reason, ref_type, ref_id, created_at)
-         VALUES (?1, ?2, ?3, 'hold', ?4, 'task', ?5, ?6)`
-      ).bind(ledgerEntryId, userId, cost, `Task: ${taskDef.scene}`, taskId, now),
+        `INSERT INTO credit_ledger (id, user_id, amount, entry_type, reason, ref_type, ref_id, workspace_id, created_at)
+         VALUES (?1, ?2, ?3, 'hold', ?4, 'task', ?5, ?6, ?7)`
+      ).bind(ledgerEntryId, userId, cost, `Task: ${taskDef.scene}`, taskId, wsId, now),
 
       // C. Credit hold row (atomic available balance gate in SQLite: fails CHECK (amount > 0) if insufficient).
-      // Evaluates the canonical Credit Ledger balance invariant (grants+payments - usage - active holds >= cost)
-      // identical to getAvailableCredits() in src/lib/credits/ledger.ts.
       env.DB.prepare(
-        `INSERT INTO credit_holds (id, user_id, amount, status, ref_type, ref_id, ledger_hold_id, created_at)
+        `INSERT INTO credit_holds (id, user_id, amount, status, ref_type, ref_id, ledger_hold_id, workspace_id, created_at)
          SELECT
            ?1,
            ?2,
            CASE
-             WHEN (
-               (SELECT COALESCE(SUM(CASE WHEN entry_type IN ('grant', 'payment') THEN amount ELSE 0 END) - SUM(CASE WHEN entry_type = 'usage' THEN amount ELSE 0 END), 0)
-                FROM credit_ledger WHERE user_id = ?2)
-               - (SELECT COALESCE(SUM(amount), 0) FROM credit_holds WHERE user_id = ?2 AND status = 'active')
-             ) >= ?3 THEN ?3
-             ELSE -1
+             WHEN ?7 IS NOT NULL THEN (
+               CASE WHEN (
+                 (SELECT COALESCE(SUM(CASE WHEN entry_type IN ('grant', 'payment') THEN amount ELSE 0 END) - SUM(CASE WHEN entry_type = 'usage' THEN amount ELSE 0 END), 0)
+                  FROM credit_ledger WHERE workspace_id = ?7)
+                 - (SELECT COALESCE(SUM(amount), 0) FROM credit_holds WHERE workspace_id = ?7 AND status = 'active')
+               ) >= ?3 THEN ?3 ELSE -1 END
+             )
+             ELSE (
+               CASE WHEN (
+                 (SELECT COALESCE(SUM(CASE WHEN entry_type IN ('grant', 'payment') THEN amount ELSE 0 END) - SUM(CASE WHEN entry_type = 'usage' THEN amount ELSE 0 END), 0)
+                  FROM credit_ledger WHERE user_id = ?2 AND workspace_id IS NULL)
+                 - (SELECT COALESCE(SUM(amount), 0) FROM credit_holds WHERE user_id = ?2 AND workspace_id IS NULL AND status = 'active')
+               ) >= ?3 THEN ?3 ELSE -1 END
+             )
            END,
-           'active', 'task', ?4, ?5, ?6`
-      ).bind(holdId, userId, cost, taskId, ledgerEntryId, now),
+           'active', 'task', ?4, ?5, ?7, ?6`
+      ).bind(holdId, userId, cost, taskId, ledgerEntryId, now, wsId),
 
       // D. AI Task row
       env.DB.prepare(
@@ -160,9 +169,54 @@ export async function createTaskWithHold(
       ).bind(taskId, taskDef.scene, taskDef.provider, taskDef.model, taskDef.prompt, taskDef.sourceKey ?? null, now, userId, holdId, cost, expiresAt),
     ]);
 
+    if (wsId) {
+      await recordWorkspaceAuditLog(env, {
+        workspaceId: wsId,
+        actorId: userId,
+        action: "RENDER_TRIGGERED",
+        targetType: "task",
+        targetId: taskId,
+        details: {
+          scene: taskDef.scene,
+          cost,
+        },
+      });
+    }
+
     return { taskId, cached: false };
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
+
+    // Fallback if environment / test schema doesn't have workspace_id column yet
+    if (!wsId && errMsg.includes("workspace_id") && (errMsg.includes("no such column") || errMsg.includes("has no column"))) {
+      await env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO idempotency_keys (id, user_id, operation, idempotency_key, request_fingerprint, result_type, result_id, created_at)
+           VALUES (?1, ?2, 'task_create', ?3, ?4, 'task', ?5, ?6)`
+        ).bind(idempotencyId, userId, idempotencyKey, fingerprint, taskId, now),
+        env.DB.prepare(
+          `INSERT INTO credit_ledger (id, user_id, amount, entry_type, reason, ref_type, ref_id, created_at)
+           VALUES (?1, ?2, ?3, 'hold', ?4, 'task', ?5, ?6)`
+        ).bind(ledgerEntryId, userId, cost, `Task: ${taskDef.scene}`, taskId, now),
+        env.DB.prepare(
+          `INSERT INTO credit_holds (id, user_id, amount, status, ref_type, ref_id, ledger_hold_id, created_at)
+           SELECT
+             ?1,
+             ?2,
+             CASE WHEN (
+               (SELECT COALESCE(SUM(CASE WHEN entry_type IN ('grant', 'payment') THEN amount ELSE 0 END) - SUM(CASE WHEN entry_type = 'usage' THEN amount ELSE 0 END), 0)
+                FROM credit_ledger WHERE user_id = ?2)
+               - (SELECT COALESCE(SUM(amount), 0) FROM credit_holds WHERE user_id = ?2 AND status = 'active')
+             ) >= ?3 THEN ?3 ELSE -1 END,
+             'active', 'task', ?4, ?5, ?6`
+        ).bind(holdId, userId, cost, taskId, ledgerEntryId, now),
+        env.DB.prepare(
+          `INSERT INTO ai_tasks (id, scene, provider, model, prompt, source_key, status, created_at, updated_at, user_id, hold_id, cost_credits, expires_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'accepted', ?7, ?7, ?8, ?9, ?10, ?11)`
+        ).bind(taskId, taskDef.scene, taskDef.provider, taskDef.model, taskDef.prompt, taskDef.sourceKey ?? null, now, userId, holdId, cost, expiresAt),
+      ]);
+      return { taskId, cached: false };
+    }
 
     // If available credits constraint failed inside the atomic batch:
     if (errMsg.includes("CHECK constraint failed") || errMsg.includes("amount > 0") || errMsg.includes("credit_holds.amount")) {
@@ -345,6 +399,20 @@ export async function releaseHoldOnTerminal(
       `UPDATE ai_tasks SET status = ?1, updated_at = ?2 WHERE id = ?3 AND status NOT IN ('ready', 'notified', 'failed', 'expired')`
     ).bind(taskStatus, now, taskId),
   ]);
+
+  if (hold.workspace_id) {
+    await recordWorkspaceAuditLog(env, {
+      workspaceId: hold.workspace_id,
+      actorId: hold.user_id,
+      action: "RENDER_REFUNDED",
+      targetType: "task",
+      targetId: taskId,
+      details: {
+        refundAmount: hold.amount,
+        terminalStatus,
+      },
+    });
+  }
 }
 
 /**

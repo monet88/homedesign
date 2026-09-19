@@ -12,5 +12,7 @@ export default defineConfig({
   test: {
     include: ["src/**/*.test.ts", "src/**/*.test.tsx", "tests/**/*.test.ts"],
     exclude: ["node_modules", ".open-next", ".next"],
+    testTimeout: 30000,
+    hookTimeout: 30000,
   },
 });

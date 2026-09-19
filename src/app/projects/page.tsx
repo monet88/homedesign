@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "@/lib/auth/session-stub";
+import { useWorkspace } from "@/components/workspaces/workspace-context";
 
 type ProjectItem = {
   id: string;
@@ -36,10 +37,11 @@ function useProjectFilters() {
   const search = searchParams.get("search") ?? "";
   const sort = searchParams.get("sort") ?? "updated-desc";
   const cursor = searchParams.get("cursor");
+  const workspaceId = searchParams.get("workspaceId");
   const favorite = favoriteRaw === "true" ? true : favoriteRaw === "false" ? false : null;
   return useMemo(
-    () => ({ kind, favorite, visibility, search, sort, cursor }),
-    [kind, favorite, visibility, search, sort, cursor]
+    () => ({ kind, favorite, visibility, search, sort, cursor, workspaceId }),
+    [kind, favorite, visibility, search, sort, cursor, workspaceId]
   );
 }
 
@@ -52,6 +54,7 @@ function buildQuery(filters: ReturnType<typeof useProjectFilters>, overrides: Re
   if (merged.search) params.set("search", merged.search);
   if (merged.sort && merged.sort !== "updated-desc") params.set("sort", merged.sort);
   if (merged.cursor) params.set("cursor", merged.cursor);
+  if (merged.workspaceId) params.set("workspaceId", merged.workspaceId);
   return params.toString();
 }
 
@@ -171,6 +174,7 @@ function ShareControls({ project }: { project: ProjectItem }) {
 
 function ProjectsPage() {
   const { user } = useSession();
+  const { activeWorkspace, setActiveWorkspaceId, workspaces } = useWorkspace();
   const router = useRouter();
   const pathname = usePathname();
   const filters = useProjectFilters();
@@ -180,11 +184,16 @@ function ProjectsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const currentWorkspaceId = filters.workspaceId ?? activeWorkspace?.id ?? null;
+
   const fetchPage = useCallback(
     async (cursor?: string | null) => {
       setLoading(true);
       setError(null);
-      const query = buildQuery(filters, { cursor: cursor ?? null });
+      const query = buildQuery(filters, {
+        cursor: cursor ?? null,
+        workspaceId: currentWorkspaceId,
+      });
       try {
         const res = await fetch(`/api/projects?${query}`);
         if (!res.ok) {
@@ -204,13 +213,13 @@ function ProjectsPage() {
         setLoading(false);
       }
     },
-    [filters]
+    [filters, currentWorkspaceId]
   );
 
   useEffect(() => {
     if (!user?.emailVerified) return;
     fetchPage(null);
-  }, [filters.kind, filters.favorite, filters.visibility, filters.search, filters.sort, user?.emailVerified]);
+  }, [filters.kind, filters.favorite, filters.visibility, filters.search, filters.sort, currentWorkspaceId, user?.emailVerified]);
 
   const updateFilters = useCallback(
     (overrides: Record<string, string | null>) => {
@@ -231,6 +240,17 @@ function ProjectsPage() {
       setItems((prev) =>
         prev.map((p) => (p.id === project.id ? { ...p, favorite: !p.favorite } : p))
       );
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const deleteProject = async (project: ProjectItem) => {
+    if (!window.confirm(`Delete project "${project.name}"?`)) return;
+    try {
+      const res = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete project");
+      setItems((prev) => prev.filter((p) => p.id !== project.id));
     } catch (err) {
       setError((err as Error).message);
     }
@@ -260,7 +280,55 @@ function ProjectsPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-      <h1 className="text-2xl font-semibold text-ink">Projects</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink">Projects</h1>
+          <p className="text-xs text-ink/60 mt-0.5">
+            {currentWorkspaceId
+              ? `Thư viện dự án chung của Studio "${workspaces.find((w) => w.id === currentWorkspaceId)?.name || "Studio"}"`
+              : "Dự án cá nhân của bạn"}
+          </p>
+        </div>
+
+        {/* Scope Tabs: Personal vs Workspaces */}
+        <div className="flex items-center gap-1.5 rounded-xl border border-border bg-card/60 p-1 text-xs">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveWorkspaceId(null);
+              updateFilters({ workspaceId: null });
+            }}
+            className={`px-3 py-1.5 rounded-lg font-medium transition ${
+              !currentWorkspaceId
+                ? "bg-brand-primary text-white font-semibold shadow-xs"
+                : "text-foreground/70 hover:text-foreground"
+            }`}
+          >
+            Cá nhân
+          </button>
+          {workspaces.map((ws) => {
+            const isSelected = currentWorkspaceId === ws.id;
+            return (
+              <button
+                key={ws.id}
+                type="button"
+                onClick={() => {
+                  setActiveWorkspaceId(ws.id);
+                  updateFilters({ workspaceId: ws.id });
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition ${
+                  isSelected
+                    ? "bg-brand-primary text-white font-semibold shadow-xs"
+                    : "text-foreground/70 hover:text-foreground"
+                }`}
+              >
+                <span>🏢</span>
+                <span className="truncate max-w-[120px]">{ws.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <select

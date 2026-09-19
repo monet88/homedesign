@@ -4,6 +4,9 @@ import {
   FALLBACK_ROOM_TYPE,
   FALLBACK_STYLE,
 } from "./constants";
+import { buildVirtualStagingPrompt } from "./virtual-staging";
+
+export { buildVirtualStagingPrompt };
 
 function pick(preset: string | undefined, custom: string | undefined, fallback: string): string {
   const c = custom?.trim();
@@ -14,13 +17,17 @@ function pick(preset: string | undefined, custom: string | undefined, fallback: 
 }
 
 /**
- * Interior redesign template (Ticket #27, ADR 0007).
+ * Interior redesign template (Ticket #27, ADR 0007, Ticket 3.3).
  * Structured 3-tier architectural prompt:
  * 1. Task & Preserved Architectural Enclosure (Structural Invariants)
  * 2. Spatial Furnishing & Materiality (PBR, Lighting, Layout, Accents)
  * 3. Photographic Standards & Optics (Digest Realism, Occlusion)
  */
 export function buildInteriorPrompt(intent: InteriorIntent): string {
+  if (intent.mode === "virtual-staging") {
+    return buildVirtualStagingPrompt(intent);
+  }
+
   if (intent.mode === "edit") {
     return (intent.editInstruction ?? intent.requirements ?? "").trim();
   }
@@ -54,5 +61,27 @@ export function buildInteriorPrompt(intent: InteriorIntent): string {
   if (requirements) lines.push(`Custom requirements: ${requirements}`);
 
   return lines.join("\n");
+}
+
+/**
+ * Inpainting prompt builder (Sprint 5, Ticket 5.1).
+ * Guides Gemini 2.5 Flash / multimodal image generator to modify strictly
+ * the highlighted masked area while preserving the rest of the scene intact.
+ */
+export function buildInpaintingPrompt(instruction: string): string {
+  const clean = instruction.trim();
+  return [
+    "TASK: Photorealistic architectural inpainting and selective modification.",
+    "1. INPAINTING TARGET & MASK REFERENCE:",
+    "- The input contains the original room photograph (Image 1) and the inpainting mask showing the target modification area (Image 2).",
+    `- Apply this instruction strictly within the marked/masked region: "${clean || "update and replace this area with modern styling"}".`,
+    "",
+    "2. ARCHITECTURAL PRESERVATION INVARIANTS:",
+    "- Absolutely PRESERVE all unmasked areas: unmasked walls, flooring outside the mask, windows, doors, existing lighting, perspective, and camera viewpoint must remain 100% unchanged.",
+    "- Do not alter the surrounding room geometry or architectural structure.",
+    "",
+    "3. MATERIALITY & SEAMLESS BLENDING:",
+    "- Seamlessly blend the edges of the modified region into the surrounding room environment with realistic contact ambient occlusion shadows, matching lighting direction, and authentic textures.",
+  ].join("\n");
 }
 

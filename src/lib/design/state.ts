@@ -30,6 +30,8 @@ export interface DesignFormState {
   aspectRatio: string;
   requirements: string;
   editInstruction: string;
+  maskDataUrl?: string | null;
+  stagingPreset?: string;
 }
 
 export interface DesignPreset {
@@ -41,6 +43,7 @@ export interface DesignPreset {
   colorScheme?: string;
   aspectRatio?: string;
   requirements?: string;
+  stagingPreset?: string;
 }
 
 const MAX_REQUIREMENTS_LEN = 300;
@@ -59,6 +62,8 @@ export function initialDesignFormState(scene: DesignScene): DesignFormState {
     aspectRatio: "1:1",
     requirements: "",
     editInstruction: "",
+    maskDataUrl: null,
+    stagingPreset: undefined,
   };
 }
 
@@ -68,17 +73,19 @@ function clampRequirements(value: string): string {
 
 /**
  * Apply a landing-page preset (style/room/palette etc.) and force the mode to
- * Full Redesign, matching the origin behavior documented in the spec.
+ * Full Redesign (or requested mode like virtual-staging), matching the origin behavior.
  */
 export function applyPreset(
   state: DesignFormState,
   preset: DesignPreset
 ): DesignFormState {
+  const targetMode = preset.mode ?? "redesign";
   const next: DesignFormState = {
     ...state,
-    mode: "redesign",
+    mode: targetMode,
     customStyle: "",
     customColorScheme: "",
+    stagingPreset: preset.stagingPreset ?? (targetMode === "virtual-staging" ? state.stagingPreset : undefined),
   };
 
   if (preset.roomType) {
@@ -129,6 +136,9 @@ function sceneIntent(scene: DesignScene, state: DesignFormState) {
       ...base,
       roomType: state.roomType,
       customRoomType: state.customRoomType.trim(),
+      ...(state.mode === "virtual-staging" && state.stagingPreset
+        ? { stagingPreset: state.stagingPreset }
+        : {}),
     };
   }
 
@@ -146,7 +156,8 @@ function sceneIntent(scene: DesignScene, state: DesignFormState) {
 export function buildDesignConfig(
   scene: DesignScene,
   state: DesignFormState,
-  sourceAssetId: string
+  sourceAssetId: string,
+  extra?: { provider?: string; model?: string }
 ): Record<string, unknown> {
   const idempotencyKey = crypto.randomUUID();
   const requirements = clampRequirements(state.requirements);
@@ -172,6 +183,9 @@ export function buildDesignConfig(
       num_outputs: 1,
     },
     idempotencyKey,
+    ...(state.mode === "edit" && state.maskDataUrl ? { maskDataUrl: state.maskDataUrl } : {}),
+    ...(extra?.provider ? { provider: extra.provider } : {}),
+    ...(extra?.model ? { model: extra.model } : {}),
   };
 }
 
@@ -182,7 +196,7 @@ function readParam(params: URLSearchParams, key: string): string | undefined {
 
 /**
  * Parse preset query parameters from a landing-page "Use" link.
- * Supported: `?style=...&roomType=...&area=...&colorScheme=...&palette=...&aspectRatio=...&requirements=...`
+ * Supported: `?mode=...&stagingPreset=...&style=...&roomType=...&area=...&colorScheme=...&palette=...&aspectRatio=...&requirements=...`
  */
 export function parseDesignSearchParams(
   params: URLSearchParams,
@@ -190,6 +204,8 @@ export function parseDesignSearchParams(
 ): DesignPreset {
   const preset: DesignPreset = {};
 
+  const mode = readParam(params, "mode");
+  const stagingPreset = readParam(params, "stagingPreset");
   const style = readParam(params, "style");
   const roomType = readParam(params, "roomType");
   const area = readParam(params, "area");
@@ -197,6 +213,10 @@ export function parseDesignSearchParams(
   const aspectRatio = readParam(params, "aspectRatio");
   const requirements = readParam(params, "requirements");
 
+  if (mode === "redesign" || mode === "edit" || mode === "virtual-staging") {
+    preset.mode = mode;
+  }
+  if (stagingPreset) preset.stagingPreset = stagingPreset;
   if (style) preset.style = style;
   if (scene === "interior" && roomType) preset.roomType = roomType;
   if (scene === "exterior" && area) preset.area = area;

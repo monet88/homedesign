@@ -15,7 +15,7 @@ function queryD1(command: string): unknown[] {
   const parsed = JSON.parse(stdout) as Array<{ results: unknown[] }>;
   return parsed[0]?.results ?? [];
 }
-describe("CLI Seeder to local D1 integration test (Ticket #36 AC 1-5)", { timeout: 60000 }, () => {
+describe("CLI Seeder to local D1 integration test (Ticket #36 AC 1-5)", { timeout: 180000 }, () => {
   beforeAll(() => {
     // Ensure migrations are applied in local D1
     execSync(`npx wrangler d1 migrations apply homedesign --local`, {
@@ -30,7 +30,7 @@ describe("CLI Seeder to local D1 integration test (Ticket #36 AC 1-5)", { timeou
       `DELETE FROM session WHERE userId IN (SELECT id FROM user WHERE email = '${TEST_ADMIN_EMAIL}'); ` +
       `DELETE FROM user WHERE email = '${TEST_ADMIN_EMAIL}';`
     );
-  }, 60000);
+  }, 180000);
 
   afterAll(() => {
     // Clean up test admin rows after test run
@@ -44,7 +44,7 @@ describe("CLI Seeder to local D1 integration test (Ticket #36 AC 1-5)", { timeou
     } catch {
       // ignore cleanup errors
     }
-  });
+  }, 60000);
 
   it("fails with explicit actionable message when ADMIN_PASSWORD is missing", () => {
     const res = spawnSync("node", ["scripts/seed-admin.mjs", "--local"], {

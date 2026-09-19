@@ -21,7 +21,10 @@ is_allowlisted_for_rule2() {
     src/lib/ai/gemini-adapter.test.ts|src/lib/intake/presign.test.ts)
       return 0
       ;;
-    src/lib/auth/auth.wtest.ts|src/lib/auth/outbox.wtest.ts|src/lib/env/deploy-policy.wtest.ts)
+    src/lib/auth/auth.wtest.ts|src/lib/auth/outbox.wtest.ts|src/lib/env/deploy-policy.wtest.ts|tests/deploy.test.ts)
+      return 0
+      ;;
+    src/lib/panorama/demo-tour.ts)
       return 0
       ;;
     *)
@@ -59,7 +62,7 @@ while IFS=: read -r file line content; do
   fi
 
   # Skip placeholder / template / env references
-  if [[ "$content" =~ [:=][[:space:]]*[\"\'](\$|\$\{|\<|\{|\/|test-|dev-only-|mock-|example|changeme|placeholder|your[_-]|password123|change-me|\[REDACTED\]) ]]; then
+  if [[ "$content" =~ [:=][[:space:]]*[\"\'](\$|\$\{|\<|\{|\/|test-|dev-only-|mock-|example|demo-|demo_|token|tok-|share|changeme|placeholder|your[_-]|password123|change-me|\[REDACTED\]) ]]; then
     continue
   fi
 

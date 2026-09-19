@@ -1,4 +1,5 @@
 // Static catalog data matching homedesigns.app 1:1
+import { UNIFIED_PRICING_TIERS } from "@/lib/payments/pricing-constants";
 
 const CDN = process.env.NEXT_PUBLIC_CDN_URL ?? "https://cdn.homedesigns.app";
 const cdn = (path: string) => `${CDN}/${path}`;
@@ -56,7 +57,7 @@ export const BEFORE_AFTER_PAIRS: BeforeAfterPair[] = [
     label: "Living room redesign",
     before: cdn("ai-interior-design/before-after/empty-living-room-before.webp"),
     after: cdn("ai-interior-design/before-after/empty-living-room-after.webp"),
-    prompt: "Turn this empty living room into a warm modern space — beige sofa, oak coffee table, soft daylight, neutral palette; keep the room layout unchanged.",
+    prompt: "Turn this empty living room into a warm modern space: beige sofa, oak coffee table, soft daylight, neutral palette; keep the room layout unchanged.",
   },
   {
     label: "Warm modern living room",
@@ -543,59 +544,44 @@ export const EXTERIOR_IDEAS = EXTERIOR_AREAS;
 export const PRICING_TIERS: PricingTier[] = [
   {
     name: "Lite",
-    price: "$5",
+    price: UNIFIED_PRICING_TIERS.lite.usdPriceFormatted,
     priceNote: "Mock purchase (no charge)",
-    credits: 80,
-    description: "For trying one or two room designs",
+    credits: UNIFIED_PRICING_TIERS.lite.credits,
+    description: UNIFIED_PRICING_TIERS.lite.description,
     cta: "Buy Credits",
-    features: ["80 credits", "Credits valid for 30 days"],
+    features: UNIFIED_PRICING_TIERS.lite.features,
   },
   {
     name: "Plus",
-    price: "$9",
+    price: UNIFIED_PRICING_TIERS.plus.usdPriceFormatted,
     originalPrice: "$10",
     priceNote: "Mock purchase (no charge)",
-    credits: 160,
-    description: "For one complete design project",
+    credits: UNIFIED_PRICING_TIERS.plus.credits,
+    description: UNIFIED_PRICING_TIERS.plus.description,
     cta: "Buy Credits",
-    features: [
-      "160 credits",
-      "10% off",
-      "Credits valid for 60 days",
-      "Enough for a typical 7-room home",
-    ],
+    features: UNIFIED_PRICING_TIERS.plus.features,
   },
   {
     name: "Pro",
-    price: "$17",
+    price: UNIFIED_PRICING_TIERS.pro.usdPriceFormatted,
     originalPrice: "$20",
     priceNote: "Mock purchase (no charge)",
-    credits: 320,
-    description: "For more styles, revisions, and rooms",
+    credits: UNIFIED_PRICING_TIERS.pro.credits,
+    description: UNIFIED_PRICING_TIERS.pro.description,
     cta: "Buy Credits",
-    badge: "Popular",
-    features: [
-      "320 credits",
-      "15% off",
-      "Credits valid for 90 days",
-      "Great for comparing design directions",
-    ],
+    badge: UNIFIED_PRICING_TIERS.pro.badge,
+    features: UNIFIED_PRICING_TIERS.pro.features,
   },
   {
     name: "Max",
-    price: "$32",
+    price: UNIFIED_PRICING_TIERS.max.usdPriceFormatted,
     originalPrice: "$40",
     priceNote: "Mock purchase (no charge)",
-    credits: 640,
-    description: "For multiple homes or larger projects",
+    credits: UNIFIED_PRICING_TIERS.max.credits,
+    description: UNIFIED_PRICING_TIERS.max.description,
     cta: "Buy Credits",
-    badge: "Best Value",
-    features: [
-      "640 credits",
-      "20% off",
-      "Credits valid for 180 days",
-      "Best value for larger projects",
-    ],
+    badge: UNIFIED_PRICING_TIERS.max.badge,
+    features: UNIFIED_PRICING_TIERS.max.features,
   },
 ];
 
@@ -709,5 +695,87 @@ export const FAQ_FLOOR_PLAN: FaqItem[] = [
     question: "Which rooms work best right now?",
     answer:
       "Living rooms, bedrooms, kitchens, dining areas, home offices, and open floor concepts produce the most photorealistic renders and 360 previews.",
+  },
+];
+
+// ---------------------------------------------------------------------------
+// B2B Virtual Staging Catalog & FAQs (Ticket 3.3)
+// ---------------------------------------------------------------------------
+
+export const B2B_STAGING_CATALOG: CatalogItem[] = [
+  {
+    id: "vs-living-room-luxury",
+    title: "Living Room Luxury",
+    image: cdn("ai-interior-design/before-after/empty-living-room-after.webp"),
+    beforeImage: cdn("ai-interior-design/before-after/empty-living-room-before.webp"),
+    afterImage: cdn("ai-interior-design/before-after/empty-living-room-after.webp"),
+    href: "/ai-virtual-staging?mode=virtual-staging&stagingPreset=living-room-luxury&roomType=Living+Room&style=Modern+Warm",
+    previewLabel: "Preview Staging",
+    useLabel: "Stage Living Room",
+    description:
+      "Stage empty living rooms into luxury turnkey spaces with Italian leather seating, Calacatta marble tables, and 2700K designer lighting for real estate listings.",
+    preset: {
+      scene: "interior",
+      roomType: "Living Room",
+      style: "Modern Warm",
+      colorScheme: "Warm",
+      aspectRatio: "16:9",
+    },
+  },
+  {
+    id: "vs-modern-bedroom",
+    title: "Modern Master Bedroom",
+    image: cdn("landing/hero-room-light.webp"),
+    beforeImage: cdn("ai-interior-design/before-after/empty-living-room-before.webp"),
+    afterImage: cdn("landing/hero-room-light.webp"),
+    href: "/ai-virtual-staging?mode=virtual-staging&stagingPreset=modern-bedroom&roomType=Bedroom&style=Scandinavian",
+    previewLabel: "Preview Staging",
+    useLabel: "Stage Bedroom",
+    description:
+      "Transform vacant bedrooms into five-star hotel master suites with upholstered king beds, layered linen bedding, and walnut accents.",
+    preset: {
+      scene: "interior",
+      roomType: "Bedroom",
+      style: "Scandinavian",
+      colorScheme: "Neutral",
+      aspectRatio: "4:3",
+    },
+  },
+  {
+    id: "vs-executive-office",
+    title: "Executive Home Office",
+    image: cdn("landing/cta-room.webp"),
+    beforeImage: cdn("ai-interior-design/before-after/empty-living-room-before.webp"),
+    afterImage: cdn("landing/cta-room.webp"),
+    href: "/ai-virtual-staging?mode=virtual-staging&stagingPreset=executive-office&roomType=Home+Office&style=Industrial+Loft",
+    previewLabel: "Preview Staging",
+    useLabel: "Stage Office",
+    description:
+      "Convert spare empty rooms into high-impact executive offices with solid hardwood desks, ergonomic leather chairs, and architectural shelving.",
+    preset: {
+      scene: "interior",
+      roomType: "Home Office",
+      style: "Industrial Loft",
+      colorScheme: "Earth",
+      aspectRatio: "16:9",
+    },
+  },
+];
+
+export const FAQ_VIRTUAL_STAGING: FaqItem[] = [
+  {
+    question: "What is B2B Virtual Staging for Real Estate?",
+    answer:
+      "Virtual Staging uses AI to furnish empty or vacant property photos with photorealistic designer furniture, helping realtors sell or lease homes up to 3x faster without paying thousands of dollars for physical staging.",
+  },
+  {
+    question: "Does the AI change the walls or structural features of the house?",
+    answer:
+      "No. Our Virtual Staging Engine strictly locks 100% of the room's structural geometry — keeping walls, flooring boundaries, ceiling heights, windows, and sunlight direction completely authentic to MLS disclosure rules.",
+  },
+  {
+    question: "Can I use Virtual Staging images directly on real estate listing sites?",
+    answer:
+      "Yes! Our outputs adhere to professional commercial real estate photography standards (straight verticals, 24-28mm lens perspective, high-resolution PBR textures) ready for MLS, Zillow, Batdongsan, or social media promotions.",
   },
 ];

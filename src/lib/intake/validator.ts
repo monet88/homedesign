@@ -138,7 +138,11 @@ export async function validateAsset(
       key,
       readyKey,
       obj.size,
-      parsed.format === "png" ? "image/png" : "image/jpeg",
+      parsed.format === "png"
+        ? "image/png"
+        : parsed.format === "webp"
+        ? "image/webp"
+        : "image/jpeg",
       options?.copyOptions
     );
   } catch (err) {

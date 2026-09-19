@@ -19,6 +19,7 @@ export async function GET(request: Request) {
     visibility: url.searchParams.get("visibility") ?? null,
     search: url.searchParams.get("search") ?? null,
     sort: parseSort(url.searchParams.get("sort")),
+    workspaceId: url.searchParams.get("workspaceId") ?? null,
   };
   const cursor = url.searchParams.get("cursor");
 

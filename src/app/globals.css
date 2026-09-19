@@ -3,87 +3,120 @@
 @theme {
   --color-paper: #f6f0e4;
   --color-ink: #171411;
-  --color-background: #f6f0e4;
-  --color-foreground: #171411;
-  --color-card: #faf7f2;
-  --color-card-foreground: #171411;
-  --color-border: rgba(23, 20, 17, 0.1);
-  --color-muted: #ece4d5;
-  --color-muted-foreground: rgba(23, 20, 17, 0.65);
-  --color-brand-primary: #0f382c;
-  --color-brand-accent: #174e3e;
-  --color-brand-forest: #0f382c;
-  --color-brand-copper: #c26e38;
-  --color-brand-gold: #c26e38;
-  --color-brand-highlight: #e08a54;
-  --color-brand-soft: #ece4d5;
-  --color-brand-ivory: #faf7f2;
-  --color-brand-dark: #0b1411;
-  --color-sidebar: #f1ebe0;
-  --color-sidebar-foreground: #171411;
-  --color-sidebar-border: rgba(23, 20, 17, 0.08);
-  --color-sidebar-accent: rgba(23, 20, 17, 0.06);
-  --color-sidebar-accent-foreground: #171411;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-accent: var(--brand-accent);
+  --color-brand-forest: var(--brand-forest);
+  --color-brand-copper: var(--brand-copper);
+  --color-brand-gold: var(--brand-gold);
+  --color-brand-bronze: var(--brand-bronze);
+  --color-brand-highlight: var(--brand-highlight);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-ivory: var(--brand-ivory);
+  --color-brand-dark: var(--brand-dark);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --radius-card: 12px;
   --radius-pill: 9999px;
   --font-sans: var(--font-inter), Arial, sans-serif;
-  --font-serif: var(--font-serif), Georgia, serif;
+  --font-mono: var(--font-mono), monospace;
 }
 
 :root {
   --paper: #f6f0e4;
   --ink: #171411;
-  --background: #f6f0e4;
-  --background-rgb: 246, 240, 228;
-  --foreground: #171411;
-  --brand-primary: #0f382c;
-  --brand-accent: #174e3e;
-  --brand-forest: #0f382c;
-  --brand-copper: #c26e38;
-  --brand-highlight: #e08a54;
-  --brand-soft: #ece4d5;
-  --brand-ivory: #faf7f2;
-  --brand-dark: #0b1411;
-  --brand-shadow-rgb: 23, 20, 17;
-  --card: #faf7f2;
-  --card-foreground: #171411;
-  --border: rgba(23, 20, 17, 0.1);
-  --muted: #ece4d5;
-  --muted-foreground: rgba(23, 20, 17, 0.65);
+  --background: #faf9f6;
+  --background-rgb: 250, 249, 246;
+  --foreground: #18181b;
+  --brand-primary: #b8860b;
+  --brand-accent: #c5a059;
+  --brand-forest: #1c3329;
+  --brand-copper: #b47a32;
+  --brand-gold: #b8860b;
+  --brand-bronze: #8f5a28;
+  --brand-highlight: #dfba73;
+  --brand-soft: #f4f0e6;
+  --brand-ivory: #faf9f6;
+  --brand-dark: #18181b;
+  --brand-shadow-rgb: 24, 24, 27;
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --border: rgba(184, 134, 11, 0.18);
+  --muted: #f4f0e6;
+  --muted-foreground: #71717a;
   --sidebar-width: 16rem;
   --sidebar-width-icon: 3.5rem;
-  --sidebar: #f1ebe0;
-  --sidebar-foreground: #171411;
-  --sidebar-border: rgba(23, 20, 17, 0.08);
-  --sidebar-accent: rgba(23, 20, 17, 0.06);
-  --sidebar-accent-foreground: #171411;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #18181b;
+  --sidebar-border: rgba(184, 134, 11, 0.15);
+  --sidebar-accent: rgba(184, 134, 11, 0.08);
+  --sidebar-accent-foreground: #18181b;
   --radius-card: 12px;
   --radius-pill: 9999px;
 }
 
+.dark, [data-theme="dark"] {
+  --paper: #161e2c;
+  --ink: #f3f5f8;
+  --background: #090d13;
+  --background-rgb: 9, 13, 19;
+  --foreground: #f3f5f8;
+  --brand-primary: #c5a059;
+  --brand-accent: #dfba73;
+  --brand-forest: #13241f;
+  --brand-copper: #d4af37;
+  --brand-gold: #d4af37;
+  --brand-bronze: #b3804d;
+  --brand-highlight: #f0cb7d;
+  --brand-soft: #182232;
+  --brand-ivory: #090d13;
+  --brand-dark: #05080c;
+  --brand-shadow-rgb: 0, 0, 0;
+  --card: #0f1520;
+  --card-foreground: #f3f5f8;
+  --border: rgba(212, 175, 55, 0.18);
+  --muted: #161e2c;
+  --muted-foreground: rgba(226, 232, 240, 0.65);
+  --sidebar: #0a0e16;
+  --sidebar-foreground: #f3f5f8;
+  --sidebar-border: rgba(212, 175, 55, 0.15);
+  --sidebar-accent: rgba(212, 175, 55, 0.08);
+  --sidebar-accent-foreground: #f3f5f8;
+}
+
 html {
-  background-color: var(--paper);
-  color: var(--ink);
+  background-color: var(--background);
+  color: var(--foreground);
   scroll-behavior: smooth;
 }
 
 body {
   font-family: var(--font-sans);
-  background-color: var(--paper);
-  color: var(--ink);
+  background-color: var(--background);
+  color: var(--foreground);
   overflow-x: hidden;
 }
 
-/* NProgress styling */
+/* NProgress styling with Champagne Gold bar */
 #nprogress {
   pointer-events: none;
 }
 #nprogress .bar {
-  background: #0f382c;
+  background: linear-gradient(90deg, #c5a059, #dfba73);
   position: fixed;
   z-index: 1600;
   top: 0;
   left: 0;
   width: 100%;
   height: 3px;
+  box-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
 }

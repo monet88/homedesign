@@ -57,7 +57,7 @@ export const FLOOR_PLAN_STAGE_COST: Record<FloorPlanStage, number> = {
 
 // ── Design Config (public contract) ──────────────────────────────────────────
 
-export type GenerationMode = "redesign" | "edit";
+export type GenerationMode = "redesign" | "edit" | "virtual-staging";
 
 export interface InteriorIntent {
   mode: GenerationMode;
@@ -70,6 +70,10 @@ export interface InteriorIntent {
   requirements?: string;
   /** Local Edit only — replaces the whole template with this instruction. */
   editInstruction?: string;
+  /** B2B Virtual Staging preset identifier (e.g. living-room-luxury, modern-bedroom, executive-office). */
+  stagingPreset?: string;
+  /** Studio custom styling preset id (Ticket 8.3). */
+  customPresetId?: string;
 }
 
 export interface ExteriorIntent {
@@ -82,6 +86,8 @@ export interface ExteriorIntent {
   customColorScheme?: string;
   requirements?: string;
   editInstruction?: string;
+  /** Studio custom styling preset id (Ticket 8.3). */
+  customPresetId?: string;
 }
 
 /**
@@ -142,6 +148,9 @@ export interface DesignConfigInput {
   intent: DesignIntent;
   options?: DesignOptions;
   idempotencyKey: string;
+  maskDataUrl?: string | null;
+  workspaceId?: string;
+  customPresetId?: string;
 }
 
 /** Server-normalized Design Config (persisted on the Design row). */
@@ -157,6 +166,9 @@ export interface DesignConfig {
   options: DesignOptions;
   cost: number;
   idempotencyKey: string;
+  maskDataUrl?: string;
+  workspaceId?: string;
+  customPresetId?: string;
 }
 
 export const DEFAULT_MODEL = "gemini-2.5-flash-image";
@@ -278,6 +290,7 @@ export type DesignErrorCode =
   | "IDEMPOTENCY_KEY_REUSED"
   | "ASSET_NOT_FOUND"
   | "FORBIDDEN"
+  | "ROLE_CANNOT_GENERATE"
   | "SOURCE_ASSET_NOT_READY"
   | "INSUFFICIENT_CREDITS"
   | "GENERATION_DISABLED"

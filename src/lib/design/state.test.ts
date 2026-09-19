@@ -92,6 +92,16 @@ describe("design form state builder", () => {
     expect(intent).not.toHaveProperty("style");
   });
 
+  it("includes maskDataUrl in edit mode payload when provided", () => {
+    const state = initialDesignFormState("interior");
+    state.mode = "edit";
+    state.editInstruction = "change sofa color";
+    state.maskDataUrl = "data:image/png;base64,mask123";
+
+    const body = buildDesignConfig("interior", state, "asset-1");
+    expect(body.maskDataUrl).toBe("data:image/png;base64,mask123");
+  });
+
   it("falls back editInstruction to requirements when instruction is empty", () => {
     const state = initialDesignFormState("interior");
     state.mode = "edit";
@@ -183,4 +193,65 @@ describe("design form state builder", () => {
       aspectRatio: "4:3",
     });
   });
+
+  it("builds the exact virtual-staging API body with stagingPreset (Ticket 3.3)", () => {
+    const state = initialDesignFormState("interior");
+    state.mode = "virtual-staging";
+    state.stagingPreset = "living-room-luxury";
+    state.roomType = "Living Room";
+    state.style = "Modern Warm";
+    state.colorScheme = "Warm";
+    state.aspectRatio = "16:9";
+
+    const body = buildDesignConfig("interior", state, "asset-staging-1");
+    const picked = pickInteriorConfig(body);
+
+    expect(picked).toMatchObject({
+      sourceAssetId: "asset-staging-1",
+      mediaType: "image",
+      scene: "interior",
+      intent: {
+        mode: "virtual-staging",
+        stagingPreset: "living-room-luxury",
+        roomType: "Living Room",
+        style: "Modern Warm",
+        colorScheme: "Warm",
+      },
+      options: { aspect_ratio: "16:9", num_outputs: 1 },
+    });
+  });
+
+  it("applies virtual-staging preset while preserving target mode and stagingPreset", () => {
+    const state = initialDesignFormState("interior");
+    const next = applyPreset(state, {
+      mode: "virtual-staging",
+      stagingPreset: "modern-bedroom",
+      roomType: "Bedroom",
+      style: "Scandinavian",
+      colorScheme: "Neutral",
+      aspectRatio: "4:3",
+    });
+
+    expect(next.mode).toBe("virtual-staging");
+    expect(next.stagingPreset).toBe("modern-bedroom");
+    expect(next.roomType).toBe("Bedroom");
+    expect(next.style).toBe("Scandinavian");
+    expect(next.colorScheme).toBe("Neutral");
+    expect(next.aspectRatio).toBe("4:3");
+  });
+
+  it("parses virtual staging mode and stagingPreset from search params", () => {
+    const params = new URLSearchParams(
+      "mode=virtual-staging&stagingPreset=executive-office&roomType=Home+Office&style=Industrial+Loft"
+    );
+    const preset = parseDesignSearchParams(params, "interior");
+
+    expect(preset).toMatchObject({
+      mode: "virtual-staging",
+      stagingPreset: "executive-office",
+      roomType: "Home Office",
+      style: "Industrial Loft",
+    });
+  });
 });
+

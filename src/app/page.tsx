@@ -1,8 +1,11 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
-import type { Metadata } from "next";
 import { BeforeAfter } from "@/components/landing/before-after";
 import { PricingSection } from "@/components/landing/pricing-section";
+import { OnboardingFreeClaimBanner } from "@/components/landing/onboarding-free-claim-banner";
+import { useTranslation } from "@/lib/i18n/context";
 import { FAQ_ITEMS } from "@/lib/catalog";
 import {
   IconSofa,
@@ -10,101 +13,102 @@ import {
   IconCompass,
   IconArrowRight,
   IconChevronDown,
+  IconSparkles,
 } from "@/components/shell/icons";
 
-export const metadata: Metadata = {
-  title: "AI Home Design: Interior, Exterior & Floor Plan | HomeDesign",
-  description:
-    "Design your home with AI in one place. Redesign interiors from a photo, visualize exteriors before renovation, and turn floor plans into 2D layouts, 3D renders, and 360° walkthroughs.",
-};
-
 export default function Home() {
+  const { t } = useTranslation();
+
   return (
-    <div className="flex flex-col">
-      {/* 1. Hero Section (Full-bleed with room image overlay matching origin) */}
+    <div className="flex flex-col bg-background text-foreground">
+      {/* 1. Hero Section (Dynamic Scandinavian Light / Obsidian Dark with Gold Accents) */}
       <section
         id="hero"
-        className="relative isolate min-h-[min(100dvh,840px)] overflow-hidden bg-background pt-28 pb-20 md:pt-36 md:pb-24 flex items-center"
+        className="relative isolate min-h-[min(92dvh,760px)] overflow-hidden bg-background pt-24 pb-16 md:pt-28 md:pb-20 flex items-center"
       >
         <Image
           src="/landing/hero-room-light.webp"
-          alt="Warm living room preview created with HomeDesign"
+          alt="Luxury architectural room preview"
           fill
           priority
-          className="object-cover pointer-events-none"
+          className="object-cover pointer-events-none opacity-80 contrast-105 dark:opacity-40 dark:brightness-75 dark:contrast-125 transition-opacity duration-300"
         />
 
-        {/* Gradient overlays matching origin 1:1 */}
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(246,240,228,0.92)_0%,rgba(246,240,228,0.72)_32%,rgba(246,240,228,0.22)_60%,rgba(246,240,228,0)_100%)]" />
-        <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,rgba(246,240,228,0)_0%,#f6f0e4_100%)]" />
+        {/* Dynamic Architectural Digest Scrim Gradients: Seamless transition in both Light & Dark */}
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,var(--background)_0%,color-mix(in_srgb,var(--background)_90%,transparent)_45%,color-mix(in_srgb,var(--background)_50%,transparent)_75%,transparent_100%)] pointer-events-none" />
+        <div className="absolute inset-x-0 bottom-0 h-32 bg-[linear-gradient(180deg,transparent_0%,var(--background)_100%)] pointer-events-none" />
 
         <div className="container relative z-10 mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <div className="max-w-[40rem]">
-            <p className="mb-4 text-xs font-bold tracking-[0.2em] uppercase text-brand-copper md:text-sm">
-              AI HOME DESIGN
-            </p>
-            <h1 className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-foreground leading-[1.05]">
-              See your future home in minutes
+          <div className="max-w-[42rem]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-amber-600/30 bg-amber-500/10 px-3.5 py-1 mb-5 text-[11px] font-bold tracking-widest uppercase text-amber-700 dark:text-amber-400 shadow-2xs backdrop-blur-md">
+              <IconSparkles className="size-3" />
+              <span>{t.hero.eyebrow}</span>
+            </div>
+
+            <h1 className="text-4xl sm:text-6xl font-bold tracking-tight text-foreground leading-[1.08] drop-shadow-xs">
+              {t.hero.headline}
             </h1>
-            <p className="mt-6 max-w-xl text-base sm:text-lg leading-relaxed text-foreground/80">
-              Start with a room photo, a house photo, or an existing floor plan,
-              and let AI home design show you a new direction before you renovate.
-              Every home design result arrives in your browser in about a minute,
-              so you can compare ideas with your family and make confident choices.
+
+            <p className="mt-5 max-w-xl text-sm sm:text-base leading-relaxed text-foreground/80">
+              {t.hero.subtext}
             </p>
-            <div className="mt-8 flex flex-wrap items-center gap-3">
+
+            <div className="mt-8 flex flex-wrap items-center gap-3.5">
               <Link
                 href="/#tools"
-                className="inline-flex h-12 items-center justify-center rounded-xl bg-brand-primary px-7 text-sm font-semibold text-white transition hover:bg-brand-accent shadow-sm active:translate-y-px"
+                className="inline-flex h-12 items-center justify-center rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 px-7 text-xs font-bold text-slate-950 shadow-md transition-all hover:brightness-105 active:scale-[0.98]"
               >
-                Choose a design tool
+                {t.hero.ctaPrimary}
+              </Link>
+              <Link
+                href="/#before-after"
+                className="inline-flex h-12 items-center justify-center rounded-xl border border-border/90 bg-card/85 px-6 text-xs font-bold text-foreground backdrop-blur-md transition-all hover:bg-card hover:border-brand-primary/60 shadow-xs active:scale-[0.98]"
+              >
+                {t.hero.ctaSecondary}
               </Link>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 2. Three Tools Showcase Section (#tools) */}
-      <section id="tools" className="scroll-mt-24 py-20 md:py-28 bg-background">
+      {/* 2. Onboarding Free Trial Claim Banner (Zero-friction Aha! moment) */}
+      <OnboardingFreeClaimBanner />
+
+      {/* 3. Three Precision Tools Suite (#tools) */}
+      <section id="tools" className="scroll-mt-20 py-20 md:py-24 bg-background">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-3xl text-center">
             <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-              All Your Home Design in One Place
+              {t.tools.title}
             </h2>
-            <p className="mt-4 text-base text-foreground/70 md:text-lg">
-              Three AI home design workflows built around what you already have: a
-              room photo, a house photo, or an existing floor plan.
+            <p className="mt-3 text-sm text-foreground/70 md:text-base max-w-2xl mx-auto">
+              {t.tools.subtitle}
             </p>
           </div>
 
-          <div className="mt-16 space-y-16 md:space-y-24">
+          <div className="mt-14 space-y-16 md:space-y-20">
             {/* Tool 1: AI Interior Design */}
-            <article className="grid items-center gap-8 lg:grid-cols-2 lg:gap-14">
+            <article className="grid items-center gap-8 lg:grid-cols-2 lg:gap-12 rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-md transition-all hover:shadow-xl hover:border-brand-primary/40">
               <div>
-                <div className="flex size-10 items-center justify-center rounded-xl bg-card border border-border text-foreground/80">
+                <div className="flex size-10 items-center justify-center rounded-xl border border-amber-600/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 shadow-xs">
                   <IconSofa className="size-5" />
                 </div>
                 <h3 className="mt-5 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-                  AI Interior Design From a Room Photo
+                  {t.tools.interiorTitle}
                 </h3>
-                <p className="mt-3 text-sm sm:text-base leading-relaxed text-foreground/75">
-                  Upload any room photo and the AI interior design engine rebuilds
-                  the space in the style you choose, from modern and Scandinavian to
-                  Japandi and beyond. Set the room type, pick a color direction, and
-                  add notes about what to keep. Compare the refreshed room beside
-                  your original photo, and only commit when an interior home design
-                  feels right.
+                <p className="mt-3 text-xs sm:text-sm leading-relaxed text-foreground/75">
+                  {t.tools.interiorDesc}
                 </p>
                 <Link
                   href="/ai-interior-design"
-                  className="mt-6 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-5 text-xs font-bold text-white transition-colors hover:bg-brand-accent shadow-xs"
+                  className="mt-6 inline-flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 px-5 text-xs font-bold text-slate-950 shadow-xs transition-all hover:brightness-105 active:scale-[0.98]"
                 >
-                  <span>Try Interior Design</span>
+                  <span>{t.tools.tryInterior}</span>
                   <IconArrowRight className="size-4" />
                 </Link>
               </div>
 
-              <div className="relative aspect-[16/10] overflow-hidden rounded-2xl border border-border bg-card shadow-md">
+              <div className="relative aspect-[16/10] overflow-hidden rounded-2xl border border-border/80 bg-muted/40 shadow-inner">
                 <video
                   aria-label="AI interior design demo"
                   className="size-full object-cover"
@@ -120,31 +124,27 @@ export default function Home() {
             </article>
 
             {/* Tool 2: AI Exterior Design */}
-            <article className="grid items-center gap-8 lg:grid-cols-2 lg:gap-14">
+            <article className="grid items-center gap-8 lg:grid-cols-2 lg:gap-12 rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-md transition-all hover:shadow-xl hover:border-brand-primary/40">
               <div className="lg:order-2">
-                <div className="flex size-10 items-center justify-center rounded-xl bg-card border border-border text-foreground/80">
+                <div className="flex size-10 items-center justify-center rounded-xl border border-amber-600/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 shadow-xs">
                   <IconHousePlus className="size-5" />
                 </div>
                 <h3 className="mt-5 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-                  AI Exterior Design From a House Photo
+                  {t.tools.exteriorTitle}
                 </h3>
-                <p className="mt-3 text-sm sm:text-base leading-relaxed text-foreground/75">
-                  Start with a photo of your house and preview a new facade before
-                  any renovation begins. Choose the exterior area, architectural
-                  style, color palette, and materials, and the AI exterior design
-                  workflow renders believable home design directions for siding,
-                  entryways, and outdoor spaces.
+                <p className="mt-3 text-xs sm:text-sm leading-relaxed text-foreground/75">
+                  {t.tools.exteriorDesc}
                 </p>
                 <Link
                   href="/ai-exterior-design"
-                  className="mt-6 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-5 text-xs font-bold text-white transition-colors hover:bg-brand-accent shadow-xs"
+                  className="mt-6 inline-flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 px-5 text-xs font-bold text-slate-950 shadow-xs transition-all hover:brightness-105 active:scale-[0.98]"
                 >
-                  <span>Try Exterior Design</span>
+                  <span>{t.tools.tryExterior}</span>
                   <IconArrowRight className="size-4" />
                 </Link>
               </div>
 
-              <div className="lg:order-1 relative aspect-[16/10] overflow-hidden rounded-2xl border border-border bg-card shadow-md">
+              <div className="lg:order-1 relative aspect-[16/10] overflow-hidden rounded-2xl border border-border/80 bg-muted/40 shadow-inner">
                 <video
                   aria-label="AI exterior design demo"
                   className="size-full object-cover"
@@ -160,31 +160,27 @@ export default function Home() {
             </article>
 
             {/* Tool 3: AI Floor Plan */}
-            <article className="grid items-center gap-8 lg:grid-cols-2 lg:gap-14">
+            <article className="grid items-center gap-8 lg:grid-cols-2 lg:gap-12 rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-md transition-all hover:shadow-xl hover:border-brand-primary/40">
               <div>
-                <div className="flex size-10 items-center justify-center rounded-xl bg-card border border-border text-foreground/80">
+                <div className="flex size-10 items-center justify-center rounded-xl border border-amber-600/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 shadow-xs">
                   <IconCompass className="size-5" />
                 </div>
                 <h3 className="mt-5 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-                  AI Floor Plan to 3D Rooms
+                  {t.tools.floorPlanTitle}
                 </h3>
-                <p className="mt-3 text-sm sm:text-base leading-relaxed text-foreground/75">
-                  Upload an existing floor plan, select a room, and watch it become
-                  a furnished space. The AI floor plan workflow turns flat lines
-                  into a 2D furniture layout, a photorealistic 3D render, and an
-                  optional 360° view you can step through. It is the fastest way to
-                  test an AI home design before buying furniture.
+                <p className="mt-3 text-xs sm:text-sm leading-relaxed text-foreground/75">
+                  {t.tools.floorPlanDesc}
                 </p>
                 <Link
                   href="/ai-floor-plan"
-                  className="mt-6 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-5 text-xs font-bold text-white transition-colors hover:bg-brand-accent shadow-xs"
+                  className="mt-6 inline-flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 px-5 text-xs font-bold text-slate-950 shadow-xs transition-all hover:brightness-105 active:scale-[0.98]"
                 >
-                  <span>Try AI Floor Plan</span>
+                  <span>{t.tools.tryFloorPlan}</span>
                   <IconArrowRight className="size-4" />
                 </Link>
               </div>
 
-              <div className="relative aspect-[16/10] overflow-hidden rounded-2xl border border-border bg-card shadow-md">
+              <div className="relative aspect-[16/10] overflow-hidden rounded-2xl border border-border/80 bg-muted/40 shadow-inner">
                 <video
                   aria-label="AI floor plan demo"
                   className="size-full object-cover"
@@ -202,18 +198,18 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 3. Before & After Showcase (#before-after) */}
+      {/* 4. Curated Showcase Gallery (#before-after) */}
       <section
         id="before-after"
-        className="scroll-mt-24 py-20 md:py-28 border-t border-border bg-background"
+        className="scroll-mt-20 py-20 md:py-24 border-t border-border/50 bg-background"
       >
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-3xl text-center mb-10">
             <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-              Before and After
+              {t.beforeAfter.title}
             </h2>
-            <p className="mt-3 text-base text-foreground/70 md:text-lg">
-              Drag the slider to compare each original photo with its new AI home design.
+            <p className="mt-3 text-sm text-foreground/70 md:text-base">
+              {t.beforeAfter.subtitle}
             </p>
           </div>
 
@@ -221,28 +217,31 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 4. Pricing Section */}
+      {/* 5. Pricing Section with Currency Switcher */}
       <PricingSection />
 
-      {/* 5. Frequently Asked Questions (#faq) */}
+      {/* 6. Frequently Asked Questions (#faq) */}
       <section
         id="faq"
-        className="scroll-mt-24 py-20 md:py-28 border-t border-border bg-background"
+        className="scroll-mt-20 py-20 md:py-24 border-t border-border/50 bg-background"
       >
         <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-2xl text-center mb-10">
             <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-              Frequently Asked Questions
+              {t.faq.title}
             </h2>
+            <p className="mt-3 text-xs sm:text-sm text-foreground/70">
+              {t.faq.subtitle}
+            </p>
           </div>
 
-          <div className="rounded-2xl border border-border bg-card divide-y divide-border/60 overflow-hidden shadow-xs">
-            {FAQ_ITEMS.map((faq) => (
+          <div className="rounded-3xl border border-border bg-card/90 divide-y divide-border/60 overflow-hidden shadow-sm backdrop-blur-xs">
+            {t.faq.items.map((faq) => (
               <details key={faq.question} className="group p-5">
-                <summary className="flex cursor-pointer list-none items-center justify-between font-semibold text-sm text-foreground hover:text-brand-copper transition-colors">
+                <summary className="flex cursor-pointer list-none items-center justify-between font-semibold text-sm text-foreground hover:text-brand-primary transition-colors">
                   <span>{faq.question}</span>
                   <span className="ml-4 transition-transform group-open:rotate-180">
-                    <IconChevronDown className="size-4" />
+                    <IconChevronDown className="size-4 text-brand-primary/70" />
                   </span>
                 </summary>
                 <p className="mt-3 text-xs sm:text-sm leading-relaxed text-foreground/75">
@@ -254,31 +253,30 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 6. Bottom CTA Banner Matching Origin 1:1 */}
-      <section className="py-20 bg-background border-t border-border">
+      {/* 7. Bottom Luxury CTA Banner */}
+      <section className="py-20 bg-background border-t border-border/50">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <div className="relative overflow-hidden rounded-3xl border border-border bg-[#0f382c] p-8 sm:p-14 text-white shadow-xl">
-            <div className="max-w-2xl">
-              <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-                Start Your AI Home<br />Design Today
+          <div className="relative overflow-hidden rounded-3xl border border-brand-primary/25 bg-gradient-to-br from-card via-muted/60 to-brand-primary/15 p-8 sm:p-14 text-foreground shadow-xl">
+            <div className="pointer-events-none absolute -right-20 -bottom-20 size-72 rounded-full bg-brand-primary/10 blur-3xl" />
+            <div className="max-w-2xl relative z-10">
+              <h2 className="text-3xl font-bold tracking-tight sm:text-4xl text-foreground">
+                {t.ctaBanner.title}
               </h2>
-              <p className="mt-4 text-sm sm:text-base leading-relaxed text-white/80">
-                Choose the workflow that matches the photo or floor plan you already have,
-                and see your first home design in about a minute. Your first AI home design
-                result is only an upload away — no downloads and no design experience required.
+              <p className="mt-4 text-xs sm:text-sm leading-relaxed text-foreground/80">
+                {t.ctaBanner.desc}
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-4">
                 <Link
                   href="/#tools"
-                  className="inline-flex h-11 items-center justify-center rounded-xl bg-white px-7 text-xs font-bold text-[#0f382c] shadow-sm transition hover:bg-white/90 active:translate-y-px"
+                  className="inline-flex h-11 items-center justify-center rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 px-7 text-xs font-bold text-slate-950 shadow-md transition hover:brightness-110 active:scale-[0.98]"
                 >
-                  Choose a design tool
+                  {t.ctaBanner.ctaPrimary}
                 </Link>
                 <Link
                   href="/#pricing"
-                  className="inline-flex h-11 items-center justify-center rounded-xl border border-white/30 bg-transparent px-7 text-xs font-bold text-white transition hover:bg-white/10"
+                  className="inline-flex h-11 items-center justify-center rounded-xl border border-border bg-card/80 px-7 text-xs font-semibold text-foreground transition hover:bg-card"
                 >
-                  View pricing
+                  {t.ctaBanner.ctaSecondary}
                 </Link>
               </div>
             </div>

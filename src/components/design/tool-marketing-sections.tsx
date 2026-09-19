@@ -26,6 +26,7 @@ import {
   IconImagePlus,
   IconChevronDown,
 } from "@/components/shell/icons";
+import { useTranslation } from "@/lib/i18n/context";
 
 interface ToolMarketingSectionsProps {
   scene: "interior" | "exterior" | "floor-plan";
@@ -79,9 +80,15 @@ const EXTERIOR_CAPABILITIES = [
     icon: "📐",
   },
   {
-    title: "Custom Requirements",
+    title: "Side-by-Side Comparison",
     description:
-      "Add notes about materials, plants, lighting, or elements to keep. The AI follows your instructions alongside the style presets.",
+      "Inspect your before and after with an interactive slider or jump straight to full-resolution export.",
+    icon: "↔️",
+  },
+  {
+    title: "B2B Export Ready",
+    description:
+      "Generate clean client-facing presentations and design packs straight from the tool output.",
     icon: "📄",
   },
 ];
@@ -90,6 +97,8 @@ export function ToolMarketingSections({
   scene,
   onSelectPreset,
 }: ToolMarketingSectionsProps) {
+  const { lang } = useTranslation();
+  const isVi = lang === "vi";
   const [previewItem, setPreviewItem] = useState<CatalogItem | null>(null);
   const isInterior = scene === "interior";
   const isExterior = scene === "exterior";
@@ -105,10 +114,10 @@ export function ToolMarketingSections({
     : FAQ_FLOOR_PLAN;
 
   const toolName = isInterior
-    ? "AI Interior Design"
+    ? (isVi ? "AI Thiết Kế Nội Thất" : "AI Interior Design")
     : isExterior
-    ? "AI Exterior Design"
-    : "AI Floor Plan";
+    ? (isVi ? "AI Thiết Kế Ngoại Thất" : "AI Exterior Design")
+    : (isVi ? "AI Mặt Bằng 2D/3D" : "AI Floor Plan");
 
   const scrollToGenerator = () => {
     const el = document.getElementById("generator-card");
@@ -122,13 +131,15 @@ export function ToolMarketingSections({
         <section id="popular-styles" className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 w-full">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
-              {isInterior ? "Popular Styles" : "Popular AI Exterior Design Styles"}
+              {isVi
+                ? (isInterior ? "Phong Cách Nội Thất Thịnh Hành" : "Phong Cách Ngoại Thất Thịnh Hành")
+                : (isInterior ? "Popular Styles" : "Popular AI Exterior Design Styles")}
             </h2>
             <Link
               href="#popular-styles"
               className="flex items-center gap-1 text-xs font-semibold text-brand-copper hover:underline"
             >
-              <span>View all styles</span>
+              <span>{isVi ? "Xem tất cả phong cách" : "View all styles"}</span>
               <IconArrowRight className="size-3.5" />
             </Link>
           </div>
@@ -187,7 +198,7 @@ export function ToolMarketingSections({
                       className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-full border border-border bg-card/80 py-1.5 text-xs font-semibold text-foreground/85 transition-colors hover:bg-black/5 hover:text-foreground"
                     >
                       <IconSparkles className="size-3 text-brand-copper" />
-                      <span>{item.useLabel}</span>
+                      <span>{isVi ? "Sử dụng phong cách" : item.useLabel}</span>
                     </button>
                     <button
                       type="button"
@@ -195,7 +206,7 @@ export function ToolMarketingSections({
                       className="actions mt-2 flex w-full items-center justify-center gap-1.5 rounded-full border border-border/80 bg-background/60 py-1.5 text-xs font-semibold text-foreground/70 transition-colors hover:bg-background hover:text-foreground"
                     >
                       <IconImagePlus className="size-3" />
-                      <span>{item.previewLabel}</span>
+                      <span>{isVi ? "Xem trước mẫu" : item.previewLabel}</span>
                     </button>
                   </div>
                 </div>

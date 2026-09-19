@@ -125,7 +125,7 @@ describe("provider registry & selection policy matrix (Ticket #33)", () => {
       const provider = getProvider("gemini", {
         ENVIRONMENT: "preview",
         AI_API_KEY: "test-live-key",
-        AI_API_BASE_URL: "https://cliproxy.monet.uno/v1",
+        AI_API_BASE_URL: "https://pro.autommo.online/v1",
       });
       expect(provider.name).toBe("gemini");
       expect(provider).toBeInstanceOf(GeminiFlashImageAdapter);
