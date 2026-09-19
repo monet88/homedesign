@@ -46,4 +46,69 @@ describe("Custom Styling Presets (Ticket 8.3)", () => {
     expect(formattedDirective).toContain("Japanese Zen courtyard with moss garden");
     expect(formattedDirective).not.toContain("Preferred materials");
   });
+
+  it("enforces tenant boundary: rejects unauthorized user from loading private preset", async () => {
+    const { getCustomPreset } = await import("./custom-presets");
+    const mockEnv = {
+      DB: {
+        prepare: (query: string) => ({
+          bind: (...args: unknown[]) => ({
+            first: async () => {
+              if (query.includes("SELECT * FROM custom_presets")) {
+                return {
+                  id: "preset-private",
+                  workspace_id: null,
+                  user_id: "owner-123",
+                  name: "Confidential Studio Preset",
+                  scene: "interior",
+                  created_at: 100,
+                  updated_at: 100,
+                };
+              }
+              return null;
+            },
+          }),
+        }),
+      },
+    } as any;
+
+    await expect(
+      getCustomPreset(mockEnv, "preset-private", "attacker-456")
+    ).rejects.toThrow("PRESET_FORBIDDEN");
+  });
+
+  it("allows workspace member to load shared workspace preset", async () => {
+    const { getCustomPreset } = await import("./custom-presets");
+    const mockEnv = {
+      DB: {
+        prepare: (query: string) => ({
+          bind: (...args: unknown[]) => ({
+            first: async () => {
+              if (query.includes("SELECT * FROM custom_presets")) {
+                return {
+                  id: "preset-ws-1",
+                  workspace_id: "ws-arch",
+                  user_id: "owner-123",
+                  name: "Studio Shared Preset",
+                  scene: "interior",
+                  preferred_materials: JSON.stringify(["Oak", "Marble"]),
+                  created_at: 100,
+                  updated_at: 100,
+                };
+              }
+              if (query.includes("SELECT role FROM workspace_members")) {
+                return { role: "architect" };
+              }
+              return null;
+            },
+          }),
+        }),
+      },
+    } as any;
+
+    const preset = await getCustomPreset(mockEnv, "preset-ws-1", "colleague-789");
+    expect(preset.name).toBe("Studio Shared Preset");
+    expect(preset.preferredMaterials).toEqual(["Oak", "Marble"]);
+  });
 });
+

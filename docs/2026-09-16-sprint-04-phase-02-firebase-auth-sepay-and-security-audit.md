@@ -79,7 +79,7 @@
      - Ghi nhận giao dịch vào sổ cái `credit_ledger`.
      - Cộng số credit tương ứng cho người dùng ngay lập tức (< 3 giây).
 3. **GPMPay Fallback:**
-   - Token `GPMPAY_API=gpm_08RuPLQz_tJ8RZfBECoXfhrk8Fqf114dD` đã được lưu an toàn trong `.env.local`.
+   - Token `GPMPAY_API=gpm_[REDACTED_GPMPAY_TOKEN]` đã được lưu an toàn trong `.env.local`.
    - Sẵn sàng kích hoạt nếu SePay có bảo trì hoặc sự cố gián đoạn từ phía ngân hàng.
 
 ---

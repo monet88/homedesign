@@ -53,6 +53,8 @@ export async function GET(request: Request) {
             completedOrders: statsRes?.completed_orders || 0,
             pendingOrders: statsRes?.pending_orders || 0,
             totalRevenueCents: statsRes?.total_revenue_cents || 0,
+            stripeRevenueUsdCents: statsRes?.stripe_revenue_cents || 0,
+            sepayRevenueVnd: statsRes?.sepay_revenue_cents || 0,
             stripeRevenueCents: statsRes?.stripe_revenue_cents || 0,
             sepayRevenueCents: statsRes?.sepay_revenue_cents || 0,
             totalCreditsGranted: statsRes?.total_credits_granted || 0,

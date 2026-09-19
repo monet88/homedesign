@@ -239,12 +239,6 @@
     },
     "production": {
       "name": "homedesign-prod",
-      "routes": [
-        {
-          "pattern": "design.7app.online",
-          "custom_domain": true
-        }
-      ],
       "vars": {
         "ENVIRONMENT": "production",
         "EMAIL_DELIVERY_MODE": "production",

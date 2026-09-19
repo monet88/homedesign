@@ -188,6 +188,20 @@ export async function getCustomPreset(
 
   if (!row) throw new Error("PRESET_NOT_FOUND");
 
+  // Multi-tenant authorization check: user must be owner or workspace member
+  if (row.user_id !== userId) {
+    if (row.workspace_id) {
+      const member = await env.DB.prepare(
+        `SELECT role FROM workspace_members WHERE workspace_id = ?1 AND user_id = ?2`
+      ).bind(row.workspace_id, userId).first<{ role: string }>();
+      if (!member) {
+        throw new Error("PRESET_FORBIDDEN");
+      }
+    } else {
+      throw new Error("PRESET_FORBIDDEN");
+    }
+  }
+
   let materials: string[] = [];
   if (row.preferred_materials) {
     try {

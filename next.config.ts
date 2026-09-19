@@ -8,7 +8,8 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/:path*",
+        // Default security headers with clickjacking protection for all non-tour routes
+        source: "/((?!tour/).*)",
         headers: [
           {
             key: "X-Content-Type-Options",
@@ -17,6 +18,32 @@ const nextConfig: NextConfig = {
           {
             key: "X-Frame-Options",
             value: "SAMEORIGIN",
+          },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=31536000; includeSubDomains; preload",
+          },
+          {
+            key: "X-XSS-Protection",
+            value: "1; mode=block",
+          },
+        ],
+      },
+      {
+        // Allow cross-origin iframe embedding for 3D Panorama VR tours on partner/client sites
+        source: "/tour/:path*",
+        headers: [
+          {
+            key: "X-Content-Type-Options",
+            value: "nosniff",
+          },
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors *",
           },
           {
             key: "Referrer-Policy",

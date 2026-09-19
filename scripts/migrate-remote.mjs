@@ -21,7 +21,8 @@ if (!token) {
 
 console.log("==> Applying D1 migrations on remote database 'homeds' (--env demo)...");
 
-const child = spawn("npx.cmd", ["wrangler", "d1", "migrations", "apply", "homeds", "--remote", "--env", "demo"], {
+const npxCmd = process.platform === "win32" ? "npx.cmd" : "npx";
+const child = spawn(npxCmd, ["wrangler", "d1", "migrations", "apply", "homeds", "--remote", "--env", "demo"], {
   shell: true,
   env: {
     ...process.env,

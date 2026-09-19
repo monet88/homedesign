@@ -21,8 +21,8 @@ if (!token) {
 
 console.log("==> Cloudflare API Token detected. Initiating deployment to --env demo (design.7app.online)...");
 
-// 2. Execute wrangler deploy --env demo
-const child = spawn("npx.cmd", ["opennextjs-cloudflare", "deploy", "--env", "demo"], {
+const npxCmd = process.platform === "win32" ? "npx.cmd" : "npx";
+const child = spawn(npxCmd, ["opennextjs-cloudflare", "deploy", "--env", "demo"], {
   shell: true,
   env: {
     ...process.env,
