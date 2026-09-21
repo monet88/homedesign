@@ -88,6 +88,8 @@ export class SmartFailoverProviderAdapter implements ProviderAdapter {
 
     for (const provider of candidates) {
       try {
+        let fallbackTaskId: string | undefined = undefined;
+
         // If falling back to a secondary/rescue provider, ensure it is submitted and claims outbound quota first
         if (provider !== active && req) {
           const submitRes = await provider.submit(req);
@@ -100,11 +102,16 @@ export class SmartFailoverProviderAdapter implements ProviderAdapter {
             }
             continue;
           }
+          fallbackTaskId = submitRes.providerTaskId;
         }
 
-        const taskIdForProvider = provider === active ? realTaskId : undefined;
+        const taskIdForProvider = provider === active ? realTaskId : fallbackTaskId;
         const out = await provider.fetchOutput(req, taskIdForProvider);
-        if (out && out.bytes && out.bytes.length > 0) {
+        if (!out) {
+          // Provider accepted but output not ready yet: return null and wait for next poll
+          return null;
+        }
+        if (out.bytes && out.bytes.length > 0) {
           return out;
         }
       } catch (err) {

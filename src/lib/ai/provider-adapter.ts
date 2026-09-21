@@ -238,7 +238,7 @@ export function getProvider(
       });
     }
 
-    if (isDemoEnv && (name === "" || name === "default" || name === "smart")) {
+    if ((isDemoEnv || isProd) && (name === "" || name === "default" || name === "smart")) {
       const tiers: ProviderAdapter[] = [];
       if (falKey) {
         tiers.push(new FalFluxAdapter({ apiKey: falKey, fetchFn: safeFetchFn, claimOutboundAttempt: demoClaimFn }));

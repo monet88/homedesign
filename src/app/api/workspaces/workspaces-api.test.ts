@@ -74,6 +74,9 @@ const mockEnv = {
             updated_at: 1000,
           };
         }
+        if (query.includes("FROM workspace_members WHERE workspace_id = ?1 AND user_id = ?2")) {
+          return { role: "owner" };
+        }
         if (query.includes("AS available")) {
           return { available: 50 };
         }

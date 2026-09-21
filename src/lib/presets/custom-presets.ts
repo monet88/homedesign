@@ -44,6 +44,15 @@ export async function createCustomPreset(
 ): Promise<CustomPreset> {
   const name = input.name?.trim();
   if (!name) throw new Error("PRESET_NAME_REQUIRED");
+  if (input.workspaceId) {
+    const member = await env.DB.prepare(
+      `SELECT role FROM workspace_members WHERE workspace_id = ?1 AND user_id = ?2`
+    )
+      .bind(input.workspaceId, userId)
+      .first<{ role: string }>();
+    if (!member) throw new Error("PRESET_FORBIDDEN");
+    if (member.role === "viewer") throw new Error("ROLE_CANNOT_CREATE_PRESET");
+  }
 
   const id = uid();
   const now = Date.now();
@@ -101,6 +110,18 @@ export async function listCustomPresets(
   workspaceId?: string | null,
   scene?: string
 ): Promise<CustomPreset[]> {
+  // Multi-tenant boundary: workspace presets are only visible to members of
+  // that workspace. Without this gate any verified user could enumerate a
+  // studio's private styling directives by guessing its workspace id.
+  if (workspaceId) {
+    const member = await env.DB.prepare(
+      `SELECT role FROM workspace_members WHERE workspace_id = ?1 AND user_id = ?2`
+    )
+      .bind(workspaceId, userId)
+      .first<{ role: string }>();
+    if (!member) throw new Error("PRESET_FORBIDDEN");
+  }
+
   let sql = `
     SELECT * FROM custom_presets
     WHERE (user_id = ?1 OR (workspace_id IS NOT NULL AND workspace_id = ?2))

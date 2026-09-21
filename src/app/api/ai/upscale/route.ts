@@ -46,54 +46,39 @@ export async function POST(request: Request) {
       }
     }
 
-    // 1. Check user/workspace credit balance (requires at least 2 credits)
-    const available = await getAvailableCredits(env, auth.userId, workspaceId);
-    const UPSCALE_COST = 2;
-
-    if (available < UPSCALE_COST) {
-      return Response.json(
-        {
-          error: "INSUFFICIENT_CREDITS",
-          message: `Nâng cấp 4K yêu cầu ${UPSCALE_COST} credits. Bạn hiện có ${available} credits.`,
-          requiredCredits: UPSCALE_COST,
-          availableCredits: available,
-        },
-        { status: 402 }
-      );
-    }
-
-    const now = Date.now();
-    const ledgerId = crypto.randomUUID();
-
-    // 2. Atomic credit deduction in ledger
-    await env.DB.prepare(
-      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, workspace_id, created_at)
-       VALUES (?1, ?2, 'usage', ?3, '4K Ultra-HD Upscaling', 'upscale', ?4, ?5, ?6)`
-    )
-      .bind(ledgerId, auth.userId, UPSCALE_COST, designId || outputAssetId, workspaceId ?? null, now)
-      .run();
-
-    // 3. Mark design as upscaled in designs table if designId provided
+    // Verify target design exists and belongs to caller
     if (designId) {
-      await env.DB.prepare(
-        `UPDATE designs SET is_upscaled = 1, updated_at = ?1 WHERE id = ?2 AND user_id = ?3`
-      )
-        .bind(now, designId, auth.userId)
-        .run();
+      const design = await env.DB.prepare(
+        `SELECT id, is_upscaled, output_asset_id FROM designs WHERE id = ?1 AND user_id = ?2`
+      ).bind(designId, auth.userId).first<{ id: string; is_upscaled: number | null; output_asset_id: string | null }>();
+
+      if (!design) {
+        return Response.json({ error: "NOT_FOUND", message: "Design not found or access denied" }, { status: 404 });
+      }
+      if (design.is_upscaled === 1) {
+        return Response.json({
+          code: 0,
+          data: {
+            success: true,
+            designId,
+            outputAssetId: design.output_asset_id,
+            alreadyUpscaled: true,
+            resolution: "3840x2160 (4K Ultra-HD)",
+            isUpscaled: true,
+          },
+        });
+      }
     }
 
-    return Response.json({
-      code: 0,
-      data: {
-        success: true,
-        designId,
-        outputAssetId,
-        costCredits: UPSCALE_COST,
-        remainingCredits: available - UPSCALE_COST,
-        resolution: "3840x2160 (4K Ultra-HD)",
-        isUpscaled: true,
+    // Guard: Upscale provider worker pipeline is not yet wired to production models.
+    // Return 503 rather than silently charging 2 credits for an un-generated asset.
+    return Response.json(
+      {
+        error: "SERVICE_UNAVAILABLE",
+        message: "Tính năng 4K Ultra-HD Upscaling đang được nâng cấp hạ tầng provider. Credits chưa bị trừ.",
       },
-    });
+      { status: 503 }
+    );
   } catch (err) {
     return designErrorResponse(err);
   }

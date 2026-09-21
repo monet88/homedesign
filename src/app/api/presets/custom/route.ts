@@ -17,7 +17,14 @@ export async function GET(request: Request) {
   try {
     const presets = await listCustomPresets(env, auth.userId, workspaceId, scene);
     return Response.json({ code: 0, data: { presets } });
-  } catch (err) {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "INTERNAL_ERROR";
+    if (msg === "PRESET_FORBIDDEN" || msg === "FORBIDDEN") {
+      return Response.json(
+        { error: "FORBIDDEN", message: "Bạn không có quyền truy cập preset của workspace này" },
+        { status: 403 }
+      );
+    }
     return designErrorResponse(err);
   }
 }
@@ -60,7 +67,20 @@ export async function POST(request: Request) {
       name,
     });
     return Response.json({ code: 0, data: { preset } }, { status: 201 });
-  } catch (err) {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "INTERNAL_ERROR";
+    if (msg === "PRESET_FORBIDDEN" || msg === "FORBIDDEN") {
+      return Response.json(
+        { error: "FORBIDDEN", message: "Bạn không phải thành viên của workspace này" },
+        { status: 403 }
+      );
+    }
+    if (msg === "ROLE_CANNOT_CREATE_PRESET") {
+      return Response.json(
+        { error: "ROLE_CANNOT_CREATE_PRESET", message: "Viewer không có quyền tạo preset trong workspace này" },
+        { status: 403 }
+      );
+    }
     return designErrorResponse(err);
   }
 }

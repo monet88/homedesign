@@ -51,7 +51,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
         headers: {
           "Content-Type": row.mime_type,
           "Content-Disposition": "inline",
-          "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+          "Cache-Control": "private, no-store",
         },
       });
     }

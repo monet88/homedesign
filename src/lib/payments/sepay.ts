@@ -299,25 +299,38 @@ export async function handleSepayWebhook(
   const now = Date.now();
   const packName = SEPAY_CREDIT_PACKS[order.pack as SepayCreditPack]?.name ?? order.pack;
 
-  await env.DB.batch([
+  const results = await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
-       VALUES (?1, ?2, 'payment', ?3, ?4, 'sepay', ?5, ?6, ?7)`
+       SELECT ?1, ?2, 'payment', ?3, ?4, 'sepay', ?5, ?6, ?7
+       WHERE EXISTS (SELECT 1 FROM payment_orders WHERE id = ?8 AND status = 'pending')`
     ).bind(
       ledgerId,
       order.user_id,
       order.credits_granted,
       `SePay VietQR purchase (${packName})`,
       sepayTxId,
-      `sepay-${sepayTxId}`,
-      now
+      `sepay-order-${order.id}`,
+      now,
+      order.id
     ),
     env.DB.prepare(
       `UPDATE payment_orders
        SET status = 'completed', provider_payment_id = ?1, ledger_entry_id = ?2, updated_at = ?3
-       WHERE id = ?4`
+       WHERE id = ?4 AND status = 'pending'`
     ).bind(sepayTxId, ledgerId, now, order.id),
   ]);
+
+  const updatedCount = results[1]?.meta?.changes ?? 0;
+  if (updatedCount === 0) {
+    // Order was already settled concurrently by a sibling delivery
+    return {
+      ok: true,
+      orderId: order.id,
+      creditsGranted: order.credits_granted,
+      alreadyProcessed: true,
+    };
+  }
 
   // 7. Activate viral referral reward for referrer upon referee's payment activation
   try {

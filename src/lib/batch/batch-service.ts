@@ -80,12 +80,22 @@ export async function createBatchRenderJob(
     const item = items[i];
     const idempotencyKey = `batch-${batchId}-item-${i}-${now}`;
 
+    let resolvedSourceKey: string | null = null;
+    if (item.sourceAssetId) {
+      const assetRow = await env.DB.prepare(
+        `SELECT storage_key FROM assets WHERE id = ?1 AND user_id = ?2 AND lifecycle = 'ready'`
+      )
+        .bind(item.sourceAssetId, params.userId)
+        .first<{ storage_key: string }>();
+      resolvedSourceKey = assetRow?.storage_key ?? null;
+    }
+
     const taskDef = {
       scene: item.scene || "interior",
       provider,
       model,
       prompt: item.prompt,
-      sourceKey: item.sourceKey ?? null,
+      sourceKey: resolvedSourceKey,
       options: {
         roomType: item.roomType,
         presetId: item.presetId,
@@ -184,6 +194,16 @@ export async function getBatchRenderJob(
     }>();
 
   if (!row) return null;
+  // Multi-tenant authorization: caller must be creator or member of the workspace
+  if (row.user_id !== userId) {
+    if (!row.workspace_id) return null;
+    const member = await env.DB.prepare(
+      `SELECT role FROM workspace_members WHERE workspace_id = ?1 AND user_id = ?2`
+    )
+      .bind(row.workspace_id, userId)
+      .first<{ role: string }>();
+    if (!member) return null;
+  }
 
   // Query all linked tasks
   const tasksResult = await env.DB.prepare(

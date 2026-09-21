@@ -467,11 +467,16 @@ export async function allocateCreditsToWorkspace(
   const grantId = uid();
   const now = Date.now();
 
-  await env.DB.batch([
-    // Deduct from owner personal balance
+  const results = await env.DB.batch([
+    // Deduct from owner personal balance conditionally (only if sufficient balance)
     env.DB.prepare(
       `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, workspace_id, created_at)
-       VALUES (?1, ?2, 'usage', ?3, ?4, 'workspace', ?5, NULL, ?6)`
+       SELECT ?1, ?2, 'usage', ?3, ?4, 'workspace', ?5, NULL, ?6
+       WHERE (
+         (SELECT COALESCE(SUM(CASE WHEN entry_type IN ('grant', 'payment') THEN amount ELSE 0 END) - SUM(CASE WHEN entry_type = 'usage' THEN amount ELSE 0 END), 0)
+          FROM credit_ledger WHERE user_id = ?2 AND (workspace_id IS NULL OR workspace_id = ''))
+         - (SELECT COALESCE(SUM(amount), 0) FROM credit_holds WHERE user_id = ?2 AND status = 'active' AND (workspace_id IS NULL OR workspace_id = ''))
+       ) >= ?3`
     ).bind(
       deductId,
       ownerUserId,
@@ -480,10 +485,11 @@ export async function allocateCreditsToWorkspace(
       workspaceId,
       now
     ),
-    // Deposit to workspace shared pool
+    // Deposit to workspace shared pool ONLY if the deduction was inserted
     env.DB.prepare(
       `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, workspace_id, created_at)
-       VALUES (?1, ?2, 'grant', ?3, ?4, 'user', ?5, ?6, ?7)`
+       SELECT ?1, ?2, 'grant', ?3, ?4, 'user', ?5, ?6, ?7
+       WHERE EXISTS (SELECT 1 FROM credit_ledger WHERE id = ?1)`
     ).bind(
       grantId,
       ownerUserId,
@@ -494,6 +500,10 @@ export async function allocateCreditsToWorkspace(
       now
     ),
   ]);
+
+  if ((results[0]?.meta?.changes ?? 0) === 0) {
+    throw new Error("INSUFFICIENT_PERSONAL_CREDITS");
+  }
 
   const [newUserAvail, newWsAvail] = await Promise.all([
     getAvailableCredits(env, ownerUserId),
@@ -526,6 +536,14 @@ export async function deleteWorkspace(
   const ws = await getWorkspace(env, workspaceId, callerUserId);
   if (!ws.permissions.canDeleteWorkspace) {
     throw new Error("FORBIDDEN_PERMISSION_DENIED");
+  }
+  // Guard Credit Ledger immutability: block hard delete if this workspace has any ledger records
+  const ledgerCount = await env.DB.prepare(
+    `SELECT COUNT(id) AS count FROM credit_ledger WHERE workspace_id = ?1`
+  ).bind(workspaceId).first<{ count: number }>();
+
+  if ((ledgerCount?.count ?? 0) > 0) {
+    throw new Error("WORKSPACE_HAS_CREDIT_HISTORY: Không thể xóa workspace đã có lịch sử credit ledger bất biến");
   }
 
   await env.DB.prepare(`DELETE FROM workspaces WHERE id = ?1 AND owner_id = ?2`)

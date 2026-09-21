@@ -6,6 +6,7 @@ export interface BatchItemPayload {
   scene: string;
   roomType: string;
   prompt: string;
+  sourceAssetId?: string | null;
   sourceKey?: string | null;
   presetId?: string | null;
   options?: Record<string, unknown>;

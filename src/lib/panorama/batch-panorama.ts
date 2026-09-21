@@ -83,16 +83,18 @@ export async function autoLinkTourScenes(
   }
 
   const isOwner = tour.userId === userId;
-  let isMember = false;
+  let isAuthorizedMember = false;
   if (!isOwner && tour.workspaceId) {
     const member = await db
       .prepare(`SELECT role FROM workspace_members WHERE workspace_id = ?1 AND user_id = ?2 LIMIT 1`)
       .bind(tour.workspaceId, userId)
       .first<{ role: string }>();
-    if (member) isMember = true;
+    if (member && member.role !== "viewer") {
+      isAuthorizedMember = true;
+    }
   }
 
-  if (!isOwner && !isMember) {
+  if (!isOwner && !isAuthorizedMember) {
     return { success: false, linkedCount: 0, message: "Tour không tồn tại hoặc không có quyền truy cập" };
   }
 
