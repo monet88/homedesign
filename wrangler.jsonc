@@ -239,6 +239,12 @@
     },
     "production": {
       "name": "homedesign-prod",
+      "routes": [
+        {
+          "pattern": "design.7app.online",
+          "custom_domain": true
+        }
+      ],
       "vars": {
         "ENVIRONMENT": "production",
         "EMAIL_DELIVERY_MODE": "production",
@@ -296,14 +302,13 @@
       "name": "homedesign-demo",
       "routes": [
         {
-          "pattern": "design.7app.online",
+          "pattern": "homedesign.monet.uno",
           "custom_domain": true
         }
       ],
       "vars": {
         "ENVIRONMENT": "demo",
-        "BETTER_AUTH_URL": "https://design.7app.online",
-        "EMAIL_DELIVERY_MODE": "production",
+        "BETTER_AUTH_URL": "https://homedesign.monet.uno",
         "HD_PRIVATE_BUCKET_NAME": "hd-demo-private",
         "DEMO_DAILY_PROVIDER_LIMIT": "50",
         "AI_API_BASE_URL": "https://generativelanguage.googleapis.com",

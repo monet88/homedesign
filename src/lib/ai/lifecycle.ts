@@ -82,6 +82,7 @@ export interface TaskRow {
   error_code: string | null;
   validation_attempts: number;
   dispatched_at: number | null;
+  batch_id?: string | null;
 }
 
 export interface DesignRow {
@@ -437,7 +438,7 @@ export async function runGeneration(
     return { status: task.status, skipped: "EXPIRED" };
   }
   const design = await getDesign(env, taskId);
-  if (!design) {
+  if (!design && !task.batch_id) {
     await failGeneration(env, taskId, "DESIGN_ROW_MISSING");
     return { status: "failed" };
   }
@@ -502,9 +503,11 @@ export async function runGeneration(
     now
   ).run();
 
-  await env.DB.prepare(`UPDATE designs SET output_asset_id = ?2, updated_at = ?3 WHERE id = ?1`)
-    .bind(taskId, assetId, now)
-    .run();
+  if (design) {
+    await env.DB.prepare(`UPDATE designs SET output_asset_id = ?2, updated_at = ?3 WHERE id = ?1`)
+      .bind(taskId, assetId, now)
+      .run();
+  }
   await setTaskStatus(env, taskId, "quarantined");
 
   // Notify: provider completion is only a signal — the App Worker decides.
@@ -603,14 +606,21 @@ export async function completeGeneration(
   }
 
   const design = await getDesign(env, taskId);
-  if (!design?.output_asset_id) {
+  let outputAssetId = design?.output_asset_id;
+  if (!outputAssetId && task.batch_id) {
+    const assetRow = await env.DB.prepare(
+      `SELECT id FROM assets WHERE user_id = ?1 AND name = ?2 AND lifecycle IN ('quarantined', 'ready') ORDER BY created_at DESC LIMIT 1`
+    ).bind(task.user_id, `generated-${taskId}.png`).first<{ id: string }>();
+    outputAssetId = assetRow?.id ?? null;
+  }
+  if (!outputAssetId) {
     await failGeneration(env, taskId, "OUTPUT_ASSET_MISSING");
     return { status: "failed" };
   }
 
   const asset = await env.DB.prepare(
     `SELECT id, lifecycle, storage_key, mime_type, declared_size FROM assets WHERE id = ?1`
-  ).bind(design.output_asset_id).first<{
+  ).bind(outputAssetId).first<{
     id: string;
     lifecycle: string;
     storage_key: string;
@@ -660,18 +670,21 @@ export async function completeGeneration(
   }
 
   // Asset is `ready`. Attach it to the Project — settle needs ready AND attached.
-  await attachAsset(env, design.project_id, asset.id, "generated");
+  if (design?.project_id) {
+    await attachAsset(env, design.project_id, asset.id, "generated");
+  }
 
-  const attached = await env.DB.prepare(
-    `SELECT 1 AS ok FROM project_assets WHERE project_id = ?1 AND asset_id = ?2 AND role = 'generated'`
-  ).bind(design.project_id, asset.id).first<{ ok: number }>();
+  const attached = design?.project_id
+    ? await env.DB.prepare(
+        `SELECT 1 AS ok FROM project_assets WHERE project_id = ?1 AND asset_id = ?2 AND role = 'generated'`
+      ).bind(design.project_id, asset.id).first<{ ok: number }>()
+    : { ok: 1 };
   const readyRow = await env.DB.prepare(
     `SELECT lifecycle FROM assets WHERE id = ?1`
   ).bind(asset.id).first<{ lifecycle: string }>();
 
   const assetReady = readyRow?.lifecycle === "ready";
   const assetAttached = Boolean(attached?.ok);
-
   // Re-read the task: the reconciler may have expired it while we validated.
   const fresh = await getTask(env, taskId);
   if (!fresh || isTerminal(fresh.status)) {
@@ -716,12 +729,14 @@ export async function completeGeneration(
     }
   }
 
-  await env.DB.prepare(
-    `UPDATE projects SET status = 'ready', updated_at = ?2 WHERE id = ?1`
-  ).bind(design.project_id, now).run();
+  if (design) {
+    await env.DB.prepare(
+      `UPDATE projects SET status = 'ready', updated_at = ?2 WHERE id = ?1`
+    ).bind(design.project_id, now).run();
 
-  if (design.scene === "floor-plan") {
-    await handleFloorPlanTerminal(env, taskId, "ready");
+    if (design.scene === "floor-plan") {
+      await handleFloorPlanTerminal(env, taskId, "ready");
+    }
   }
 
   return { status: "ready" };

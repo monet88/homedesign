@@ -6,7 +6,7 @@ import {
   type CreateBatchRenderParams,
   type BatchItemProgress,
 } from "./types";
-import { createTaskWithHold } from "@/lib/ai/task-lifecycle";
+import { createTaskWithHold, dispatchTask } from "@/lib/ai/task-lifecycle";
 import { getAvailableCredits, getWorkspaceAvailableCredits } from "@/lib/credits/ledger";
 import { recordWorkspaceAuditLog } from "@/lib/audit/audit-logger";
 
@@ -120,6 +120,12 @@ export async function createBatchRenderJob(
     )
       .bind(batchId, taskId)
       .run();
+
+    try {
+      await dispatchTask(env, taskId);
+    } catch {
+      // Non-fatal if queue is offline (e.g. test environment without queue binding)
+    }
 
     taskProgressList.push({
       taskId,

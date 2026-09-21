@@ -1,7 +1,7 @@
 import type { Env } from "@/lib/bindings";
 import { createTour, getTourById } from "./tour-service";
 import type { PanoramaTour, PanoramaHotspot } from "./types";
-import { createTaskWithHold } from "@/lib/ai/task-lifecycle";
+import { createTaskWithHold, dispatchTask } from "@/lib/ai/task-lifecycle";
 import { getAvailableCredits, getWorkspaceAvailableCredits } from "@/lib/credits/ledger";
 import { recordWorkspaceAuditLog } from "@/lib/audit/audit-logger";
 import { MAX_BATCH_ITEMS } from "@/lib/batch/batch-service";
@@ -377,6 +377,12 @@ export async function createBatchPanoramaTour(
     await env.DB.prepare(`UPDATE ai_tasks SET batch_id = ?1 WHERE id = ?2`)
       .bind(batchId, taskId)
       .run();
+
+    try {
+      await dispatchTask(env, taskId);
+    } catch {
+      // Non-fatal if queue is offline in tests
+    }
   }
 
   // Mark batch job processing
