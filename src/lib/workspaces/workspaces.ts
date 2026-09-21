@@ -489,7 +489,7 @@ export async function allocateCreditsToWorkspace(
     env.DB.prepare(
       `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, workspace_id, created_at)
        SELECT ?1, ?2, 'grant', ?3, ?4, 'user', ?5, ?6, ?7
-       WHERE EXISTS (SELECT 1 FROM credit_ledger WHERE id = ?1)`
+       WHERE EXISTS (SELECT 1 FROM credit_ledger WHERE id = ?8)`
     ).bind(
       grantId,
       ownerUserId,
@@ -497,7 +497,8 @@ export async function allocateCreditsToWorkspace(
       `Deposit from workspace owner`,
       ownerUserId,
       workspaceId,
-      now
+      now,
+      deductId
     ),
   ]);
 
