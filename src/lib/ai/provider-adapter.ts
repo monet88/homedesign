@@ -16,6 +16,10 @@
 // by the lifecycle (never provided by the browser, never returned to it).
 
 import { GeminiFlashImageAdapter } from "@/lib/ai/gemini-adapter";
+import { FalFluxAdapter } from "@/lib/ai/fal-adapter";
+import { ReplicateAdapter } from "@/lib/ai/replicate-adapter";
+import { KieAdapter } from "@/lib/ai/kie-adapter";
+import { SmartFailoverProviderAdapter } from "@/lib/ai/smart-failover-adapter";
 import { fixturePngBytes } from "@/lib/ai/fake-provider";
 import { isDemo, isLiveApiKeyConfigured, isOfflineProviderAllowed, isProduction } from "@/lib/env/policy";
 import { claimDemoProviderSubmission } from "@/lib/ai/demo-usage";
@@ -120,12 +124,14 @@ export function registerProvider(adapter: ProviderAdapter): void {
 
 const defaultFakeAdapter = new FakeProviderAdapter();
 const defaultGeminiAdapter = new GeminiFlashImageAdapter();
+const defaultFalAdapter = new FalFluxAdapter();
 
-/** Reset to the default registry (fake + gemini flash image adapter). Used between tests. */
+/** Reset to the default registry (fake + gemini + fal flux adapter). Used between tests. */
 export function resetProviders(): void {
   registry.clear();
   registry.set("fake", defaultFakeAdapter);
   registry.set("gemini", defaultGeminiAdapter);
+  registry.set("fal", defaultFalAdapter);
 }
 
 resetProviders();
@@ -187,22 +193,80 @@ export function getProvider(
     if (custom && custom !== defaultGeminiAdapter && custom.name !== "fake") {
       return custom;
     }
-    if (!hasLiveKey || isOfflineMarker) {
-      return new RealProviderAdapter(name);
+    const falKey =
+      (envObj as Record<string, unknown>).FAL_AI_API as string | undefined ??
+      (typeof process !== "undefined" ? process.env?.FAL_AI_API : undefined);
+    const repKey =
+      (envObj as Record<string, unknown>).REPLICATE_API as string | undefined ??
+      (typeof process !== "undefined" ? process.env?.REPLICATE_API : undefined);
+    const kieKey =
+      (envObj as Record<string, unknown>).KIE_AI_API as string | undefined ??
+      (typeof process !== "undefined" ? process.env?.KIE_AI_API : undefined);
+
+    const safeFetchFn = (envObj.fetchFn ?? (typeof fetch !== "undefined" ? fetch : undefined))?.bind(globalThis);
+    const demoClaimFn =
+      isDemoEnv && "DB" in envObj && envObj.DB
+        ? () => claimDemoProviderSubmission(envObj as Env)
+        : undefined;
+
+    if (name === "fal") {
+      if (falKey) return new FalFluxAdapter({ apiKey: falKey, fetchFn: safeFetchFn, claimOutboundAttempt: demoClaimFn });
+      return new RealProviderAdapter("fal");
     }
-    if (name === "gemini" || (isDemoEnv && (name === "" || name === "default"))) {
+    if (name === "replicate") {
+      if (repKey) return new ReplicateAdapter({ apiKey: repKey, fetchFn: safeFetchFn, claimOutboundAttempt: demoClaimFn });
+      return new RealProviderAdapter("replicate");
+    }
+    if (name === "kie") {
+      if (kieKey) return new KieAdapter({ apiKey: kieKey, fetchFn: safeFetchFn, claimOutboundAttempt: demoClaimFn });
+      return new RealProviderAdapter("kie");
+    }
+
+    if (name === "gemini") {
+      if (!hasLiveKey || isOfflineMarker) {
+        return new RealProviderAdapter(name);
+      }
       return new GeminiFlashImageAdapter({
         environment: envName,
         apiKey,
         baseUrl: envObj.AI_API_BASE_URL,
         defaultModel: envObj.AI_DEFAULT_MODEL,
         bucket: envObj.HD_PRIVATE,
-        fetchFn: envObj.fetchFn,
-        claimOutboundAttempt:
-          isDemoEnv && "DB" in envObj && envObj.DB
-            ? () => claimDemoProviderSubmission(envObj as Env)
-            : undefined,
+        fetchFn: safeFetchFn,
+        resilience: { maxRetries: 2, baseDelayMs: 250, maxDelayMs: 2000 },
+        claimOutboundAttempt: demoClaimFn,
       });
+    }
+
+    if ((isDemoEnv || isProd) && (name === "" || name === "default" || name === "smart")) {
+      const tiers: ProviderAdapter[] = [];
+      if (falKey) {
+        tiers.push(new FalFluxAdapter({ apiKey: falKey, fetchFn: safeFetchFn, claimOutboundAttempt: demoClaimFn }));
+      }
+      if (hasLiveKey && !isOfflineMarker) {
+        tiers.push(
+          new GeminiFlashImageAdapter({
+            environment: envName,
+            apiKey,
+            baseUrl: envObj.AI_API_BASE_URL,
+            defaultModel: envObj.AI_DEFAULT_MODEL,
+            bucket: envObj.HD_PRIVATE,
+            fetchFn: safeFetchFn,
+            resilience: { maxRetries: 2, baseDelayMs: 250, maxDelayMs: 2000 },
+            claimOutboundAttempt: demoClaimFn,
+          })
+        );
+      }
+      if (repKey) {
+        tiers.push(new ReplicateAdapter({ apiKey: repKey, fetchFn: safeFetchFn, claimOutboundAttempt: demoClaimFn }));
+      }
+      if (tiers.length > 0) {
+        return tiers.length === 1 ? tiers[0] : new SmartFailoverProviderAdapter(tiers);
+      }
+    }
+
+    if (!hasLiveKey || isOfflineMarker) {
+      return new RealProviderAdapter(name);
     }
     return new RealProviderAdapter(name);
   }
@@ -226,6 +290,7 @@ export function getProvider(
         defaultModel: envObj.AI_DEFAULT_MODEL,
         bucket: envObj.HD_PRIVATE,
         fetchFn: envObj.fetchFn,
+        resilience: { maxRetries: 2, baseDelayMs: 250, maxDelayMs: 2000 },
       });
     }
     return new RealProviderAdapter("gemini");

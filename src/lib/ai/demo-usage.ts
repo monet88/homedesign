@@ -60,7 +60,7 @@ export interface DemoProviderUsageCheck {
 
 /**
  * Concurrency-safe atomic check and increment of demo provider usage counter.
- * Uses atomic SQLite UPDATE ... WHERE submission_count < limit.
+ * Uses atomic SQLite UPDATE ... WHERE usage_count < limit.
  * If row does not exist, inserts with count = 1 (provided limit >= 1).
  * Returns true if the submission is allowed under the cap, false if quota exceeded.
  */
@@ -75,17 +75,17 @@ export async function claimDemoProviderSubmission(env: Env, now: Date = new Date
 
   // Try to insert with 1 if no row exists yet for today
   const insertRes = await env.DB.prepare(
-    `INSERT INTO demo_daily_provider_usage (day_key, submission_count, created_at, updated_at)
-     VALUES (?1, 1, ?2, ?2)
-     ON CONFLICT(day_key) DO UPDATE SET
-       submission_count = submission_count + 1,
+    `INSERT INTO demo_provider_usage (usage_date, usage_count, updated_at)
+     VALUES (?1, 1, ?2)
+     ON CONFLICT(usage_date) DO UPDATE SET
+       usage_count = usage_count + 1,
        updated_at = ?2
-     WHERE submission_count < ?3`
+     WHERE usage_count < ?3`
   )
     .bind(usageDate, nowMs, limit)
     .run();
 
-  // If changes === 0, the conflict update condition was false and the cap was reached.
+  // If changes === 0, it means conflict update condition 'usage_count < limit' was false -> exceeded limit!
   const rowsChanged = insertRes.meta?.changes ?? 0;
   return rowsChanged > 0;
 }
@@ -97,12 +97,12 @@ export async function getDemoProviderUsage(env: Env, now: Date = new Date()): Pr
   const limit = getDemoDailyProviderLimit(env);
   const usageDate = getBangkokDateString(now);
   const row = await env.DB.prepare(
-    `SELECT submission_count FROM demo_daily_provider_usage WHERE day_key = ?1`
+    `SELECT usage_count FROM demo_provider_usage WHERE usage_date = ?1`
   )
     .bind(usageDate)
-    .first<{ submission_count: number }>();
+    .first<{ usage_count: number }>();
 
-  const currentUsage = row?.submission_count ?? 0;
+  const currentUsage = row?.usage_count ?? 0;
   return {
     allowed: currentUsage < limit,
     currentUsage,

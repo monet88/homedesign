@@ -13,7 +13,50 @@ import type {
   HealthCheckResult,
 } from "@/lib/admin/types";
 
-type TabType = "users" | "tasks" | "health";
+type TabType = "users" | "tasks" | "orders" | "referrals" | "health";
+
+export interface AdminOrder {
+  id: string;
+  user_id: string;
+  user_email?: string;
+  user_name?: string;
+  provider: "stripe" | "sepay";
+  pack: string;
+  amount_cents: number;
+  currency: string;
+  credits_granted: number;
+  status: "pending" | "completed" | "failed" | "refunded";
+  created_at: number;
+}
+
+export interface AdminOrderMetrics {
+  totalOrders: number;
+  completedOrders: number;
+  pendingOrders: number;
+  totalRevenueCents: number;
+  stripeRevenueCents: number;
+  sepayRevenueCents: number;
+  totalCreditsGranted: number;
+}
+
+export interface AdminReferralMetrics {
+  totalCodes: number;
+  totalClicks: number;
+  totalReferrals: number;
+  activatedReferrals: number;
+  totalRewardCredits: number;
+}
+
+export interface TopReferrer {
+  user_id: string;
+  code: string;
+  clicks: number;
+  email: string;
+  name: string;
+  referred_count: number;
+  activated_count: number;
+  credits_earned: number;
+}
 
 interface AdminDashboardProps {
   adminEmail: string;
@@ -40,6 +83,18 @@ export default function AdminDashboard({ adminEmail }: AdminDashboardProps) {
   const [tasksError, setTasksError] = useState<string | null>(null);
   const [taskFilterScene, setTaskFilterScene] = useState<string>("all");
   const [taskFilterStatus, setTaskFilterStatus] = useState<string>("all");
+
+  // Orders state
+  const [orders, setOrders] = useState<AdminOrder[]>([]);
+  const [ordersMetrics, setOrdersMetrics] = useState<AdminOrderMetrics | null>(null);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
+
+  // Referrals state
+  const [referralsMetrics, setReferralsMetrics] = useState<AdminReferralMetrics | null>(null);
+  const [topReferrers, setTopReferrers] = useState<TopReferrer[]>([]);
+  const [referralsLoading, setReferralsLoading] = useState(false);
+  const [referralsError, setReferralsError] = useState<string | null>(null);
 
   // Health state
   const [health, setHealth] = useState<HealthCheckResult | null>(null);
@@ -93,6 +148,46 @@ export default function AdminDashboard({ adminEmail }: AdminDashboardProps) {
       setTasksError(err instanceof Error ? err.message : "Failed to load tasks");
     } finally {
       setTasksLoading(false);
+    }
+  }, []);
+
+  // Fetch Orders
+  const fetchOrders = useCallback(async () => {
+    setOrdersLoading(true);
+    setOrdersError(null);
+    try {
+      const res = await fetch("/api/admin/orders", { cache: "no-store" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      const json = (await res.json()) as { code: number; data: { orders: AdminOrder[]; metrics: AdminOrderMetrics } };
+      setOrders(json?.data?.orders ?? []);
+      setOrdersMetrics(json?.data?.metrics ?? null);
+    } catch (err) {
+      setOrdersError(err instanceof Error ? err.message : "Failed to load orders");
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, []);
+
+  // Fetch Referrals
+  const fetchReferrals = useCallback(async () => {
+    setReferralsLoading(true);
+    setReferralsError(null);
+    try {
+      const res = await fetch("/api/admin/referrals", { cache: "no-store" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      const json = (await res.json()) as { code: number; data: { metrics: AdminReferralMetrics; topReferrers: TopReferrer[] } };
+      setReferralsMetrics(json?.data?.metrics ?? null);
+      setTopReferrers(json?.data?.topReferrers ?? []);
+    } catch (err) {
+      setReferralsError(err instanceof Error ? err.message : "Failed to load referrals");
+    } finally {
+      setReferralsLoading(false);
     }
   }, []);
 
@@ -275,11 +370,11 @@ export default function AdminDashboard({ adminEmail }: AdminDashboardProps) {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="mt-6 flex border-b border-ink/10">
+      <div className="mt-6 flex border-b border-ink/10 overflow-x-auto scrollbar-none">
         <button
           type="button"
           onClick={() => setActiveTab("users")}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+          className={`flex shrink-0 whitespace-nowrap items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
             activeTab === "users"
               ? "border-brand-forest text-brand-forest"
               : "border-transparent text-ink/60 hover:text-ink hover:border-ink/20"
@@ -297,7 +392,7 @@ export default function AdminDashboard({ adminEmail }: AdminDashboardProps) {
         <button
           type="button"
           onClick={() => setActiveTab("tasks")}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+          className={`flex shrink-0 whitespace-nowrap items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
             activeTab === "tasks"
               ? "border-brand-forest text-brand-forest"
               : "border-transparent text-ink/60 hover:text-ink hover:border-ink/20"
@@ -315,10 +410,56 @@ export default function AdminDashboard({ adminEmail }: AdminDashboardProps) {
         <button
           type="button"
           onClick={() => {
+            setActiveTab("orders");
+            if (orders.length === 0 && !ordersLoading) fetchOrders();
+          }}
+          className={`flex shrink-0 whitespace-nowrap items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+            activeTab === "orders"
+              ? "border-brand-forest text-brand-forest"
+              : "border-transparent text-ink/60 hover:text-ink hover:border-ink/20"
+          }`}
+        >
+          <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>Orders & Revenue</span>
+          {ordersMetrics && (
+            <span className="rounded-full bg-emerald-500/10 text-emerald-700 px-2 py-0.5 text-xs font-bold">
+              ${(ordersMetrics.totalRevenueCents / 100).toFixed(0)}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab("referrals");
+            if (!referralsMetrics && !referralsLoading) fetchReferrals();
+          }}
+          className={`flex shrink-0 whitespace-nowrap items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+            activeTab === "referrals"
+              ? "border-brand-forest text-brand-forest"
+              : "border-transparent text-ink/60 hover:text-ink hover:border-ink/20"
+          }`}
+        >
+          <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+          <span>Viral Referrals</span>
+          {referralsMetrics && (
+            <span className="rounded-full bg-brand-forest/10 text-brand-forest px-2 py-0.5 text-xs font-bold">
+              {referralsMetrics.totalReferrals}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
             setActiveTab("health");
             if (!health && !healthLoading) runHealthCheck();
           }}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+          className={`flex shrink-0 whitespace-nowrap items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
             activeTab === "health"
               ? "border-brand-forest text-brand-forest"
               : "border-transparent text-ink/60 hover:text-ink hover:border-ink/20"
@@ -735,6 +876,247 @@ export default function AdminDashboard({ adminEmail }: AdminDashboardProps) {
                 </div>
               </div>
             )}
+          </div>
+        </section>
+      )}
+
+      {/* Tab: Orders & Revenue */}
+      {activeTab === "orders" && (
+        <section aria-label="Orders & Revenue" className="mt-6 space-y-6">
+          {/* Revenue Metrics Summary */}
+          {ordersMetrics && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-2xl border border-ink/10 bg-card p-5 shadow-xs">
+                <p className="text-xs font-semibold text-ink/60 uppercase tracking-wider">Tổng Doanh Thu</p>
+                <p className="mt-2 text-2xl font-black text-emerald-600">
+                  ${(ordersMetrics.totalRevenueCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </p>
+                <p className="mt-1 text-xs text-ink/50">
+                  ≈ {((ordersMetrics.totalRevenueCents / 100) * 25400).toLocaleString("vi-VN")} đ
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-ink/10 bg-card p-5 shadow-xs">
+                <p className="text-xs font-semibold text-ink/60 uppercase tracking-wider">Đơn Hàng Thành Công</p>
+                <p className="mt-2 text-2xl font-black text-ink">
+                  {ordersMetrics.completedOrders} / {ordersMetrics.totalOrders}
+                </p>
+                <p className="mt-1 text-xs text-amber-600 font-semibold">
+                  {ordersMetrics.pendingOrders} đơn đang chờ xử lý
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-ink/10 bg-card p-5 shadow-xs">
+                <p className="text-xs font-semibold text-ink/60 uppercase tracking-wider">Doanh Thu Kênh</p>
+                <div className="mt-2 flex items-center justify-between text-xs">
+                  <span className="font-semibold text-purple-600">Stripe (USD):</span>
+                  <span className="font-bold">${(ordersMetrics.stripeRevenueCents / 100).toFixed(2)}</span>
+                </div>
+                <div className="mt-1 flex items-center justify-between text-xs">
+                  <span className="font-semibold text-emerald-600">SePay (VND):</span>
+                  <span className="font-bold">${(ordersMetrics.sepayRevenueCents / 100).toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-ink/10 bg-card p-5 shadow-xs">
+                <p className="text-xs font-semibold text-ink/60 uppercase tracking-wider">Credits Đã Bán Ra</p>
+                <p className="mt-2 text-2xl font-black text-brand-forest">
+                  +{ordersMetrics.totalCreditsGranted.toLocaleString()}
+                </p>
+                <p className="mt-1 text-xs text-ink/50">Đã cộng vào ledger người dùng</p>
+              </div>
+            </div>
+          )}
+
+          {ordersError && (
+            <div className="rounded-card border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              <p className="font-semibold">Lỗi tải dữ liệu đơn hàng:</p>
+              <p>{ordersError}</p>
+            </div>
+          )}
+
+          {/* Orders Table */}
+          <div className="overflow-hidden rounded-2xl border border-ink/10 bg-card shadow-sm">
+            <div className="p-4 border-b border-ink/10 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-ink">Danh Sách Giao Dịch Gần Đây (50 Đơn)</h3>
+              {ordersLoading && <span className="text-xs text-ink/60 animate-pulse">Đang tải...</span>}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-ink/10 bg-paper/50 text-[11px] font-bold text-ink/60 uppercase tracking-wider">
+                    <th className="px-4 py-3">Mã Đơn</th>
+                    <th className="px-4 py-3">Khách Hàng</th>
+                    <th className="px-4 py-3">Kênh</th>
+                    <th className="px-4 py-3">Gói</th>
+                    <th className="px-4 py-3">Số Tiền</th>
+                    <th className="px-4 py-3">Credits</th>
+                    <th className="px-4 py-3">Trạng Thái</th>
+                    <th className="px-4 py-3">Thời Gian</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ink/5">
+                  {orders.length > 0 ? (
+                    orders.map((ord) => (
+                      <tr key={ord.id} className="hover:bg-black/5 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-ink">{ord.id}</td>
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-ink">{ord.user_name || "Khách Hàng"}</p>
+                          <p className="text-[11px] text-ink/50 truncate max-w-[160px]">{ord.user_email}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                              ord.provider === "stripe"
+                                ? "bg-purple-100 text-purple-800"
+                                : "bg-emerald-100 text-emerald-800"
+                            }`}
+                          >
+                            {ord.provider}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-semibold uppercase text-ink">{ord.pack}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-ink">
+                          {ord.currency === "vnd"
+                            ? `${ord.amount_cents.toLocaleString("vi-VN")} đ`
+                            : `$${(ord.amount_cents / 100).toFixed(2)}`}
+                        </td>
+                        <td className="px-4 py-3 font-bold text-brand-forest">+{ord.credits_granted}</td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                              ord.status === "completed"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : ord.status === "pending"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {ord.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-ink/60">
+                          {new Date(ord.created_at).toLocaleString("vi-VN", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-8 text-center text-ink/50">
+                        {ordersLoading ? "Đang tải danh sách đơn hàng..." : "Chưa có đơn hàng nào."}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Tab: Viral Referrals */}
+      {activeTab === "referrals" && (
+        <section aria-label="Viral Referrals" className="mt-6 space-y-6">
+          {/* Referral Metrics */}
+          {referralsMetrics && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-2xl border border-ink/10 bg-card p-5 shadow-xs">
+                <p className="text-xs font-semibold text-ink/60 uppercase tracking-wider">Tổng Link Ref</p>
+                <p className="mt-2 text-2xl font-black text-ink">{referralsMetrics.totalCodes}</p>
+                <p className="mt-1 text-xs text-ink/50">User đã tạo link mời bạn</p>
+              </div>
+
+              <div className="rounded-2xl border border-ink/10 bg-card p-5 shadow-xs">
+                <p className="text-xs font-semibold text-ink/60 uppercase tracking-wider">Lượt Click Link</p>
+                <p className="mt-2 text-2xl font-black text-brand-forest">{referralsMetrics.totalClicks}</p>
+                <p className="mt-1 text-xs text-ink/50">Lưu lượng truy cập từ link ref</p>
+              </div>
+
+              <div className="rounded-2xl border border-ink/10 bg-card p-5 shadow-xs">
+                <p className="text-xs font-semibold text-ink/60 uppercase tracking-wider">User Tham Gia (Referees)</p>
+                <p className="mt-2 text-2xl font-black text-ink">
+                  {referralsMetrics.totalReferrals}
+                </p>
+                <p className="mt-1 text-xs text-emerald-600 font-bold">
+                  {referralsMetrics.activatedReferrals} người đã kích hoạt tạo thiết kế
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-ink/10 bg-card p-5 shadow-xs">
+                <p className="text-xs font-semibold text-ink/60 uppercase tracking-wider">Credits Đã Thưởng</p>
+                <p className="mt-2 text-2xl font-black text-amber-600">
+                  +{referralsMetrics.totalRewardCredits}
+                </p>
+                <p className="mt-1 text-xs text-ink/50">Chi phí acquisition qua viral loop</p>
+              </div>
+            </div>
+          )}
+
+          {referralsError && (
+            <div className="rounded-card border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              <p className="font-semibold">Lỗi tải dữ liệu giới thiệu:</p>
+              <p>{referralsError}</p>
+            </div>
+          )}
+
+          {/* Top Referrers Leaderboard */}
+          <div className="overflow-hidden rounded-2xl border border-ink/10 bg-card shadow-sm">
+            <div className="p-4 border-b border-ink/10 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-ink">Bảng Xếp Hạng Top Referrers (Affiliate Leaderboard)</h3>
+              {referralsLoading && <span className="text-xs text-ink/60 animate-pulse">Đang tải...</span>}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-ink/10 bg-paper/50 text-[11px] font-bold text-ink/60 uppercase tracking-wider">
+                    <th className="px-4 py-3">Hạng</th>
+                    <th className="px-4 py-3">Người Giới Thiệu</th>
+                    <th className="px-4 py-3">Mã Ref</th>
+                    <th className="px-4 py-3 text-center">Lượt Click</th>
+                    <th className="px-4 py-3 text-center">Đã Đăng Ký</th>
+                    <th className="px-4 py-3 text-center">Đã Kích Hoạt</th>
+                    <th className="px-4 py-3 text-right">Credits Thưởng</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ink/5">
+                  {topReferrers.length > 0 ? (
+                    topReferrers.map((ref, idx) => (
+                      <tr key={ref.user_id} className="hover:bg-black/5 transition-colors">
+                        <td className="px-4 py-3 font-bold text-ink">
+                          {idx === 0 ? "🥇 #1" : idx === 1 ? "🥈 #2" : idx === 2 ? "🥉 #3" : `#${idx + 1}`}
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-ink">{ref.name || "User"}</p>
+                          <p className="text-[11px] text-ink/50">{ref.email}</p>
+                        </td>
+                        <td className="px-4 py-3 font-mono font-bold text-brand-forest">{ref.code}</td>
+                        <td className="px-4 py-3 text-center font-mono">{ref.clicks}</td>
+                        <td className="px-4 py-3 text-center font-mono font-bold text-ink">{ref.referred_count}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-[10px] font-bold">
+                            {ref.activated_count}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-amber-600 font-mono">
+                          +{ref.credits_earned || 0}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-ink/50">
+                        {referralsLoading ? "Đang tải dữ liệu..." : "Chưa có lượt giới thiệu nào."}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
       )}

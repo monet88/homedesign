@@ -347,7 +347,7 @@ export function FloorPlanFlow() {
       if (!res.ok || data.code !== 0 || !data.data) throw new Error(data.error ?? `HTTP ${res.status}`);
       applyRoom(data.data);
       if (projectId) await refreshProject(projectId);
-      showToast("Room Brief confirmed — marker locked.");
+      showToast("Room Brief confirmed: marker locked.");
     } catch (err) {
       showToast((err as Error).message, "error");
     } finally {
@@ -457,7 +457,7 @@ export function FloorPlanFlow() {
                       ?.recognition.roomType ?? "In progress"
                   : canAddNextRoom
                     ? "Add next room"
-                    : "—"}
+                    : "-"}
               </dd>
             </div>
           </dl>
@@ -497,7 +497,7 @@ export function FloorPlanFlow() {
         <section className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium">
-              {addingNextRoom ? "Add Next Room — place marker" : "Place Room Marker"}
+              {addingNextRoom ? "Add Next Room: place marker" : "Place Room Marker"}
             </h2>
             {canAddNextRoom && !addingNextRoom ? (
               <button
@@ -521,12 +521,18 @@ export function FloorPlanFlow() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={previewUrl} alt="Floor plan" className="block w-full select-none" draggable={false} />
             {projectDetail?.rooms.map((r) => (
-              <span
+              <button
                 key={r.markerId}
-                className={`pointer-events-none absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow ${
-                  r.id === room?.id ? "bg-rose-500" : r.complete ? "bg-emerald-500" : "bg-amber-400"
+                type="button"
+                className={`absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow transition-transform hover:scale-125 focus:outline-hidden cursor-pointer z-10 ${
+                  r.id === room?.id ? "bg-rose-500 ring-2 ring-rose-500/40" : r.complete ? "bg-emerald-500" : "bg-amber-400"
                 }`}
                 style={{ left: `${r.marker.x}%`, top: `${r.marker.y}%` }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  selectRoom(r.id);
+                }}
+                aria-label={`Select ${r.proposal?.recognition.roomType ?? "Room"} marker`}
               />
             ))}
           </div>

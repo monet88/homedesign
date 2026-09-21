@@ -7,6 +7,7 @@ import {
   deriveSessionUser,
   fetchSession,
   toShellSession,
+  triggerSessionRefresh,
   type Session,
 } from "@/lib/auth/session-stub";
 
@@ -136,5 +137,16 @@ describe("getAnonymousSession", () => {
     expect(getAnonymousSession()).toBe(getAnonymousSession());
     expect(getAnonymousSession().user).toBeNull();
     expect(getAnonymousSession().credits).toBeNull();
+    expect(getAnonymousSession().loading).toBe(false);
+  });
+});
+
+describe("triggerSessionRefresh", () => {
+  it("dispatches homedesign:session-changed event in window environment", () => {
+    const dispatchSpy = vi.fn();
+    vi.stubGlobal("window", { dispatchEvent: dispatchSpy });
+    triggerSessionRefresh();
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
   });
 });

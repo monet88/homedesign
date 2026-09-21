@@ -897,6 +897,7 @@ async function applyMigrations(db: D1Database) {
         kind TEXT NOT NULL CHECK (kind IN ('interior','exterior','floor-plan')),
         name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', source_asset_id TEXT,
         favorite INTEGER NOT NULL DEFAULT 0, visibility TEXT NOT NULL DEFAULT 'private',
+        workspace_id TEXT,
         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       )`
     ),
@@ -954,6 +955,7 @@ async function applyMigrations(db: D1Database) {
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
         entry_type TEXT NOT NULL CHECK (entry_type IN ('grant','payment','usage','hold','release')),
         amount INTEGER NOT NULL, reason TEXT NOT NULL, ref_type TEXT, ref_id TEXT, grant_key TEXT,
+        workspace_id TEXT,
         created_at INTEGER NOT NULL
       )`
     ),
@@ -967,6 +969,7 @@ async function applyMigrations(db: D1Database) {
         amount INTEGER NOT NULL CHECK (amount > 0),
         status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','settled','released')),
         ref_type TEXT NOT NULL, ref_id TEXT NOT NULL, ledger_hold_id TEXT,
+        workspace_id TEXT,
         created_at INTEGER NOT NULL, settled_at INTEGER, released_at INTEGER
       )`
     ),

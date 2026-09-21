@@ -31,6 +31,7 @@ export interface CreditLedgerEntry {
   ref_type?: string | null;
   ref_id?: string | null;
   grant_key?: string | null;
+  workspace_id?: string | null;
   created_at: number;
 }
 
@@ -42,6 +43,7 @@ export interface CreditHold {
   ref_type: string;
   ref_id: string;
   ledger_hold_id?: string | null;
+  workspace_id?: string | null;
   created_at: number;
   settled_at?: number | null;
   released_at?: number | null;
@@ -263,11 +265,13 @@ export async function holdCredits(
   amount: number,
   refType: string,
   refId: string,
-  reason: string
+  reason: string,
+  workspaceId?: string | null
 ): Promise<string> {
   const holdId = uid();
   const ledgerEntryId = uid();
   const now = Date.now();
+  const wsId = workspaceId ?? null;
 
   // Atomic batch: hold ledger entry (negative amount) + active hold row.
   // The unique ref index rejects a second active hold for the same task/run;
@@ -275,17 +279,35 @@ export async function holdCredits(
   try {
     await env.DB.batch([
       env.DB.prepare(
-        `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
-         VALUES (?1, ?2, 'hold', ?3, ?4, ?5, ?6, NULL, ?7)`
-      ).bind(ledgerEntryId, userId, amount, reason, refType, refId, now),
+        `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, workspace_id, created_at)
+         VALUES (?1, ?2, 'hold', ?3, ?4, ?5, ?6, NULL, ?7, ?8)`
+      ).bind(ledgerEntryId, userId, amount, reason, refType, refId, wsId, now),
       env.DB.prepare(
-        `INSERT INTO credit_holds (id, user_id, amount, status, ref_type, ref_id, ledger_hold_id, created_at)
-         VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, ?7)`
-      ).bind(holdId, userId, amount, refType, refId, ledgerEntryId, now),
+        `INSERT INTO credit_holds (id, user_id, amount, status, ref_type, ref_id, ledger_hold_id, workspace_id, created_at)
+         VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, ?7, ?8)`
+      ).bind(holdId, userId, amount, refType, refId, ledgerEntryId, wsId, now),
     ]);
-  } catch {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!wsId && msg.includes("no such column: workspace_id")) {
+      try {
+        await env.DB.batch([
+          env.DB.prepare(
+            `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+             VALUES (?1, ?2, 'hold', ?3, ?4, ?5, ?6, NULL, ?7)`
+          ).bind(ledgerEntryId, userId, amount, reason, refType, refId, now),
+          env.DB.prepare(
+            `INSERT INTO credit_holds (id, user_id, amount, status, ref_type, ref_id, ledger_hold_id, created_at)
+             VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, ?7)`
+          ).bind(holdId, userId, amount, refType, refId, ledgerEntryId, now),
+        ]);
+        return holdId;
+      } catch (fallbackErr) {
+        throw new Error("HOLD_ALREADY_ACTIVE", { cause: fallbackErr });
+      }
+    }
     // Unique constraint violation — a hold already exists for this ref.
-    throw new Error("HOLD_ALREADY_ACTIVE");
+    throw new Error("HOLD_ALREADY_ACTIVE", { cause: err });
   }
 
   return holdId;
@@ -310,15 +332,41 @@ export async function settleHold(
   const usageEntryId = uid();
 
   // Batch: update hold + append usage ledger entry.
-  await env.DB.batch([
-    env.DB.prepare(
-      `UPDATE credit_holds SET status = 'settled', settled_at = ?1 WHERE id = ?2 AND status = 'active'`
-    ).bind(now, holdId),
-    env.DB.prepare(
-      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
-       VALUES (?1, ?2, 'usage', ?3, ?4, ?5, ?6, NULL, ?7)`
-    ).bind(usageEntryId, hold.user_id, hold.amount, hold.ref_type, hold.ref_type, hold.ref_id, now),
-  ]);
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE credit_holds SET status = 'settled', settled_at = ?1 WHERE id = ?2 AND status = 'active'`
+      ).bind(now, holdId),
+      env.DB.prepare(
+        `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, workspace_id, created_at)
+         VALUES (?1, ?2, 'usage', ?3, ?4, ?5, ?6, NULL, ?7, ?8)`
+      ).bind(usageEntryId, hold.user_id, hold.amount, hold.ref_type, hold.ref_type, hold.ref_id, hold.workspace_id ?? null, now),
+    ]);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("no such column: workspace_id")) {
+      await env.DB.batch([
+        env.DB.prepare(
+          `UPDATE credit_holds SET status = 'settled', settled_at = ?1 WHERE id = ?2 AND status = 'active'`
+        ).bind(now, holdId),
+        env.DB.prepare(
+          `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+           VALUES (?1, ?2, 'usage', ?3, ?4, ?5, ?6, NULL, ?7)`
+        ).bind(usageEntryId, hold.user_id, hold.amount, hold.ref_type, hold.ref_type, hold.ref_id, now),
+      ]);
+    } else {
+      throw err;
+    }
+  }
+
+  // Ticket 7.3: Activate viral referral reward for referrer upon referee's first successful design
+  try {
+    const { activateReferralReward } = await import("@/lib/referral/referral");
+    await activateReferralReward(env.DB, hold.user_id);
+  } catch (err) {
+    // Non-fatal: do not block generation completion if referral table is missing or already claimed
+    console.warn("[REFERRAL] Activation check warning:", err);
+  }
 }
 
 /**
@@ -340,18 +388,59 @@ export async function releaseHold(
   const now = Date.now();
   const releaseEntryId = uid();
 
-  await env.DB.batch([
-    env.DB.prepare(
-      `UPDATE credit_holds SET status = 'released', released_at = ?1 WHERE id = ?2 AND status = 'active'`
-    ).bind(now, holdId),
-    env.DB.prepare(
-      `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
-       VALUES (?1, ?2, 'release', ?3, ?4, ?5, ?6, NULL, ?7)`
-    ).bind(releaseEntryId, hold.user_id, hold.amount, hold.ref_type, hold.ref_type, hold.ref_id, now),
-  ]);
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE credit_holds SET status = 'released', released_at = ?1 WHERE id = ?2 AND status = 'active'`
+      ).bind(now, holdId),
+      env.DB.prepare(
+        `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, workspace_id, created_at)
+         VALUES (?1, ?2, 'release', ?3, ?4, ?5, ?6, NULL, ?7, ?8)`
+      ).bind(releaseEntryId, hold.user_id, hold.amount, hold.ref_type, hold.ref_type, hold.ref_id, hold.workspace_id ?? null, now),
+    ]);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("no such column: workspace_id")) {
+      await env.DB.batch([
+        env.DB.prepare(
+          `UPDATE credit_holds SET status = 'released', released_at = ?1 WHERE id = ?2 AND status = 'active'`
+        ).bind(now, holdId),
+        env.DB.prepare(
+          `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, ref_type, ref_id, grant_key, created_at)
+           VALUES (?1, ?2, 'release', ?3, ?4, ?5, ?6, NULL, ?7)`
+        ).bind(releaseEntryId, hold.user_id, hold.amount, hold.ref_type, hold.ref_type, hold.ref_id, now),
+      ]);
+    } else {
+      throw err;
+    }
+  }
 }
 
 // ── Query ──────────────────────────────────────────────────────────────────
+
+/**
+ * Get the available credits for a workspace shared pool.
+ */
+export async function getWorkspaceAvailableCredits(
+  env: Env,
+  workspaceId: string
+): Promise<number> {
+  const result = await env.DB.prepare(
+    `SELECT
+       COALESCE((
+         SELECT COALESCE(SUM(amount), 0) FROM credit_ledger
+         WHERE workspace_id = ?1 AND entry_type IN ('grant', 'payment')
+       ), 0) - (
+         SELECT COALESCE(SUM(amount), 0) FROM credit_ledger
+         WHERE workspace_id = ?1 AND entry_type = 'usage'
+       ) - (
+         SELECT COALESCE(SUM(amount), 0) FROM credit_holds
+         WHERE workspace_id = ?1 AND status = 'active'
+       ) AS available`
+  ).bind(workspaceId).first<{ available: number }>();
+
+  return Math.max(0, result?.available ?? 0);
+}
 
 /**
  * Get the available credits for a user: Σ(grants + payments) − Σ(usage) − Σ(active holds).
@@ -360,23 +449,50 @@ export async function releaseHold(
  */
 export async function getAvailableCredits(
   env: Env,
-  userId: string
+  userId: string,
+  workspaceId?: string | null
 ): Promise<number> {
-  const result = await env.DB.prepare(
-    `SELECT
-       COALESCE((
-         SELECT COALESCE(SUM(amount), 0) FROM credit_ledger
-         WHERE user_id = ?1 AND entry_type IN ('grant', 'payment')
-       ), 0) - (
-         SELECT COALESCE(SUM(amount), 0) FROM credit_ledger
-         WHERE user_id = ?1 AND entry_type = 'usage'
-       ) - (
-         SELECT COALESCE(SUM(amount), 0) FROM credit_holds
-         WHERE user_id = ?1 AND status = 'active'
-       ) AS available`
-  ).bind(userId).first<{ available: number }>();
+  if (workspaceId) {
+    return getWorkspaceAvailableCredits(env, workspaceId);
+  }
 
-  return Math.max(0, result?.available ?? 0);
+  try {
+    const result = await env.DB.prepare(
+      `SELECT
+         COALESCE((
+           SELECT COALESCE(SUM(amount), 0) FROM credit_ledger
+           WHERE user_id = ?1 AND workspace_id IS NULL AND entry_type IN ('grant', 'payment')
+         ), 0) - (
+           SELECT COALESCE(SUM(amount), 0) FROM credit_ledger
+           WHERE user_id = ?1 AND workspace_id IS NULL AND entry_type = 'usage'
+         ) - (
+           SELECT COALESCE(SUM(amount), 0) FROM credit_holds
+           WHERE user_id = ?1 AND workspace_id IS NULL AND status = 'active'
+         ) AS available`
+    ).bind(userId).first<{ available: number }>();
+
+    return Math.max(0, result?.available ?? 0);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("no such column: workspace_id")) {
+      const fallback = await env.DB.prepare(
+        `SELECT
+           COALESCE((
+             SELECT COALESCE(SUM(amount), 0) FROM credit_ledger
+             WHERE user_id = ?1 AND entry_type IN ('grant', 'payment')
+           ), 0) - (
+             SELECT COALESCE(SUM(amount), 0) FROM credit_ledger
+             WHERE user_id = ?1 AND entry_type = 'usage'
+           ) - (
+             SELECT COALESCE(SUM(amount), 0) FROM credit_holds
+             WHERE user_id = ?1 AND status = 'active'
+           ) AS available`
+      ).bind(userId).first<{ available: number }>();
+
+      return Math.max(0, fallback?.available ?? 0);
+    }
+    throw err;
+  }
 }
 
 /**

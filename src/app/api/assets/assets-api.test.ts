@@ -221,7 +221,7 @@ describe("Asset and Project Mutation Commands Validation (Ticket #45)", () => {
     });
 
     it("returns 400 INVALID_INPUT on unsupported MIME type", async () => {
-      for (const badMime of ["image/gif", "image/webp", "text/plain", "application/pdf", ""]) {
+      for (const badMime of ["image/gif", "image/bmp", "text/plain", "application/pdf", ""]) {
         const req = new Request("http://localhost:3000/api/assets/upload-intent", {
           method: "POST",
           body: JSON.stringify({ name: "room.png", mimeType: badMime, size: 1024 }),
@@ -290,6 +290,27 @@ describe("Asset and Project Mutation Commands Validation (Ticket #45)", () => {
         name: "living_room.png",
         mimeType: "image/png",
         size: 1024,
+      });
+    });
+
+    it("creates upload intent for valid image/webp input", async () => {
+      const req = new Request("http://localhost:3000/api/assets/upload-intent", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "sample-room.webp",
+          mimeType: "image/webp",
+          size: 2048,
+        }),
+      });
+      const res = await handleUploadIntent(req);
+      expect(res.status).toBe(200);
+      const json = await readJson(res);
+      expect(json.code).toBe(0);
+      expect(mockCreateIntentFn).toHaveBeenCalledWith(mockEnv, {
+        userId: "user-test-1",
+        name: "sample-room.webp",
+        mimeType: "image/webp",
+        size: 2048,
       });
     });
 

@@ -6,6 +6,9 @@ import { usePathname } from "next/navigation";
 import { useState, createContext, useContext } from "react";
 import { useSession } from "@/lib/auth/session-stub";
 import { signOut } from "@/lib/auth/client";
+import { useTranslation } from "@/lib/i18n/context";
+import { LanguageSwitcher } from "./language-switcher";
+import { ThemeToggle } from "./theme-toggle";
 import {
   IconHome,
   IconFolder,
@@ -19,7 +22,11 @@ import {
   IconMenu,
   IconClose,
   IconGift,
+  IconClock,
+  IconShield,
+  IconVrTour,
 } from "./icons";
+import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
 
 interface SidebarContextType {
   collapsed: boolean;
@@ -58,28 +65,39 @@ export function AppSidebar() {
   const pathname = usePathname();
   const { collapsed, setCollapsed, mobileOpen, setMobileOpen } = useSidebar();
   const { user, credits } = useSession();
+  const { lang } = useTranslation();
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const isVi = lang === "vi";
 
   const mainLinks = [
-    { href: "/", label: "Home", icon: IconHome },
-    { href: "/assets", label: "Projects", icon: IconFolder },
+    { href: "/", label: isVi ? "Trang Chủ" : "Home", icon: IconHome },
+    { href: "/assets", label: isVi ? "Thư Viện & Dự Án" : "Projects", icon: IconFolder },
+    { href: "/activity", label: isVi ? "Nhật Ký & Audit" : "Activity & Logs", icon: IconClock },
+    ...(user?.role === "admin"
+      ? [{ href: "/admin", label: isVi ? "Bảng Điều Khiển Admin" : "Admin Dashboard", icon: IconShield }]
+      : []),
   ];
 
   const designTools = [
     {
       href: "/ai-interior-design",
-      label: "AI Interior Design",
+      label: isVi ? "AI Thiết Kế Nội Thất" : "AI Interior Design",
       icon: IconSofa,
     },
     {
       href: "/ai-exterior-design",
-      label: "AI Exterior Design",
+      label: isVi ? "AI Thiết Kế Ngoại Thất" : "AI Exterior Design",
       icon: IconHousePlus,
     },
     {
       href: "/ai-floor-plan",
-      label: "AI Floor Plan",
+      label: isVi ? "AI Mặt Bằng 2D/3D" : "AI Floor Plan",
       icon: IconCompass,
+    },
+    {
+      href: "/tour",
+      label: isVi ? "VR Tour 360° Studio" : "VR Tour 360° Studio",
+      icon: IconVrTour,
     },
   ];
 
@@ -147,6 +165,12 @@ export function AppSidebar() {
 
         {/* Navigation Content */}
         <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-2">
+          {user && (
+            <div className="px-1 pt-1">
+              <WorkspaceSwitcher compact={collapsed} className="w-full" />
+            </div>
+          )}
+
           {/* Main Links */}
           <div className="flex flex-col gap-1">
             {mainLinks.map((item) => {
@@ -174,7 +198,7 @@ export function AppSidebar() {
           <div className="flex flex-col gap-1">
             {!collapsed && (
               <span className="px-2.5 py-1 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
-                Design Tools
+                {isVi ? "CÔNG CỤ THIẾT KẾ" : "Design Tools"}
               </span>
             )}
             {designTools.map((item) => {
@@ -198,44 +222,80 @@ export function AppSidebar() {
             })}
           </div>
 
-          {!collapsed && (
+          {!collapsed && !user && (
             <div className="my-3 rounded-xl border border-border/80 bg-card p-3 shadow-2xs">
               <div className="flex items-center gap-2 mb-1.5 text-brand-copper">
                 <IconGift className="size-4" />
-                <span className="text-xs font-bold text-foreground">Log in to get free credits!</span>
+                <span className="text-xs font-bold text-foreground">
+                  {isVi ? "Đăng nhập nhận credits!" : "Log in for free credits!"}
+                </span>
               </div>
               <p className="text-[11px] text-foreground/60 leading-tight mb-2.5">
-                Unlock more features!
+                {isVi ? "Mở khóa trọn bộ công cụ AI!" : "Unlock AI design tools!"}
               </p>
               <Link
                 href="/sign-in"
                 className="flex h-7 w-full items-center justify-center rounded-lg bg-brand-primary text-xs font-semibold text-white transition-all hover:bg-brand-accent shadow-xs"
               >
-                Claim Free Credits
+                {isVi ? "Đăng Nhập" : "Sign In"}
               </Link>
+            </div>
+          )}
+
+          {!collapsed && user && (
+            <div className="my-3 rounded-xl border border-border/80 bg-card p-3 shadow-2xs">
+              <div className="flex items-center justify-between mb-1.5 text-brand-copper">
+                <div className="flex items-center gap-1.5">
+                  <IconGift className="size-4" />
+                  <span className="text-xs font-bold text-foreground">
+                    {user.role === "admin"
+                      ? (isVi ? "Số Dư Quản Trị" : "Admin Balance")
+                      : (isVi ? "Số Dư Tín Dụng" : "Credit Balance")}
+                  </span>
+                </div>
+                <span className="rounded-full bg-brand-primary/10 px-2 py-0.5 text-xs font-bold text-brand-primary">
+                  {credits ?? 0}
+                </span>
+              </div>
+              <p className="text-[11px] text-foreground/60 leading-tight mb-2.5">
+                {user.role === "admin"
+                  ? (isVi ? "Đặc quyền Quản trị viên kích hoạt" : "Admin privileges active")
+                  : `${credits ?? 0} ${isVi ? "tín dụng khả dụng" : "credits available"}`}
+              </p>
+              {user.role === "admin" ? (
+                <Link
+                  href="/admin"
+                  className="flex h-7 w-full items-center justify-center rounded-lg bg-brand-primary text-xs font-semibold text-white transition-all hover:bg-brand-accent shadow-xs"
+                >
+                  {isVi ? "Bảng Điều Khiển Admin" : "Admin Dashboard"}
+                </Link>
+              ) : (
+                <Link
+                  href="/pricing"
+                  className="flex h-7 w-full items-center justify-center rounded-lg bg-brand-primary text-xs font-semibold text-white transition-all hover:bg-brand-accent shadow-xs"
+                >
+                  {isVi ? "Nạp Thêm Credit" : "Get More Credits"}
+                </Link>
+              )}
             </div>
           )}
 
           <div className="mt-auto" />
 
           {/* Bottom Footer Items */}
-          <div className="flex flex-col gap-1 border-t border-sidebar-border/60 pt-2">
-            <button
-              type="button"
-              className="flex h-9 w-full items-center gap-3 rounded-lg px-2.5 text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              title={collapsed ? "English" : undefined}
-            >
-              <IconGlobe className="size-4 shrink-0" />
-              {!collapsed && <span>English</span>}
-            </button>
+          <div className="flex flex-col gap-1.5 border-t border-sidebar-border/60 pt-2">
+            <div className={`flex items-center ${collapsed ? "flex-col gap-2 justify-center" : "justify-between px-2"}`}>
+              <ThemeToggle className="size-8 rounded-lg" />
+              <LanguageSwitcher compact={collapsed} />
+            </div>
 
             <Link
               href="/#pricing"
               className="flex h-9 items-center gap-3 rounded-lg px-2.5 text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              title={collapsed ? "Pricing" : undefined}
+              title={collapsed ? (isVi ? "Bảng Giá" : "Pricing") : undefined}
             >
               <IconCreditCard className="size-4 shrink-0" />
-              {!collapsed && <span>Pricing</span>}
+              {!collapsed && <span>{isVi ? "Bảng Giá" : "Pricing"}</span>}
             </Link>
 
             {/* Account / User Menu */}
@@ -251,7 +311,7 @@ export function AppSidebar() {
                   </div>
                   {!collapsed && (
                     <div className="flex flex-1 items-center justify-between overflow-hidden">
-                      <span className="truncate">{user.name || "Account"}</span>
+                      <span className="truncate">{user.name || (isVi ? "Tài khoản" : "Account")}</span>
                       {credits !== null && (
                         <span className="rounded-full bg-brand-primary/10 px-2 py-0.5 text-xs font-semibold text-brand-copper">
                           {credits}
@@ -266,41 +326,50 @@ export function AppSidebar() {
                   className="flex h-9 items-center gap-3 rounded-lg px-2.5 text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 >
                   <IconUser className="size-4 shrink-0" />
-                  {!collapsed && <span>Sign In</span>}
+                  {!collapsed && <span>{isVi ? "Đăng Nhập" : "Sign In"}</span>}
                 </Link>
               )}
 
               {accountMenuOpen && user && (
                 <div className="absolute bottom-11 left-2 z-50 w-52 rounded-card border border-border bg-card p-1.5 shadow-xl">
                   <div className="px-3 py-2 border-b border-border/50">
-                    <p className="text-sm font-semibold">{user.name || "Account"}</p>
+                    <p className="text-sm font-semibold">{user.name || (isVi ? "Tài khoản" : "Account")}</p>
                     <p className="text-xs text-foreground/60 truncate">{user.email}</p>
                     {credits !== null && (
                       <p className="mt-1 text-xs font-semibold text-brand-copper">
-                        {credits} Available Credits
+                        {credits} {isVi ? "Tín dụng khả dụng" : "Available Credits"}
                       </p>
                     )}
                   </div>
+                  {user.role === "admin" && (
+                    <Link
+                      href="/admin"
+                      className="block rounded-md px-3 py-2 text-sm font-semibold text-brand-primary hover:bg-sidebar-accent"
+                      onClick={() => setAccountMenuOpen(false)}
+                    >
+                      {isVi ? "Bảng Điều Khiển Admin" : "Admin Dashboard"}
+                    </Link>
+                  )}
                   <Link
                     href="/assets"
                     className="block rounded-md px-3 py-2 text-sm text-foreground/85 hover:bg-sidebar-accent"
                     onClick={() => setAccountMenuOpen(false)}
                   >
-                    Projects &amp; Assets
+                    {isVi ? "Thư Viện & Dự Án" : "Projects & Assets"}
                   </Link>
                   <Link
                     href="/activity"
                     className="block rounded-md px-3 py-2 text-sm text-foreground/85 hover:bg-sidebar-accent"
                     onClick={() => setAccountMenuOpen(false)}
                   >
-                    Activity Log
+                    {isVi ? "Nhật Ký & Audit" : "Activity Log"}
                   </Link>
                   <button
                     type="button"
                     onClick={() => void signOut()}
                     className="block w-full text-left rounded-md px-3 py-2 text-sm text-red-600 hover:bg-red-50"
                   >
-                    Sign Out
+                    {isVi ? "Đăng Xuất" : "Sign Out"}
                   </button>
                 </div>
               )}

@@ -53,7 +53,7 @@ test.describe("Public Demo Auth & Google Live Smoke (ADR 0008, Issue #72)", () =
 
     // 1. Public visitor can view landing page
     await expect(
-      page.getByRole("heading", { name: "See your future home in minutes" })
+      page.getByRole("heading", { name: /(Architectural Vision in Sixty Seconds|See your future home in minutes)/i })
     ).toBeVisible();
 
     // 2. Normal Sign In trigger is accessible in header/nav

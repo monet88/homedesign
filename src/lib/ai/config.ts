@@ -68,6 +68,7 @@ function assertSafeText(value: unknown, field: string): string | undefined {
 function assertMode(value: unknown): GenerationMode {
   if (value === undefined || value === null || value === "redesign") return "redesign";
   if (value === "edit") return "edit";
+  if (value === "virtual-staging") return "virtual-staging";
   throw new DesignError("INVALID_INTENT", 400, `unknown mode: ${String(value)}`);
 }
 
@@ -124,6 +125,8 @@ function validateInteriorIntent(raw: Record<string, unknown>): InteriorIntent {
     "customColorScheme",
     "requirements",
     "editInstruction",
+    "stagingPreset",
+    "customPresetId",
   ]);
   for (const key of Object.keys(raw)) {
     if (!allowedInterior.has(key)) {
@@ -142,6 +145,8 @@ function validateInteriorIntent(raw: Record<string, unknown>): InteriorIntent {
     customColorScheme: assertSafeText(raw.customColorScheme, "intent.customColorScheme"),
     requirements: assertSafeText(raw.requirements, "intent.requirements"),
     editInstruction: assertSafeText(raw.editInstruction, "intent.editInstruction"),
+    stagingPreset: assertSafeText(raw.stagingPreset, "intent.stagingPreset"),
+    customPresetId: assertSafeText(raw.customPresetId, "intent.customPresetId"),
   };
   if (mode === "edit" && !intent.editInstruction && !intent.requirements) {
     throw new DesignError("INVALID_INTENT", 400, "edit mode requires editInstruction");
@@ -160,6 +165,7 @@ function validateExteriorIntent(raw: Record<string, unknown>): ExteriorIntent {
     "customColorScheme",
     "requirements",
     "editInstruction",
+    "customPresetId",
   ]);
   for (const key of Object.keys(raw)) {
     if (!allowedExterior.has(key)) {
@@ -178,6 +184,7 @@ function validateExteriorIntent(raw: Record<string, unknown>): ExteriorIntent {
     customColorScheme: assertSafeText(raw.customColorScheme, "intent.customColorScheme"),
     requirements: assertSafeText(raw.requirements, "intent.requirements"),
     editInstruction: assertSafeText(raw.editInstruction, "intent.editInstruction"),
+    customPresetId: assertSafeText(raw.customPresetId, "intent.customPresetId"),
   };
   if (mode === "edit" && !intent.editInstruction && !intent.requirements) {
     throw new DesignError("INVALID_INTENT", 400, "edit mode requires editInstruction");
@@ -268,6 +275,9 @@ export function validateDesignConfig(raw: unknown): DesignConfig {
     "idempotencyKey",
     "provider",
     "model",
+    "maskDataUrl",
+    "workspaceId",
+    "customPresetId",
   ]);
   for (const key of Object.keys(body)) {
     if (!allowedRoot.has(key)) {
@@ -330,6 +340,18 @@ export function validateDesignConfig(raw: unknown): DesignConfig {
 
   const provider = assertSafeText(body.provider, "provider") ?? DEFAULT_PROVIDER;
   const model = assertSafeText(body.model, "model") ?? DEFAULT_MODEL;
+  const maskDataUrl =
+    typeof body.maskDataUrl === "string" && body.maskDataUrl.trim()
+      ? body.maskDataUrl.trim()
+      : undefined;
+  const workspaceId =
+    typeof body.workspaceId === "string" && body.workspaceId.trim()
+      ? body.workspaceId.trim()
+      : undefined;
+  const customPresetId =
+    typeof body.customPresetId === "string" && body.customPresetId.trim()
+      ? body.customPresetId.trim()
+      : undefined;
 
   return {
     sourceAssetId,
@@ -343,6 +365,9 @@ export function validateDesignConfig(raw: unknown): DesignConfig {
     options,
     cost: costFor(designScene, stage),
     idempotencyKey,
+    ...(maskDataUrl ? { maskDataUrl } : {}),
+    ...(workspaceId ? { workspaceId } : {}),
+    ...(customPresetId ? { customPresetId } : {}),
   };
 }
 

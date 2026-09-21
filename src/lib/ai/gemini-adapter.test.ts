@@ -56,18 +56,21 @@ describe("GeminiFlashImageAdapter Helpers", () => {
   });
 
   it("getChatCompletionsEndpoint formats various base URL shapes correctly", () => {
-    expect(getChatCompletionsEndpoint("https://cliproxy.monet.uno/v1")).toBe(
-      "https://cliproxy.monet.uno/v1/chat/completions"
+    expect(getChatCompletionsEndpoint("https://pro.autommo.online/v1")).toBe(
+      "https://pro.autommo.online/v1/chat/completions"
     );
-    expect(getChatCompletionsEndpoint("https://cliproxy.monet.uno/v1/")).toBe(
-      "https://cliproxy.monet.uno/v1/chat/completions"
+    expect(getChatCompletionsEndpoint("https://pro.autommo.online/v1/")).toBe(
+      "https://pro.autommo.online/v1/chat/completions"
     );
-    expect(getChatCompletionsEndpoint("https://cliproxy.monet.uno")).toBe(
-      "https://cliproxy.monet.uno/v1/chat/completions"
+    expect(getChatCompletionsEndpoint("https://pro.autommo.online")).toBe(
+      "https://pro.autommo.online/v1/chat/completions"
     );
     expect(getChatCompletionsEndpoint("https://api.openai.com/v1/chat/completions")).toBe(
       "https://api.openai.com/v1/chat/completions"
     );
+    expect(
+      getChatCompletionsEndpoint("https://generativelanguage.googleapis.com/v1beta/openai")
+    ).toBe("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions");
   });
 
   it("extractDataUri parses data URI with metadata and raw base64 strings", () => {
@@ -173,7 +176,7 @@ describe("GeminiFlashImageAdapter Adapter Lifecycle", () => {
     });
 
     const adapter = new GeminiFlashImageAdapter({
-      baseUrl: "https://cliproxy.monet.uno/v1",
+      baseUrl: "https://pro.autommo.online/v1",
       apiKey: "sk-test-key",
       fetchFn: mockFetch as unknown as typeof fetch,
     });
@@ -185,7 +188,7 @@ describe("GeminiFlashImageAdapter Adapter Lifecycle", () => {
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const [callUrl, callInit] = mockFetch.mock.calls[0];
-    expect(callUrl).toBe("https://cliproxy.monet.uno/v1/chat/completions");
+    expect(callUrl).toBe("https://pro.autommo.online/v1/chat/completions");
     expect(callInit.method).toBe("POST");
     expect(callInit.headers["Authorization"]).toBe("Bearer sk-test-key");
     expect(callInit.headers["Content-Type"]).toBe("application/json");
@@ -482,5 +485,101 @@ describe("Provider Registry with GeminiFlashImageAdapter", () => {
 
     resetProviders();
     expect(getProvider("gemini", { AI_API_KEY: "sk-test-key" })).toBeInstanceOf(GeminiFlashImageAdapter);
+  });
+});
+
+describe("GeminiFlashImageAdapter Resilience & Circuit Breaker Integration", () => {
+  it("retries on HTTP 429 and succeeds when resilience option is provided", async () => {
+    const pngB64 = bytesToBase64(validPngBytes());
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        statusText: "Too Many Requests",
+        text: async () => "Rate limit hit",
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: `data:image/png;base64,${pngB64}`,
+              },
+            },
+          ],
+        }),
+      });
+
+    const sleepFn = vi.fn().mockResolvedValue(undefined);
+    const adapter = new GeminiFlashImageAdapter({
+      apiKey: "sk-test-key",
+      fetchFn: mockFetch as unknown as typeof fetch,
+      resilience: {
+        maxRetries: 2,
+        sleepFn,
+      },
+    });
+
+    const res = await adapter.submit(REQ);
+    expect(res.ok).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(sleepFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("dispatches native generateContent with x-goog-api-key when using Google AI Studio key", async () => {
+    const pngB64 = bytesToBase64(validPngBytes());
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        candidates: [
+          {
+            content: {
+              parts: [
+                { text: "Here is your redesigned living room." },
+                {
+                  inlineData: {
+                    mimeType: "image/png",
+                    data: pngB64,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    });
+
+    const adapter = new GeminiFlashImageAdapter({
+      baseUrl: "https://generativelanguage.googleapis.com",
+      apiKey: "AIzaSyTestGoogleGeminiKey1234567890",
+      fetchFn: mockFetch as unknown as typeof fetch,
+    });
+
+    const submitRes = await adapter.submit(REQ);
+    expect(submitRes.ok).toBe(true);
+    if (!submitRes.ok) return;
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [callUrl, callInit] = mockFetch.mock.calls[0];
+    expect(callUrl).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent"
+    );
+    expect(callInit.method).toBe("POST");
+    expect(callInit.headers["x-goog-api-key"]).toBe("AIzaSyTestGoogleGeminiKey1234567890");
+
+    const sentPayload = JSON.parse(callInit.body);
+    expect(sentPayload.contents[0].parts[0].inlineData).toBeDefined();
+    expect(sentPayload.contents[0].parts[0].inlineData.mimeType).toBe("image/jpeg");
+    expect(sentPayload.contents[0].parts[1].text).toContain(REQ.prompt);
+
+    const output = await adapter.fetchOutput(REQ, submitRes.providerTaskId);
+    expect(output).not.toBeNull();
+    expect(output!.contentType).toBe("image/png");
+    expect(Array.from(output!.bytes)).toEqual(Array.from(validPngBytes()));
   });
 });

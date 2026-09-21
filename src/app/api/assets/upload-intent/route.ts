@@ -48,7 +48,10 @@ export async function POST(request: Request) {
     if (
       env.ENVIRONMENT === "local" ||
       env.R2_ACCOUNT_ID === "local-dev-account" ||
-      !creds.accountId
+      !creds.accountId ||
+      !creds.accessKeyId ||
+      !creds.secretAccessKey ||
+      creds.accountId.startsWith("cfk_")
     ) {
       presignedUrl = `/api/assets/${intent.assetId}/upload`;
     } else if (creds.accountId && creds.accessKeyId && creds.secretAccessKey) {

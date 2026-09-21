@@ -7,7 +7,7 @@ Accepted
 
 ## Context
 The HomeDesign application previously operated with fake/stubbed provider adapters (`FakeProviderAdapter`) during UI prototyping. For production fidelity and realistic multi-modal generation, we need:
-1. Direct integration with the real AI Image Generation endpoint (`https://cliproxy.monet.uno/v1` with model `gemini-3.1-flash-image` and API Key authentication).
+1. Direct integration with the real AI Image Generation endpoint (`https://pro.autommo.online/v1` with model `gemini-3.1-flash-image` and API Key authentication).
 2. An Admin provisioning and role-based management system seeded with default administrator credentials (`minhthang421992@gmail.com`).
 3. An automated end-to-end (E2E) testing harness using Playwright that validates full user and administrator journeys.
 
@@ -41,4 +41,4 @@ The HomeDesign application previously operated with fake/stubbed provider adapte
   - Complete observability and administrative control over users and generation tasks.
   - High confidence through automated Playwright E2E testing.
 - **Negative**:
-  - Network dependency on `https://cliproxy.monet.uno/v1` during live E2E test runs (with graceful fallback in offline CI).
+  - Network dependency on `https://pro.autommo.online/v1` during live E2E test runs (with graceful fallback in offline CI).

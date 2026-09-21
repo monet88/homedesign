@@ -18,7 +18,7 @@ export async function POST() {
   const cf = await getCloudflareContext({ async: true });
   const env = cf.env as unknown as Env;
 
-  if (env.ENVIRONMENT === "production") {
+  if (env.ENVIRONMENT === "production" || env.ENVIRONMENT === "demo") {
     return Response.json({ error: "not found" }, { status: 404 });
   }
 

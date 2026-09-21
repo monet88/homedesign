@@ -85,7 +85,9 @@ test.describe("Phase 1: Admin Operations & RBAC", () => {
     await expect(page.getByLabel("Status:")).toBeVisible();
 
     // Tab 3: Provider Health Check
-    await page.getByRole("button", { name: /Provider Health Check/ }).click();
+    const healthTab = page.getByRole("button", { name: /Provider Health Check/ });
+    await healthTab.scrollIntoViewIfNeeded();
+    await healthTab.click();
     await expect(
       page.getByRole("heading", { name: "AI Provider Status" })
     ).toBeVisible();

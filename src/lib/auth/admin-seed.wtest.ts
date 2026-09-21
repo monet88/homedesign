@@ -73,6 +73,7 @@ async function applyMigrations(db: D1Database) {
         ref_type TEXT,
         ref_id TEXT,
         grant_key TEXT,
+        workspace_id TEXT,
         created_at INTEGER NOT NULL
       )`
     ),
@@ -89,6 +90,7 @@ async function applyMigrations(db: D1Database) {
         ref_type TEXT NOT NULL,
         ref_id TEXT NOT NULL,
         ledger_hold_id TEXT,
+        workspace_id TEXT,
         created_at INTEGER NOT NULL,
         settled_at INTEGER,
         released_at INTEGER
@@ -291,6 +293,36 @@ describe("Admin Seed & Immutable Credit Ledger (Ticket #36)", () => {
     expect(initialGrant?.amount).toBe(99999);
 
     await expect(assertCreditInvariant(testEnv(), user.id)).resolves.toBe(true);
+  });
+
+  it("AC5: safely handles single quotes and injection attempts in direct seeding via parameterized statements", async () => {
+    const maliciousConfig: AdminSeedConfig = {
+      email: "injection'--admin@example.com",
+      password: "test-admin-password-123!",
+      credits: 99999,
+      name: "Admin' OR '1'='1",
+      role: "admin",
+    };
+
+    const res = await seedAdminDatabase.seedDirect(env.DB, maliciousConfig);
+    expect(res.status).toBe("created");
+    expect(res.initialCredits).toBe(99999);
+
+    const user = await env.DB.prepare(`SELECT * FROM user WHERE email = ?1`)
+      .bind(maliciousConfig.email)
+      .first<{ id: string; role: string; name: string; email: string }>();
+
+    expect(user).not.toBeNull();
+    expect(user?.email).toBe("injection'--admin@example.com");
+    expect(user?.name).toBe("Admin' OR '1'='1");
+    expect(user?.role).toBe("admin");
+
+    const ledger = await env.DB.prepare(`SELECT * FROM credit_ledger WHERE user_id = ?1`)
+      .bind(user!.id)
+      .first<{ amount: number; reason: string }>();
+
+    expect(ledger).not.toBeNull();
+    expect(ledger?.amount).toBe(99999);
   });
 });
 

@@ -22,6 +22,7 @@ export const FOOTER_COLUMNS: { title: string; links: NavLink[] }[] = [
     title: "Design Tools",
     links: [
       { label: "AI Interior Design", href: "/ai-interior-design" },
+      { label: "Virtual Staging", href: "/ai-virtual-staging" },
       { label: "AI Exterior Design", href: "/ai-exterior-design" },
       { label: "AI Floor Plan", href: "/ai-floor-plan" },
     ],

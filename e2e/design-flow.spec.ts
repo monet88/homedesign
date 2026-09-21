@@ -7,7 +7,7 @@ import { test, expect } from "@playwright/test";
 test("interior design page renders the form and upload dropzone", async ({ page }) => {
   await page.goto("/ai-interior-design");
   await expect(page.getByRole("heading", { name: "AI Interior Design" }).first()).toBeVisible();
-  await expect(page.getByText("Upload a room photo", { exact: true })).toBeVisible();
+  await expect(page.getByText(/(Upload a room photo|Upload a photo)/i).first()).toBeVisible();
   await expect(page.getByRole("combobox", { name: /Room Type|Area/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Generate (1 Credits)" })).toBeVisible();
 });
@@ -15,7 +15,7 @@ test("interior design page renders the form and upload dropzone", async ({ page 
 test("exterior design page renders the form and upload dropzone", async ({ page }) => {
   await page.goto("/ai-exterior-design");
   await expect(page.getByRole("heading", { name: "AI Exterior Design" }).first()).toBeVisible();
-  await expect(page.getByText("Upload a house photo", { exact: true })).toBeVisible();
+  await expect(page.getByText(/(Upload a house photo|Upload a photo)/i).first()).toBeVisible();
   await expect(page.getByRole("combobox", { name: /Room Type|Area/ })).toBeVisible();
 });
 

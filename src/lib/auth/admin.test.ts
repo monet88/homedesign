@@ -171,4 +171,21 @@ describe("seedAdminDatabase", () => {
       /ADMIN_PASSWORD is required/
     );
   });
+
+  it("escapes single quotes and SQL injection attempts in generateSqlStatements", async () => {
+    const config = {
+      email: "injected'--admin@example.com",
+      password: "test-admin-password-123!",
+      credits: 99999,
+      name: "Admin' OR '1'='1",
+      role: "admin" as const,
+    };
+
+    const statements = await seedAdminDatabase.generateSqlStatements(config);
+    const sqlCombined = statements.join("\n");
+
+    expect(sqlCombined).toContain("injected''--admin@example.com");
+    expect(sqlCombined).toContain("Admin'' OR ''1''=''1");
+    expect(sqlCombined).not.toContain("'injected'--admin@example.com'");
+  });
 });

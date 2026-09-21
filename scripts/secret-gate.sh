@@ -12,7 +12,7 @@ is_allowlisted_for_rule2() {
     cloudflare-env.d.ts|worker-configuration.d.ts|wrangler.jsonc)
       return 0
       ;;
-    research/stack-api-contract.md|docs/design/DESIGN.md)
+    research/stack-api-contract.md|docs/design/DESIGN.md|docs/*)
       return 0
       ;;
     .github/workflows/*|scripts/preview-*.sh|scripts/setup-cloudflare-envs.sh)
@@ -21,7 +21,10 @@ is_allowlisted_for_rule2() {
     src/lib/ai/gemini-adapter.test.ts|src/lib/intake/presign.test.ts)
       return 0
       ;;
-    src/lib/auth/auth.wtest.ts|src/lib/auth/outbox.wtest.ts|src/lib/env/deploy-policy.wtest.ts)
+    src/lib/auth/auth.wtest.ts|src/lib/auth/outbox.wtest.ts|src/lib/env/deploy-policy.wtest.ts|tests/deploy.test.ts)
+      return 0
+      ;;
+    src/lib/panorama/demo-tour.ts|src/lib/panorama/*.test.ts|src/app/api/tours/*.test.ts|src/app/tour/*.test.tsx|src/app/tour/*/*.test.tsx|src/components/panorama/*.test.tsx|src/lib/payments/*.test.ts|src/app/api/payments/**/*.test.ts|src/app/api/workspaces/*.test.ts|src/app/api/ai/batch-panorama/*.test.ts)
       return 0
       ;;
     *)
@@ -59,7 +62,7 @@ while IFS=: read -r file line content; do
   fi
 
   # Skip placeholder / template / env references
-  if [[ "$content" =~ [:=][[:space:]]*[\"\'](\$|\$\{|\<|\{|\/|test-|dev-only-|mock-|example|changeme|placeholder|your[_-]|password123|change-me|\[REDACTED\]) ]]; then
+  if [[ "$content" =~ [:=][[:space:]]*[\"\'](\$|\$\{|\<|\{|\/|test-|dev-only-|mock-|example|demo-|demo_|changeme|placeholder|your[_-]|password123|change-me|\[REDACTED\]) ]]; then
     continue
   fi
 

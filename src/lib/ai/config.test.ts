@@ -26,6 +26,7 @@ import {
   CLIENT_POLL_INTERVAL_MS,
   CLIENT_POLL_MAX_WAIT_MS,
   type DesignErrorCode,
+  type InteriorIntent,
 } from "@/lib/ai/types";
 
 function base(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -407,4 +408,81 @@ describe("status maps (AC3 public poll contract)", () => {
     expect(CLIENT_POLL_MAX_WAIT_MS).toBe(120_000);
   });
 });
+
+describe("B2B Virtual Staging Config validation (Ticket 3.3)", () => {
+  it("validates and normalizes virtual-staging mode with stagingPreset at 1 credit", () => {
+    const raw = base({
+      intent: {
+        mode: "virtual-staging",
+        stagingPreset: "living-room-luxury",
+        roomType: "Living Room",
+        style: "Modern Warm",
+        colorScheme: "Warm",
+      },
+    });
+
+    const config = validateDesignConfig(raw);
+    expect(config.scene).toBe("interior");
+    expect(config.cost).toBe(1);
+    expect(config.intent).toMatchObject({
+      mode: "virtual-staging",
+      stagingPreset: "living-room-luxury",
+      roomType: "Living Room",
+      style: "Modern Warm",
+      colorScheme: "Warm",
+    });
+  });
+
+  it("rejects unknown modes with INVALID_INTENT", () => {
+    expectDesignError(
+      base({
+        intent: {
+          mode: "invalid-mode",
+        },
+      }),
+      "INVALID_INTENT",
+      400
+    );
+  });
+
+  it("sanitizes safe text on stagingPreset and prevents data URLs / keys", () => {
+    expectDesignError(
+      base({
+        intent: {
+          mode: "virtual-staging",
+          stagingPreset: "data:image/png;base64,123",
+        },
+      }),
+      "INLINE_IMAGE_NOT_ALLOWED",
+      400
+    );
+  });
+
+  it("accepts interior virtual staging with customColorScheme and stagingPreset", () => {
+    const config = validateDesignConfig(
+      base({
+        intent: {
+          mode: "virtual-staging",
+          stagingPreset: "living-room-luxury",
+          roomType: "Living Room",
+          customRoomType: "",
+          style: "Modern Warm",
+          customStyle: "",
+          colorScheme: "Warm",
+          customColorScheme: "",
+          requirements: "",
+        },
+        customPresetId: "studio-preset-1",
+      })
+    );
+    expect(config.customPresetId).toBe("studio-preset-1");
+    expect(config.intent).toMatchObject({
+      mode: "virtual-staging",
+      stagingPreset: "living-room-luxury",
+      colorScheme: "Warm",
+    });
+    expect((config.intent as unknown as InteriorIntent).customColorScheme).toBeUndefined();
+  });
+});
+
 

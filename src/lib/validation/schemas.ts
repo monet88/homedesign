@@ -72,8 +72,8 @@ export const UploadIntentSchema = z
       .trim()
       .min(1, { message: "name must not be empty" })
       .max(255, { message: "name must not exceed 255 characters" }),
-    mimeType: z.enum(["image/png", "image/jpeg"], {
-      message: "mimeType must be 'image/png' or 'image/jpeg'",
+    mimeType: z.enum(["image/png", "image/jpeg", "image/webp"], {
+      message: "mimeType must be 'image/png', 'image/jpeg', or 'image/webp'",
     }),
     size: z
       .number({ message: "size is required and must be a number" })
@@ -221,6 +221,62 @@ export const MockPaymentSchema = z
   .strip();
 
 export type MockPaymentInput = z.infer<typeof MockPaymentSchema>;
+
+/**
+ * Schema for POST /api/payments/stripe/checkout (Ticket 3.1).
+ *
+ * - `pack`: 'lite' | 'plus' | 'pro' | 'max'
+ * - `successUrl`: optional valid URL string
+ * - `cancelUrl`: optional valid URL string
+ */
+export const StripeCheckoutSchema = z
+  .object({
+    pack: z.enum(["lite", "plus", "pro", "max"], {
+      message: "pack must be one of: lite, plus, pro, max",
+    }),
+    successUrl: z.string().url({ message: "successUrl must be a valid URL" }).optional(),
+    cancelUrl: z.string().url({ message: "cancelUrl must be a valid URL" }).optional(),
+  })
+  .strict();
+
+export type StripeCheckoutInput = z.infer<typeof StripeCheckoutSchema>;
+
+/**
+ * Schema for POST /api/payments/sepay/checkout (Ticket 3.2).
+ *
+ * - `pack`: 'lite' | 'plus' | 'pro' | 'max'
+ */
+export const SepayCheckoutSchema = z
+  .object({
+    pack: z.enum(["lite", "plus", "pro", "max"], {
+      message: "pack must be one of: lite, plus, pro, max",
+    }),
+  })
+  .strict();
+
+export type SepayCheckoutInput = z.infer<typeof SepayCheckoutSchema>;
+
+/**
+ * Schema for POST /api/payments/sepay-webhook (Ticket 3.2).
+ */
+export const SepayWebhookSchema = z
+  .object({
+    id: z.union([z.number(), z.string()]),
+    gateway: z.string().optional(),
+    transactionDate: z.string().optional(),
+    accountNumber: z.string().optional(),
+    code: z.string().nullable().optional(),
+    content: z.string(),
+    transferType: z.string(),
+    transferAmount: z.number(),
+    accumulated: z.number().optional(),
+    subAccount: z.string().nullable().optional(),
+    referenceCode: z.string().nullable().optional(),
+    description: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+export type SepayWebhookInput = z.infer<typeof SepayWebhookSchema>;
 
 // ── Design Generation & Query Schemas (Ticket #44) ───────────────────────────
 

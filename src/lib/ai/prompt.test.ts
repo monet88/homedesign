@@ -10,7 +10,9 @@ import { describe, expect, it } from "vitest";
 import { buildPrompt } from "@/lib/ai/lifecycle";
 import {
   buildExteriorPrompt,
+  buildInpaintingPrompt,
   buildInteriorPrompt,
+  buildVirtualStagingPrompt,
   buildFloorPlanBriefPrompt,
   buildFloorPlanLayoutPrompt,
   buildFloorPlanRenderPrompt,
@@ -139,6 +141,25 @@ describe("interior prompt template (structured 4-layer PBR & Optics)", () => {
     expect(buildInteriorPrompt({ mode: "edit", requirements: "brighten the ceiling" })).toBe(
       "brighten the ceiling"
     );
+  });
+});
+
+describe("buildInpaintingPrompt (Sprint 5 selective mask inpainting)", () => {
+  it("wraps user edit instruction with architectural inpainting & preservation invariants", () => {
+    const prompt = buildInpaintingPrompt("replace the velvet sofa with an Italian cognac leather sectional");
+    expect(prompt).toContain("Photorealistic architectural inpainting");
+    expect(prompt).toContain("original room photograph (Image 1)");
+    expect(prompt).toContain("inpainting mask showing the target modification area (Image 2)");
+    expect(prompt).toContain('replace the velvet sofa with an Italian cognac leather sectional');
+    expect(prompt).toContain("strictly within the marked/masked region");
+    expect(prompt).toContain("Absolutely PRESERVE all unmasked areas");
+    expect(prompt).toContain("Seamlessly blend the edges");
+  });
+
+  it("provides clean fallback instruction if input is empty", () => {
+    const prompt = buildInpaintingPrompt("");
+    expect(prompt).toContain("update and replace this area with modern styling");
+    expect(prompt).toContain("Photorealistic architectural inpainting");
   });
 });
 
@@ -418,4 +439,74 @@ describe("Negative Constraints Engine (Ticket #26)", () => {
     expect(negative).toContain("frame borders");
   });
 });
+
+describe("B2B Virtual Staging Prompt Engine (Ticket 3.3)", () => {
+  it("builds dedicated prompt for Living Room Luxury preset", () => {
+    const prompt = buildVirtualStagingPrompt({
+      mode: "virtual-staging",
+      stagingPreset: "living-room-luxury",
+      colorScheme: "Warm",
+    });
+
+    expect(prompt).toContain("TASK: High-end B2B commercial real estate virtual staging");
+    expect(prompt).toContain("turnkey Living Room Luxury");
+    expect(prompt).toContain("PRESERVED ARCHITECTURAL ENCLOSURE & STRUCTURAL INTEGRITY (LOCK INVARIANTS)");
+    expect(prompt).toContain("Italian leather or textured boucle sectional sofa");
+    expect(prompt).toContain("Calacatta marble tops");
+    expect(prompt).toContain("COMMERCIAL REAL ESTATE LISTING PHOTOGRAPHY & OPTICAL RIGOR");
+    expect(prompt).toContain("Professional 24mm-28mm wide-angle interior lens");
+  });
+
+  it("builds dedicated prompt for Modern Bedroom preset", () => {
+    const prompt = buildVirtualStagingPrompt({
+      mode: "virtual-staging",
+      stagingPreset: "modern-bedroom",
+    });
+
+    expect(prompt).toContain("turnkey Modern Bedroom");
+    expect(prompt).toContain("Upholstered king-size platform bed");
+    expect(prompt).toContain("Five-star hotel luxury layered linen bedding");
+    expect(prompt).toContain("American walnut nightstands");
+    expect(prompt).toContain("Physically Based Rendering (PBR)");
+  });
+
+  it("builds dedicated prompt for Executive Office preset", () => {
+    const prompt = buildVirtualStagingPrompt({
+      mode: "virtual-staging",
+      stagingPreset: "executive-office",
+    });
+
+    expect(prompt).toContain("turnkey Executive Office");
+    expect(prompt).toContain("executive desk with integrated cable management");
+    expect(prompt).toContain("supple cognac leather");
+    expect(prompt).toContain("Floor-to-ceiling architectural open-grid shelving system");
+  });
+
+  it("generates adaptive virtual staging prompt when no preset is specified", () => {
+    const prompt = buildVirtualStagingPrompt({
+      mode: "virtual-staging",
+      roomType: "Dining Room",
+      style: "Scandinavian",
+      colorScheme: "Warm",
+    });
+
+    expect(prompt).toContain("turnkey Scandinavian Dining Room");
+    expect(prompt).toContain("Strictly lock and preserve 100% of the room geometry");
+    expect(prompt).toContain("minimum 36-inch clearance");
+    expect(prompt).toContain("Authentic contact ambient occlusion shadows");
+  });
+
+  it("delegates to buildVirtualStagingPrompt when buildInteriorPrompt receives mode: virtual-staging", () => {
+    const prompt = buildInteriorPrompt({
+      mode: "virtual-staging",
+      stagingPreset: "living-room-luxury",
+      requirements: "Stage for luxury penthouse listing with city skyline views",
+    });
+
+    expect(prompt).toContain("TASK: High-end B2B commercial real estate virtual staging");
+    expect(prompt).toContain("turnkey Living Room Luxury");
+    expect(prompt).toContain("Custom staging requirements: Stage for luxury penthouse listing with city skyline views");
+  });
+});
+
 

@@ -1288,6 +1288,7 @@ async function applyMigrations(db: D1Database) {
         ref_type TEXT,
         ref_id TEXT,
         grant_key TEXT,
+        workspace_id TEXT,
         created_at INTEGER NOT NULL
       )`
     ),
@@ -1307,6 +1308,7 @@ async function applyMigrations(db: D1Database) {
         ref_type TEXT NOT NULL,
         ref_id TEXT NOT NULL,
         ledger_hold_id TEXT,
+        workspace_id TEXT,
         created_at INTEGER NOT NULL,
         settled_at INTEGER,
         released_at INTEGER

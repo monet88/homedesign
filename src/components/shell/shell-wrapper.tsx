@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { Header } from "./header";
 import { Footer } from "./footer";
+import { MobileNav } from "./mobile-nav";
 import { SidebarProvider, AppSidebar, useSidebar } from "./app-sidebar";
 
 function ToolShellContent({ children }: { children: React.ReactNode }) {
@@ -14,8 +15,9 @@ function ToolShellContent({ children }: { children: React.ReactNode }) {
         collapsed ? "md:pl-14" : "md:pl-64"
       }`}
     >
-      <main className="flex-1">{children}</main>
+      <main className="flex-1 pb-16 lg:pb-0">{children}</main>
       <Footer />
+      <MobileNav />
     </div>
   );
 }
@@ -23,7 +25,7 @@ function ToolShellContent({ children }: { children: React.ReactNode }) {
 export function ShellWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
-  // Landing page uses Floating Header + Footer
+  // Landing page uses Floating Header + Footer + MobileNav
   const isLanding =
     pathname === "/" ||
     pathname === "/home-design-software" ||
@@ -34,13 +36,14 @@ export function ShellWrapper({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-dvh flex-col bg-background text-foreground">
         <Header />
-        <main className="flex-1">{children}</main>
+        <main className="flex-1 pb-16 lg:pb-0">{children}</main>
         <Footer />
+        <MobileNav />
       </div>
     );
   }
 
-  // Tool / App pages use Collapsible Sidebar
+  // Tool / App pages use Collapsible Sidebar + MobileNav
   return (
     <SidebarProvider>
       <AppSidebar />

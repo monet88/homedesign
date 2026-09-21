@@ -18,7 +18,7 @@ export interface ImageDimensions {
   megapixels: number;
 }
 
-export type ImageFormat = "png" | "jpeg";
+export type ImageFormat = "png" | "jpeg" | "webp";
 
 export interface ParseResult {
   format: ImageFormat;
@@ -38,6 +38,21 @@ export function hasPngMagic(bytes: Uint8Array): boolean {
 export function hasJpegMagic(bytes: Uint8Array): boolean {
   if (bytes.length < 2) return false;
   return bytes[0] === 0xff && bytes[1] === 0xd8;
+}
+
+/** Check if `bytes` (size >= 12) has RIFF....WEBP magic signature. */
+export function hasWebpMagic(bytes: Uint8Array): boolean {
+  if (bytes.length < 12) return false;
+  return (
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  );
 }
 
 /**
@@ -124,6 +139,44 @@ export function parseJpegDimensions(bytes: Uint8Array): ImageDimensions | null {
   return null; // SOF not found within bounds
 }
 
+/**
+ * Parse WebP dimensions (VP8, VP8L, VP8X) from the first ~64KB.
+ * Returns dimensions or null if not parseable.
+ */
+export function parseWebpDimensions(bytes: Uint8Array): ImageDimensions | null {
+  if (!hasWebpMagic(bytes)) return null;
+  if (bytes.length < 16) return null;
+
+  const chunkType = String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]);
+
+  if (chunkType === "VP8 " && bytes.length >= 30) {
+    // Lossy VP8: keyframe header + start code (0x9D 0x01 0x2A) at bytes 23..25
+    if (bytes[23] === 0x9d && bytes[24] === 0x01 && bytes[25] === 0x2a) {
+      const width = (bytes[26] | (bytes[27] << 8)) & 0x3fff;
+      const height = (bytes[28] | (bytes[29] << 8)) & 0x3fff;
+      if (width > 0 && height > 0) return imageDimensions(width, height);
+    }
+  } else if (chunkType === "VP8L" && bytes.length >= 25) {
+    // Lossless VP8L: signature 0x2F at byte 20
+    if (bytes[20] === 0x2f) {
+      const b1 = bytes[21];
+      const b2 = bytes[22];
+      const b3 = bytes[23];
+      const b4 = bytes[24];
+      const width = 1 + (((b2 & 0x3f) << 8) | b1);
+      const height = 1 + (((b4 & 0x0f) << 10) | (b3 << 2) | ((b2 & 0xc0) >> 6));
+      return imageDimensions(width, height);
+    }
+  } else if (chunkType === "VP8X" && bytes.length >= 30) {
+    // Extended VP8X: 24-bit canvas dimensions at bytes 24..29
+    const width = 1 + (bytes[24] | (bytes[25] << 8) | (bytes[26] << 16));
+    const height = 1 + (bytes[27] | (bytes[28] << 8) | (bytes[29] << 16));
+    return imageDimensions(width, height);
+  }
+
+  return null;
+}
+
 /** Parse raw bytes: detect format, extract dimensions. Returns null on failure. */
 export function parseImageHeader(bytes: Uint8Array): ParseResult | null {
   if (bytes.length < 2) return null;
@@ -138,6 +191,12 @@ export function parseImageHeader(bytes: Uint8Array): ParseResult | null {
     const dims = parseJpegDimensions(bytes);
     if (!dims) return null;
     return { format: "jpeg", dimensions: dims };
+  }
+
+  if (hasWebpMagic(bytes)) {
+    const dims = parseWebpDimensions(bytes);
+    if (!dims) return null;
+    return { format: "webp", dimensions: dims };
   }
 
   return null;

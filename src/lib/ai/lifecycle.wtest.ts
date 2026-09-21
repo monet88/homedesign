@@ -182,6 +182,31 @@ describe("AC1: createDesign happy path", () => {
 
     await expect(assertCreditInvariant(env, userId)).resolves.toBe(true);
   });
+
+  it("creates a design in edit mode with maskDataUrl and preserves maskDataUrl in config_json", async () => {
+    const userId = await seedUser();
+    const assetId = await seedReadyAsset(userId);
+    const mockMask = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+    const result = await createDesign(
+      env,
+      userId,
+      interiorPayload(assetId, "idem-edit-mask", {
+        intent: { mode: "edit", editInstruction: "replace with Italian leather sofa" },
+        maskDataUrl: mockMask,
+      })
+    );
+
+    expect(result.status).toBe("accepted");
+    const design = await getDesign(env, result.id);
+    expect(design).not.toBeNull();
+    const config = JSON.parse(design!.config_json);
+    expect(config.maskDataUrl).toBe(mockMask);
+
+    await handleProviderNotify(env, { type: "task-dispatch", taskId: result.id });
+    const updatedTask = await getTask(env, result.id);
+    expect(updatedTask?.status).toBe("quarantined");
+  });
 });
 
 // ── AC2: createDesign rejections ─────────────────────────────────────────────
@@ -1056,6 +1081,7 @@ async function applyMigrations(db: D1Database) {
         kind TEXT NOT NULL CHECK (kind IN ('interior','exterior','floor-plan')),
         name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', source_asset_id TEXT,
         favorite INTEGER NOT NULL DEFAULT 0, visibility TEXT NOT NULL DEFAULT 'private',
+        workspace_id TEXT,
         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       )`
     ),
@@ -1073,8 +1099,11 @@ async function applyMigrations(db: D1Database) {
         scene TEXT NOT NULL CHECK (scene IN ('interior','exterior','floor-plan')),
         stage TEXT, provider TEXT NOT NULL, model TEXT NOT NULL, provider_scene TEXT NOT NULL,
         prompt TEXT NOT NULL, config_json TEXT NOT NULL, source_asset_id TEXT NOT NULL,
-        output_asset_id TEXT, cost_credits INTEGER NOT NULL, idempotency_key TEXT NOT NULL,
-        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, completed_at INTEGER
+        output_asset_id TEXT, idempotency_key TEXT, status TEXT NOT NULL DEFAULT 'accepted',
+        error_code TEXT, error_message TEXT, cost_credits INTEGER NOT NULL DEFAULT 1,
+        completed_at INTEGER,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+        deleted_at INTEGER, purge_at INTEGER, recovery_until INTEGER
       )`
     ),
     db.prepare(
@@ -1109,10 +1138,25 @@ async function applyMigrations(db: D1Database) {
       )`
     ),
     db.prepare(
+      `CREATE TABLE IF NOT EXISTS user_tokens (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+        token_digest TEXT NOT NULL,
+        name TEXT NOT NULL,
+        scope TEXT NOT NULL CHECK (scope IN ('full','read-only','generation-only')),
+        last_used_at INTEGER,
+        expires_at INTEGER,
+        revoked_at INTEGER,
+        created_at INTEGER NOT NULL,
+        UNIQUE (token_digest)
+      )`
+    ),
+    db.prepare(
       `CREATE TABLE IF NOT EXISTS credit_ledger (
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
         entry_type TEXT NOT NULL CHECK (entry_type IN ('grant','payment','usage','hold','release')),
         amount INTEGER NOT NULL, reason TEXT NOT NULL, ref_type TEXT, ref_id TEXT, grant_key TEXT,
+        workspace_id TEXT,
         created_at INTEGER NOT NULL
       )`
     ),
@@ -1129,6 +1173,7 @@ async function applyMigrations(db: D1Database) {
         amount INTEGER NOT NULL CHECK (amount > 0),
         status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','settled','released')),
         ref_type TEXT NOT NULL, ref_id TEXT NOT NULL, ledger_hold_id TEXT,
+        workspace_id TEXT,
         created_at INTEGER NOT NULL, settled_at INTEGER, released_at INTEGER
       )`
     ),

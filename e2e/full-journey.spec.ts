@@ -114,7 +114,9 @@ test.describe("Full End-to-End System Journey", () => {
     });
 
     await test.step("4. Admin triggers Provider Health Check", async () => {
-      await page.getByRole("button", { name: /Provider Health Check/ }).click();
+      const healthTab = page.getByRole("button", { name: /Provider Health Check/ });
+      await healthTab.scrollIntoViewIfNeeded();
+      await healthTab.click();
       const checkBtn = page.getByRole("button", { name: /Health Check/ });
       await expect(checkBtn).toBeVisible();
       await checkBtn.click();

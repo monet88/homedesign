@@ -38,14 +38,24 @@ async function seedUser(): Promise<string> {
   return userId;
 }
 
-async function seedProject(userId: string, overrides: { name?: string; visibility?: string } = {}) {
+async function seedProject(
+  userId: string,
+  overrides: { name?: string; visibility?: string; sourceAssetId?: string | null } = {}
+) {
   const id = crypto.randomUUID();
   const now = Date.now();
   await env.DB.prepare(
     `INSERT INTO projects (id, user_id, kind, name, status, source_asset_id, favorite, visibility, created_at, updated_at)
-     VALUES (?1, ?2, 'interior', ?3, 'draft', NULL, 0, ?4, ?5, ?5)`
+     VALUES (?1, ?2, 'interior', ?3, 'draft', ?4, 0, ?5, ?6, ?6)`
   )
-    .bind(id, userId, overrides.name ?? "Shared Room", overrides.visibility ?? "private", now)
+    .bind(
+      id,
+      userId,
+      overrides.name ?? "Shared Room",
+      overrides.sourceAssetId ?? null,
+      overrides.visibility ?? "private",
+      now
+    )
     .run();
   return id;
 }
@@ -830,6 +840,52 @@ describe("multi-asset batch Floor Plan lineage resolution (Spec #63 / Ticket #65
     expect(await isFloorPlanOutputActive(env, projectId, renderMalformed.outputAssetId)).toBe(true);
     expect(await isFloorPlanOutputActive(env, projectId, panoNoUpstream.outputAssetId)).toBe(true);
     expect(await isFloorPlanOutputActive(env, projectId, panoMalformed.outputAssetId)).toBe(true);
+  });
+});
+
+describe("share sourceAsset and viral funnel delivery", () => {
+  it("includes sourceAsset in getShareViewByToken when present", async () => {
+    const userId = await seedUser();
+    const sourceAssetId = await seedReadyAsset(userId, `source/${crypto.randomUUID()}.png`);
+    const projectId = await seedProject(userId, { name: "Living Room Before & After", sourceAssetId });
+    const genAssetId = await seedReadyAsset(userId, `ready/${crypto.randomUUID()}.png`);
+    await attachGenerated(projectId, genAssetId);
+
+    const { token } = await createProjectShare(env, userId, projectId, { assetIds: [genAssetId] });
+    const view = await getShareViewByToken(env, token);
+
+    expect(view).toMatchObject({
+      name: "Living Room Before & After",
+      assets: [{ id: genAssetId, mimeType: "image/png" }],
+      sourceAsset: { id: sourceAssetId, mimeType: "image/png" },
+    });
+  });
+
+  it("authorizes delivery of sourceAsset through share token", async () => {
+    const userId = await seedUser();
+    const sourceStorageKey = `source/${crypto.randomUUID()}.png`;
+    const sourceAssetId = await seedReadyAsset(userId, sourceStorageKey);
+    const projectId = await seedProject(userId, { sourceAssetId });
+    const genAssetId = await seedReadyAsset(userId, `ready/${crypto.randomUUID()}.png`);
+    await attachGenerated(projectId, genAssetId);
+
+    const { token } = await createProjectShare(env, userId, projectId, { assetIds: [genAssetId] });
+
+    // Delivery of generated asset
+    const genDelivery = await authorizeShareAssetDelivery(env, token, genAssetId);
+    expect(genDelivery).not.toBeNull();
+    expect(genDelivery?.storageKey).toMatch(/^ready\//);
+
+    // Delivery of source asset (Before photo for comparison)
+    const sourceDelivery = await authorizeShareAssetDelivery(env, token, sourceAssetId);
+    expect(sourceDelivery).not.toBeNull();
+    expect(sourceDelivery?.storageKey).toBe(sourceStorageKey);
+    expect(sourceDelivery?.mimeType).toBe("image/png");
+
+    // Revoke share token -> delivery should return null
+    await revokeProjectShare(env, userId, projectId);
+    const revokedDelivery = await authorizeShareAssetDelivery(env, token, sourceAssetId);
+    expect(revokedDelivery).toBeNull();
   });
 });
 

@@ -6,7 +6,7 @@ The HomeDesign application currently has a 1:1 pixel-perfect frontend clone of `
 
 ## Solution
 
-1. Integrate a live AI provider adapter connecting to `https://cliproxy.monet.uno/v1` using model `gemini-3.1-flash-image` and Bearer token authentication to generate photorealistic interior, exterior, and floor plan images from multimodal user inputs in ~15 seconds.
+1. Integrate a live AI provider adapter connecting to `https://pro.autommo.online/v1` using model `gemini-3.1-flash-image` and Bearer token authentication to generate photorealistic interior, exterior, and floor plan images from multimodal user inputs in ~15 seconds.
 2. Implement an Admin system with an automated CLI seeder (`npm run db:seed:admin`) that provisions administrator `minhthang421992@gmail.com` with role `admin` and 99,999 Credits, backed by a dedicated, role-protected Admin Dashboard at `/admin`.
 3. Provide a complete automated Playwright E2E test harness (`npm run test:e2e`) verifying the entire journey from authentication, admin dashboard inspection, image upload, AI generation, Before/After verification, and Credit Ledger settlement.
 
@@ -22,7 +22,7 @@ The HomeDesign application currently has a 1:1 pixel-perfect frontend clone of `
 8. As an administrator, I want to view all registered users, their creation date, and their current credit balances in a table on the Admin Dashboard, so that I have complete visibility over user activity.
 9. As an administrator, I want to grant or deduct credits for any specific user directly from the Admin Dashboard, so that I can provide promotional credits or assist users with testing.
 10. As an administrator, I want to monitor all live and completed AI Tasks across the system with status, prompt, latency, and error codes, so that I can quickly diagnose issues or provider failures.
-11. As an administrator, I want an AI Provider Health Check tool in `/admin` that pings the endpoint `https://cliproxy.monet.uno/v1` and verifies model availability, so that I can confirm AI backend uptime without generating a full project.
+11. As an administrator, I want an AI Provider Health Check tool in `/admin` that pings the endpoint `https://pro.autommo.online/v1` and verifies model availability, so that I can confirm AI backend uptime without generating a full project.
 12. As a quality engineer, I want to execute `npm run test:e2e` via Playwright, so that the entire system (Auth → Admin → Interior → Exterior → Floor Plan → Credits) is automatically verified without manual clicking.
 13. As a developer, I want provider configurations (API URL, API Key, default model) to be read securely from environment variables (`AI_API_BASE_URL`, `AI_API_KEY`, `AI_DEFAULT_MODEL`), so that secrets are never hardcoded.
 
@@ -59,7 +59,7 @@ The HomeDesign application currently has a 1:1 pixel-perfect frontend clone of `
 - `GET /api/admin/users`: returns paginated user list (`page`, `limit`, `total`, `totalPages`) with email, role, created timestamp, and credit balance.
 - `POST /api/admin/credits`: accepts `{ userId, amount, reason }` validated with Zod and overdraft checks, recording an immutable grant/adjustment in `credit_ledger`.
 - `GET /api/admin/tasks`: returns paginated AI Task records (`page`, `limit`, `total`, `totalPages`, default 50) with prompt, execution time, cost, status, and error details.
-- `POST /api/admin/health`: dispatches a ping request to `https://cliproxy.monet.uno/v1/models` via `ProviderAdapter.healthCheck()` and returns latency and model status.
+- `POST /api/admin/health`: dispatches a ping request to `https://pro.autommo.online/v1/models` via `ProviderAdapter.healthCheck()` and returns latency and model status.
 - Unified Mutation Validation: all Server Actions and route handlers (`/api/designs`, `/api/ai/generate`, `/api/assets/*`, `/api/payments/mock`, `/api/floor-plan/room-designs/*`) strictly validate payloads with shared Zod schemas (`src/lib/validation/schemas.ts`).
 
 ### 4. Playwright E2E Test Suite
@@ -88,5 +88,5 @@ The HomeDesign application currently has a 1:1 pixel-perfect frontend clone of `
 
 ## Further Notes
 
-- API Endpoint tested & validated: `https://cliproxy.monet.uno/v1` with model `gemini-3.1-flash-image` (configured via `AI_API_KEY` environment variable).
+- API Endpoint configured: `https://pro.autommo.online/v1` with model `gemini-3.1-flash-image` (configured via `AI_API_KEY` environment variable). Live model compatibility requires an approved authenticated health check.
 - Response latency during testing was ~15.6s for high-resolution 1024x1024 photorealistic renders.

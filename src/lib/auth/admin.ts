@@ -42,11 +42,15 @@ export const seedAdminDatabase = {
     }
     const hashedPassword = await hashPassword(config.password);
 
-    const userSql = `INSERT INTO user (id, name, email, emailVerified, role, createdAt, updatedAt) VALUES ('${userId}', '${config.name.replace(/'/g, "''")}', '${config.email}', 1, 'admin', ${now}, ${now}) ON CONFLICT(email) DO UPDATE SET role = 'admin', emailVerified = 1, updatedAt = ${now};`;
+    const safeName = config.name.replace(/'/g, "''");
+    const safeEmail = config.email.replace(/'/g, "''");
+    const safeHashedPassword = hashedPassword.replace(/'/g, "''");
 
-    const accountSql = `INSERT INTO account (id, accountId, providerId, issuer, userId, password, createdAt, updatedAt) VALUES ('${accountId}', '${userId}', 'credential', 'local:credential', (SELECT id FROM user WHERE email = '${config.email}'), '${hashedPassword}', ${now}, ${now}) ON CONFLICT(id) DO UPDATE SET issuer = 'local:credential', password = '${hashedPassword}', updatedAt = ${now};`;
+    const userSql = `INSERT INTO user (id, name, email, emailVerified, role, createdAt, updatedAt) VALUES ('${userId}', '${safeName}', '${safeEmail}', 1, 'admin', ${now}, ${now}) ON CONFLICT(email) DO UPDATE SET role = 'admin', emailVerified = 1, updatedAt = ${now};`;
 
-    const ledgerSql = `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, grant_key, created_at) VALUES ('${ledgerId}', (SELECT id FROM user WHERE email = '${config.email}'), 'grant', ${config.credits}, 'Initial Admin Credit Grant', 'admin-initial-grant', ${now}) ON CONFLICT(user_id, grant_key) WHERE grant_key IS NOT NULL DO NOTHING;`;
+    const accountSql = `INSERT INTO account (id, accountId, providerId, issuer, userId, password, createdAt, updatedAt) VALUES ('${accountId}', '${userId}', 'credential', 'local:credential', (SELECT id FROM user WHERE email = '${safeEmail}'), '${safeHashedPassword}', ${now}, ${now}) ON CONFLICT(id) DO UPDATE SET issuer = 'local:credential', password = '${safeHashedPassword}', updatedAt = ${now};`;
+
+    const ledgerSql = `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, grant_key, created_at) VALUES ('${ledgerId}', (SELECT id FROM user WHERE email = '${safeEmail}'), 'grant', ${config.credits}, 'Initial Admin Credit Grant', 'admin-initial-grant', ${now}) ON CONFLICT(user_id, grant_key) WHERE grant_key IS NOT NULL DO NOTHING;`;
 
     return [userSql, accountSql, ledgerSql];
   },
@@ -73,10 +77,39 @@ export const seedAdminDatabase = {
         `Initial credit grant mismatch: existing grant is ${existing.amount} credits, but requested ${config.credits} credits. Credit ledger is immutable; use POST /api/admin/credits for adjustments.`
       );
     }
-    const statements = await this.generateSqlStatements(config);
-    for (const sql of statements) {
-      await db.prepare(sql).run();
-    }
+
+    const now = Date.now();
+    const userId = `admin-${config.email.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    const accountId = `acc-${userId}`;
+    const ledgerId = `ledger-${userId}-initial-grant`;
+    const hashedPassword = await hashPassword(config.password);
+
+    await db
+      .prepare(
+        `INSERT INTO user (id, name, email, emailVerified, role, createdAt, updatedAt)
+         VALUES (?1, ?2, ?3, 1, 'admin', ?4, ?4)
+         ON CONFLICT(email) DO UPDATE SET role = 'admin', emailVerified = 1, updatedAt = ?4;`
+      )
+      .bind(userId, config.name, config.email, now)
+      .run();
+
+    await db
+      .prepare(
+        `INSERT INTO account (id, accountId, providerId, issuer, userId, password, createdAt, updatedAt)
+         VALUES (?1, ?2, 'credential', 'local:credential', (SELECT id FROM user WHERE email = ?3), ?4, ?5, ?5)
+         ON CONFLICT(id) DO UPDATE SET issuer = 'local:credential', password = ?4, updatedAt = ?5;`
+      )
+      .bind(accountId, userId, config.email, hashedPassword, now)
+      .run();
+
+    await db
+      .prepare(
+        `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, grant_key, created_at)
+         VALUES (?1, (SELECT id FROM user WHERE email = ?2), 'grant', ?3, 'Initial Admin Credit Grant', 'admin-initial-grant', ?4)
+         ON CONFLICT(user_id, grant_key) WHERE grant_key IS NOT NULL DO NOTHING;`
+      )
+      .bind(ledgerId, config.email, config.credits, now)
+      .run();
 
     return {
       status: existing ? "reconciled" : "created",

@@ -2,6 +2,8 @@
 
 import {
   ASPECT_RATIO_OPTIONS,
+  B2B_STAGING_PRESETS,
+  type B2BStagingPreset,
   DESIGN_MODES,
   EXTERIOR_AREAS,
   EXTERIOR_PALETTES,
@@ -23,6 +25,7 @@ import {
   useImperativeHandle,
   useState,
 } from "react";
+import { useTranslation } from "@/lib/i18n/context";
 import { BrushMaskCanvas } from "./brush-mask-canvas";
 import {
   IconSparkles,
@@ -90,13 +93,14 @@ export const DesignForm = forwardRef<DesignFormHandle, DesignFormProps>(
     }: DesignFormProps,
     ref
   ) {
+    const { t } = useTranslation();
     const [state, setState] = useState<DesignFormState>(() => {
       const initial = initialDesignFormState(scene);
       return initialPreset ? applyPreset(initial, initialPreset) : initial;
     });
 
     const [isCustomMode, setIsCustomMode] = useState(false);
-    const [model, setModel] = useState("nano-banana");
+    const [engine, setEngine] = useState("smart");
 
     useEffect(() => {
       if (initialPreset) {
@@ -130,7 +134,17 @@ export const DesignForm = forwardRef<DesignFormHandle, DesignFormProps>(
         return;
       }
       onGenerate(
-        buildDesignConfig(scene, state, sourceAssetId),
+        buildDesignConfig(scene, state, sourceAssetId, {
+          provider: engine === "smart" ? "smart" : engine,
+          model:
+            engine === "gemini" || engine === "smart"
+              ? "gemini-2.5-flash-image"
+              : engine === "fal"
+                ? "fal-ai/flux/schnell"
+                : engine === "replicate"
+                  ? "black-forest-labs/flux-schnell"
+                  : engine,
+        }),
         sourceAssetId
       );
     }
@@ -139,56 +153,137 @@ export const DesignForm = forwardRef<DesignFormHandle, DesignFormProps>(
       generate: handleGenerate,
     }));
 
+    function handleSelectStagingPreset(preset: B2BStagingPreset) {
+      setState((prev) => ({
+        ...prev,
+        stagingPreset: preset.id,
+        roomType: preset.roomType,
+        customRoomType: "",
+        style: preset.style,
+        customStyle: "",
+        colorScheme: preset.colorScheme,
+        customColorScheme: "",
+        aspectRatio: preset.recommendedAspect,
+      }));
+    }
+
     return (
       <div className="flex flex-col gap-5">
-        {/* 1. Mode Switcher (Full Redesign / Local Edit) */}
-        <div className="flex rounded-xl border border-border/80 bg-background/50 p-1">
-          {DESIGN_MODES.map((m) => (
-            <button
-              key={m.value}
-              type="button"
-              onClick={() => update("mode", m.value)}
-              aria-pressed={state.mode === m.value}
-              className={`flex-1 rounded-lg py-2 text-xs font-semibold transition-all ${
-                state.mode === m.value
-                  ? "bg-brand-primary text-white shadow-xs"
-                  : "text-foreground/70 hover:text-foreground"
-              }`}
-            >
-              {m.label}
-            </button>
-          ))}
+        {/* 1. Mode Switcher (Full Redesign / Virtual Staging / Local Edit) */}
+        <div className="flex rounded-xl border border-border/80 bg-muted/50 p-1">
+          {DESIGN_MODES.map((m) => {
+            const label =
+              m.value === "redesign"
+                ? t.studio.fullRedesign
+                : m.value === "virtual-staging"
+                ? t.studio.virtualStaging
+                : t.studio.localEdit;
+            return (
+              <button
+                key={m.value}
+                type="button"
+                onClick={() => {
+                  update("mode", m.value);
+                  if (m.value === "virtual-staging" && !state.stagingPreset) {
+                    handleSelectStagingPreset(B2B_STAGING_PRESETS[0]);
+                  }
+                }}
+                aria-pressed={state.mode === m.value}
+                className={`flex-1 rounded-lg py-2 text-xs font-semibold transition-all ${
+                  state.mode === m.value
+                    ? "bg-brand-primary text-white shadow-xs"
+                    : "text-foreground/75 hover:text-foreground hover:bg-card/60"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
+
+        {/* B2B Virtual Staging Presets Selector */}
+        {state.mode === "virtual-staging" && (
+          <div className="rounded-2xl border border-brand-primary/30 bg-brand-primary/5 p-4">
+            <div className="mb-2.5 flex items-center justify-between">
+              <span className="text-xs font-bold text-foreground">
+                {t.studio.realtorPresets}
+              </span>
+              <span className="rounded-md bg-brand-primary/20 px-2 py-0.5 text-[10px] font-semibold text-brand-primary">
+                Realtor Pro
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {B2B_STAGING_PRESETS.map((p) => {
+                const isSelected = state.stagingPreset === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handleSelectStagingPreset(p)}
+                    className={`flex flex-col rounded-xl border p-2.5 text-left transition-all ${
+                      isSelected
+                        ? "border-brand-primary bg-card shadow-xs ring-1 ring-brand-primary"
+                        : "border-border/60 bg-card/60 hover:border-brand-primary/50 hover:bg-card"
+                    }`}
+                  >
+                    <span className="text-xs font-bold text-foreground">
+                      {p.name}
+                    </span>
+                    <span className="mt-1 line-clamp-2 text-[11px] text-foreground/60 leading-tight">
+                      {p.description}
+                    </span>
+                    <div className="mt-2 flex items-center gap-1 text-[10px] font-medium text-brand-primary">
+                      <span>{p.roomType}</span> • <span>{p.style}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {state.stagingPreset && (
+              <div className="mt-3 rounded-lg bg-background/80 p-2.5 text-[11px] text-foreground/80">
+                <span className="font-semibold text-foreground">
+                  Staging Focus:{" "}
+                </span>
+                {B2B_STAGING_PRESETS.find((p) => p.id === state.stagingPreset)?.highlights.join(", ")}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Local Edit Brush Canvas (if Local Edit mode is active and source is uploaded) */}
         {state.mode === "edit" && sourcePreviewUrl && (
           <div className="rounded-2xl border border-border bg-card p-4">
             <h4 className="mb-2 text-xs font-semibold text-foreground">
-              Brush Inpainting Mask
+              {t.studio.brushMaskTitle}
             </h4>
-            <BrushMaskCanvas imageSrc={sourcePreviewUrl} />
+            <BrushMaskCanvas
+              imageSrc={sourcePreviewUrl}
+              onMaskChange={(mask) => update("maskDataUrl", mask)}
+            />
           </div>
         )}
 
         {/* 2. Model Section */}
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
-            <IconSparkles className="size-3.5 text-foreground/70" />
+            <IconSparkles className="size-3.5 text-brand-primary" />
             <label className="text-xs font-semibold text-foreground">
-              Model
+              {t.studio.model}
             </label>
           </div>
           <div className="relative">
             <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
+              value={engine}
+              onChange={(e) => setEngine(e.target.value)}
               disabled={disabled}
               aria-label="Select AI Model"
               className="w-full appearance-none rounded-xl border border-border bg-card px-3.5 py-2.5 text-xs font-medium text-foreground outline-none transition-colors focus:border-brand-primary"
             >
-              <option value="nano-banana">Nano Banana</option>
-              <option value="nano-banana-2">Nano Banana 2</option>
-              <option value="nano-banana-pro">Nano Banana Pro</option>
+              <option value="smart">Tự động tối ưu (Smart Auto-Failover: Fal 1s ➔ Gemini)</option>
+              <option value="fal">Fal.ai Flux Schnell (Siêu Tốc 1-2s)</option>
+              <option value="gemini">Google Gemini 2.5 Flash (Chi Tiết Kiến Trúc)</option>
+              <option value="replicate">Replicate Flux Schnell (Dự Phòng)</option>
+              <option value="kie">KIE.ai GPT Image 2 Engine</option>
             </select>
             <IconChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 size-3.5 text-foreground/50" />
           </div>
@@ -197,12 +292,12 @@ export const DesignForm = forwardRef<DesignFormHandle, DesignFormProps>(
         {/* 3. Room Type / Exterior Area Section */}
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
-            <IconHome className="size-3.5 text-foreground/70" />
+            <IconHome className="size-3.5 text-brand-primary" />
             <label
               htmlFor="room-area-select"
               className="text-xs font-semibold text-foreground"
             >
-              {scene === "interior" ? "Room Type" : "Area"}
+              {scene === "interior" ? t.studio.roomType : "Area"}
             </label>
           </div>
           <div className="relative">
@@ -249,9 +344,9 @@ export const DesignForm = forwardRef<DesignFormHandle, DesignFormProps>(
         {/* 4. Design Style Section */}
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
-            <IconWand className="size-3.5 text-foreground/70" />
+            <IconWand className="size-3.5 text-brand-primary" />
             <label className="text-xs font-semibold text-foreground">
-              {scene === "interior" ? "Design Style" : "Exterior Style"}
+              {scene === "interior" ? t.studio.designStyle : "Exterior Style"}
             </label>
           </div>
           <div className="relative">
@@ -284,9 +379,9 @@ export const DesignForm = forwardRef<DesignFormHandle, DesignFormProps>(
         {/* 5. Color Scheme Section */}
         <div>
           <div className="flex items-center gap-1.5 mb-2">
-            <IconPalette className="size-3.5 text-foreground/70" />
+            <IconPalette className="size-3.5 text-brand-primary" />
             <label className="text-xs font-semibold text-foreground">
-              Color Scheme
+              {t.studio.colorScheme}
             </label>
           </div>
 
@@ -306,15 +401,15 @@ export const DesignForm = forwardRef<DesignFormHandle, DesignFormProps>(
                   disabled={disabled || state.mode === "edit"}
                   className={`flex flex-col items-center justify-center rounded-xl border p-2 text-center transition-all ${
                     isSelected
-                      ? "border-brand-primary bg-brand-primary/5 shadow-xs ring-1 ring-brand-primary"
-                      : "border-border bg-card hover:bg-black/5"
+                      ? "border-brand-primary bg-brand-primary/10 shadow-xs ring-1 ring-brand-primary"
+                      : "border-border bg-card hover:bg-muted"
                   }`}
                 >
                   <div className="flex items-center gap-1 mb-1">
                     {pal.colors.map((c, idx) => (
                       <span
                         key={idx}
-                        className="size-2.5 rounded-full"
+                        className="size-2.5 rounded-full shadow-2xs"
                         style={{ backgroundColor: c }}
                       />
                     ))}
@@ -338,11 +433,11 @@ export const DesignForm = forwardRef<DesignFormHandle, DesignFormProps>(
               aria-pressed={isCustomMode || state.colorScheme === "Custom"}
               className={`flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-center text-[11px] font-medium transition-all ${
                 isCustomMode || state.colorScheme === "Custom"
-                  ? "border-brand-primary bg-brand-primary/5 ring-1 ring-brand-primary"
-                  : "border-border bg-card hover:bg-black/5"
+                  ? "border-brand-primary bg-brand-primary/10 ring-1 ring-brand-primary"
+                  : "border-border bg-card hover:bg-muted"
               }`}
             >
-              <IconPalette className="size-3.5 text-foreground/70" />
+              <IconPalette className="size-3.5 text-brand-primary" />
               <span>Custom</span>
             </button>
             <input
@@ -362,9 +457,9 @@ export const DesignForm = forwardRef<DesignFormHandle, DesignFormProps>(
         {/* 6. Aspect Ratio Section */}
         <div>
           <div className="flex items-center gap-1.5 mb-2">
-            <IconCrop className="size-3.5 text-foreground/70" />
+            <IconCrop className="size-3.5 text-brand-primary" />
             <label className="text-xs font-semibold text-foreground">
-              Aspect Ratio
+              {t.studio.aspectRatio}
             </label>
           </div>
           <div className="grid grid-cols-5 gap-2">
@@ -380,7 +475,7 @@ export const DesignForm = forwardRef<DesignFormHandle, DesignFormProps>(
                   className={`flex flex-col items-center justify-center rounded-xl border py-2 px-1 text-center transition-all ${
                     isSelected
                       ? "border-brand-primary bg-brand-primary text-white shadow-xs"
-                      : "border-border bg-card text-foreground/80 hover:bg-black/5"
+                      : "border-border bg-card text-foreground/80 hover:bg-muted"
                   }`}
                 >
                   <div className="flex h-5 items-center justify-center mb-1">
@@ -401,12 +496,12 @@ export const DesignForm = forwardRef<DesignFormHandle, DesignFormProps>(
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-1.5">
-              <IconDocument className="size-3.5 text-foreground/70" />
+              <IconDocument className="size-3.5 text-brand-primary" />
               <label
                 htmlFor="custom-req-input"
                 className="text-xs font-semibold text-foreground"
               >
-                {state.mode === "edit" ? "Edit Instruction" : "Custom Requirements"}
+                {state.mode === "edit" ? "Edit Instruction" : t.studio.customRequirements}
               </label>
             </div>
             <span className="text-[11px] text-foreground/40">
@@ -425,7 +520,7 @@ export const DesignForm = forwardRef<DesignFormHandle, DesignFormProps>(
               )
             }
             disabled={disabled}
-            placeholder="Add notes for what should stay, change, or any must-haves..."
+            placeholder={t.studio.customPlaceholder}
             className="w-full rounded-xl border border-border bg-card p-3 text-xs text-foreground placeholder:text-foreground/40 focus:border-brand-primary focus:outline-none disabled:opacity-50"
           />
         </div>
@@ -438,7 +533,7 @@ export const DesignForm = forwardRef<DesignFormHandle, DesignFormProps>(
           className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary text-sm font-semibold text-white transition-all hover:bg-brand-accent disabled:opacity-50 shadow-md active:translate-y-px"
         >
           <IconSparkles className="size-4" />
-          <span>Generate (1 Credits)</span>
+          <span>{t.studio.generateButton} (1 {t.common.credits})</span>
         </button>
       </div>
     );

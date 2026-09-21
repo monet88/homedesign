@@ -4,18 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import type { PanoramaOrientationView } from "@/lib/floor-plan/types";
 import "pannellum/build/pannellum.css";
 
-type PannellumViewer = {
-  destroy: () => void;
-  on?: (event: string, listener: () => void) => void;
-};
-
-declare global {
-  interface Window {
-    pannellum?: {
-      viewer: (container: HTMLElement, config: Record<string, unknown>) => PannellumViewer;
-    };
-  }
-}
+import type { PannellumViewerInstance } from "pannellum/build/pannellum.js";
+type PannellumViewer = PannellumViewerInstance;
 
 /** Exported for unit tests — WebGL probe used before mounting Pannellum. */
 export function isWebGLAvailable(): boolean {
@@ -70,7 +60,7 @@ export function PanoramaViewer({
           autoLoad: true,
         });
 
-        viewerRef.current.on?.("error", () => setUseStatic(true));
+        viewerRef.current?.on?.("error", () => setUseStatic(true));
       } catch {
         setUseStatic(true);
       }
@@ -92,7 +82,7 @@ export function PanoramaViewer({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={panoramaUrl} alt={alt} className="block w-full" />
         <p className="bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
-          Interactive 360° view unavailable — showing static panorama preview.
+          Interactive 360° view unavailable: showing static panorama preview.
         </p>
       </div>
     );

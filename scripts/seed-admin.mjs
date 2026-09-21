@@ -26,8 +26,9 @@ export const dbName = isDemo ? (isRemote ? "hd-demo" : "homedesign") : "homedesi
  */
 export async function checkExistingAdminGrant(email, targetFlag = d1TargetFlag, cwd = root) {
   try {
+    const safeEmail = email.replace(/'/g, "''");
     const stdout = execSync(
-      `npx wrangler d1 execute ${dbName} ${targetFlag} --command="SELECT cl.amount, cl.created_at, cl.grant_key FROM credit_ledger cl JOIN user u ON cl.user_id = u.id WHERE u.email = '${email}' AND cl.grant_key = 'admin-initial-grant';" --json`,
+      `npx wrangler d1 execute ${dbName} ${targetFlag} --command="SELECT cl.amount, cl.created_at, cl.grant_key FROM credit_ledger cl JOIN user u ON cl.user_id = u.id WHERE u.email = '${safeEmail}' AND cl.grant_key = 'admin-initial-grant';" --json`,
       { cwd, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }
     );
     const parsed = JSON.parse(stdout);
@@ -59,11 +60,13 @@ export async function buildAdminSeedSql(config = {}) {
   const accountId = `acc-${userId}`;
   const ledgerId = `ledger-${userId}-initial-grant`;
   const hashedPassword = await hashPassword(password);
+  const safeEmail = email.replace(/'/g, "''");
+  const safeHashedPassword = hashedPassword.replace(/'/g, "''");
 
   return [
     `-- 1. Ensure admin user exists with role = 'admin'`,
     `INSERT INTO user (id, name, email, emailVerified, role, createdAt, updatedAt)`,
-    `VALUES ('${userId}', '${name}', '${email}', 1, 'admin', ${now}, ${now})`,
+    `VALUES ('${userId}', '${name}', '${safeEmail}', 1, 'admin', ${now}, ${now})`,
     `ON CONFLICT(email) DO UPDATE SET`,
     `  role = 'admin',`,
     `  emailVerified = 1,`,
@@ -71,15 +74,15 @@ export async function buildAdminSeedSql(config = {}) {
     ``,
     `-- 2. Ensure credential account exists with hashed password`,
     `INSERT INTO account (id, accountId, providerId, issuer, userId, password, createdAt, updatedAt)`,
-    `VALUES ('${accountId}', '${userId}', 'credential', 'local:credential', (SELECT id FROM user WHERE email = '${email}'), '${hashedPassword}', ${now}, ${now})`,
+    `VALUES ('${accountId}', '${userId}', 'credential', 'local:credential', (SELECT id FROM user WHERE email = '${safeEmail}'), '${safeHashedPassword}', ${now}, ${now})`,
     `ON CONFLICT(id) DO UPDATE SET`,
     `  issuer = 'local:credential',`,
-    `  password = '${hashedPassword}',`,
+    `  password = '${safeHashedPassword}',`,
     `  updatedAt = ${now};`,
     ``,
     `-- 3. Ensure admin credit grant in credit_ledger (idempotent, immutable)`,
     `INSERT INTO credit_ledger (id, user_id, entry_type, amount, reason, grant_key, created_at)`,
-    `VALUES ('${ledgerId}', (SELECT id FROM user WHERE email = '${email}'), 'grant', ${credits}, 'Initial Admin Credit Grant', 'admin-initial-grant', ${now})`,
+    `VALUES ('${ledgerId}', (SELECT id FROM user WHERE email = '${safeEmail}'), 'grant', ${credits}, 'Initial Admin Credit Grant', 'admin-initial-grant', ${now})`,
     `ON CONFLICT(user_id, grant_key) WHERE grant_key IS NOT NULL DO NOTHING;`,
   ].join("\n");
 }
@@ -93,8 +96,9 @@ export async function run() {
     // 1. Verify exact Google-authenticated admin account exists in D1 before UPDATE
     let existingUser = null;
     try {
+      const safeEmail = email.replace(/'/g, "''");
       const checkStdout = execSync(
-        `npx wrangler d1 execute ${dbName} ${d1TargetFlag} --command="SELECT id, role FROM user WHERE email = '${email}';" --json`,
+        `npx wrangler d1 execute ${dbName} ${d1TargetFlag} --command="SELECT id, role FROM user WHERE email = '${safeEmail}';" --json`,
         { cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }
       );
       const parsed = JSON.parse(checkStdout);
@@ -119,7 +123,8 @@ export async function run() {
 
     // 3. Promote to admin without password or credit grant
     const now = Date.now();
-    const updateSql = `UPDATE user SET role = 'admin', updatedAt = ${now} WHERE id = '${existingUser.id}';`;
+    const safeUserId = existingUser.id.replace(/'/g, "''");
+    const updateSql = `UPDATE user SET role = 'admin', updatedAt = ${now} WHERE id = '${safeUserId}';`;
     writeFileSync(tempSqlPath, updateSql, "utf8");
     try {
       execSync(

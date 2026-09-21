@@ -48,7 +48,7 @@ describe("image fixtures", () => {
   });
 
   it("upload contract constants match the spec", () => {
-    expect(VALID_UPLOAD_MIMES).toEqual(["image/png", "image/jpeg"]);
+    expect(VALID_UPLOAD_MIMES).toEqual(["image/png", "image/jpeg", "image/webp"]);
     expect(MAX_UPLOAD_BYTES).toBe(50 * 1024 * 1024);
     expect(ASSET_LIFECYCLE).toContain("ready");
     expect(ASSET_LIFECYCLE).toContain("rejected");
@@ -183,7 +183,7 @@ describe("MockPaymentSchema validation (Ticket #46)", () => {
 });
 
 describe("UploadIntentSchema validation (Ticket #45)", () => {
-  it("accepts valid png and jpeg upload intents within bounds", () => {
+  it("accepts valid png, jpeg, and webp upload intents within bounds", () => {
     const validPng = { name: "room.png", mimeType: "image/png", size: 1024 };
     const res1 = UploadIntentSchema.safeParse(validPng);
     expect(res1.success).toBe(true);
@@ -196,6 +196,13 @@ describe("UploadIntentSchema validation (Ticket #45)", () => {
     expect(res2.success).toBe(true);
     if (res2.success) {
       expect(res2.data.size).toBe(52428800);
+    }
+
+    const validWebp = { name: "preset.webp", mimeType: "image/webp", size: 2048 };
+    const res3 = UploadIntentSchema.safeParse(validWebp);
+    expect(res3.success).toBe(true);
+    if (res3.success) {
+      expect(res3.data).toEqual(validWebp);
     }
   });
 
@@ -237,7 +244,6 @@ describe("UploadIntentSchema validation (Ticket #45)", () => {
   it("rejects unsupported MIME types", () => {
     const invalidMimes = [
       "image/gif",
-      "image/webp",
       "image/svg+xml",
       "image/bmp",
       "text/plain",

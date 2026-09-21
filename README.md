@@ -28,7 +28,7 @@ flowchart LR
 1. **Double-Entry Credit Ledger**: Append-only ledger tracks every grant, mock payment, hold, usage, and release. Available credits = balance minus active holds.
 2. **Credit Hold Lifecycle**: An AI task admission atomically places a credit hold. The hold settles to `usage` only after output asset validation reaches `ready`. On terminal failure or timeout, the hold releases back to available credits.
 3. **Storage-First Quarantine**: Uploaded source and generated assets land in private R2 quarantine first (`pending-upload` $\to$ `quarantined`). They advance to `ready` only after strict intake validation (magic bytes, dimensions, 50 MP/12,000 px limit).
-4. **Provider Abstraction**: All AI operations route through `ProviderAdapter` (`FakeProviderAdapter` for offline dev/tests, `GeminiFlashImageAdapter` connecting to `https://cliproxy.monet.uno/v1` with `gemini-3.1-flash-image`).
+4. **Provider Abstraction**: All AI operations route through `ProviderAdapter` (`FakeProviderAdapter` for offline dev/tests, `GeminiFlashImageAdapter` connecting to `https://pro.autommo.online/v1` with `gemini-3.1-flash-image`).
 5. **Private by Default**: Assets and projects are private. Sharing is handled strictly via unlisted, revocable tokens that only expose selected ready assets from the active lineage.
 
 ---

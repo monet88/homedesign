@@ -1,0 +1,25 @@
+{
+  "name": "HomeDesign - AI Architecture & Interiors",
+  "short_name": "HomeDesign",
+  "description": "Design your dream space with AI - Interior, Exterior, and 3D Floor Plan",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#faf9f6",
+  "theme_color": "#faf9f6",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/favicon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
